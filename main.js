@@ -1,10 +1,24 @@
-const { app, BrowserWindow } = require("electron");
+const { app, BrowserWindow, ipcMain, dialog } = require("electron");
 const path = require("path");
+const fs = require("fs");
 
 if (process.env.ELECTRON_DOCKER === "1") {
   app.commandLine.appendSwitch("no-sandbox");
   app.commandLine.appendSwitch("disable-dev-shm-usage");
 }
+
+ipcMain.handle("save-recording", async (event, arrayBuffer, defaultName) => {
+  const win = BrowserWindow.fromWebContents(event.sender);
+  const { filePath, canceled } = await dialog.showSaveDialog(win, {
+    defaultPath: defaultName || "cricket-capture.webm",
+    filters: [{ name: "WebM video", extensions: ["webm"] }],
+  });
+  if (canceled || !filePath) {
+    return { ok: false, canceled: true };
+  }
+  await fs.promises.writeFile(filePath, Buffer.from(arrayBuffer));
+  return { ok: true, filePath };
+});
 
 function createWindow() {
   const win = new BrowserWindow({

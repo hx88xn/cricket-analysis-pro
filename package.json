@@ -29,7 +29,11 @@
     ],
     "mac": {
       "target": ["dmg"],
-      "category": "public.app-category.utilities"
+      "category": "public.app-category.utilities",
+      "extendInfo": {
+        "NSCameraUsageDescription": "Record match video for cricket analysis.",
+        "NSMicrophoneUsageDescription": "Record audio with match video when available."
+      }
     },
     "linux": {
       "target": ["deb", "tar.gz"],

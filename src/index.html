@@ -4,7 +4,7 @@
     <meta charset="UTF-8" />
     <meta
       http-equiv="Content-Security-Policy"
-      content="default-src 'self'; style-src 'self' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com"
+      content="default-src 'self'; style-src 'self' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; media-src 'self' blob: mediastream:"
     />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Cricket Analysis Pro</title>
@@ -122,6 +122,14 @@
       <section class="mid">
         <div class="mid-left">
           <div class="video-panel">
+            <video
+              id="camera-preview"
+              class="camera-preview"
+              autoplay
+              muted
+              playsinline
+              aria-label="Camera preview"
+            ></video>
             <div class="video-toolbar">
               <span class="video-icon" title="Display">&#9635;</span>
               <span class="video-icon" title="Camera">&#9673;</span>
@@ -130,7 +138,7 @@
           <div class="video-actions">
             <button type="button" class="btn wide red">End Over</button>
             <button type="button" class="btn wide teal">Start Ball</button>
-            <button type="button" class="btn wide teal">Start Capture</button>
+            <button type="button" id="btn-capture" class="btn wide teal">Start Capture</button>
             <button type="button" class="btn wide teal">LS</button>
           </div>
         </div>
