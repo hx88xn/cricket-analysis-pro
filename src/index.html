@@ -1,0 +1,298 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'self'; style-src 'self' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com"
+    />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Cricket Analysis Pro</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Roboto+Condensed:wght@400;500;600;700&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <div class="app">
+      <header class="header">
+        <div class="header-left">
+          <div class="score-block">
+            <span class="team-abbr">OW</span>
+            <span class="score-main">247/7</span>
+          </div>
+          <div class="score-meta">
+            <span>OVERS <strong class="yellow">42.2</strong></span>
+            <span>RUN RATE: <strong class="yellow">5.83</strong></span>
+          </div>
+          <button type="button" class="btn btn-match-report">MATCH REPORT</button>
+        </div>
+
+        <div class="header-center">
+          <div class="stats-grid">
+            <div class="stats-labels">
+              <div class="stat-row-label yellow">STRIKER</div>
+              <div class="stat-row-label yellow">NON-STR</div>
+              <div class="stat-row-label yellow">BOWL END</div>
+              <div class="stat-row-label yellow">BOWLER</div>
+            </div>
+            <div class="stats-names">
+              <div class="stat-name-cell"></div>
+              <div class="stat-name-cell filled">JEET SHAH</div>
+              <div class="stat-name-cell filled">NEAR END</div>
+              <div class="stat-name-cell filled">PRATEESH - R FAST</div>
+            </div>
+            <div class="stats-bat">
+              <div class="stat-col-head">Runs</div>
+              <div class="stat-col-head">Balls</div>
+              <div class="stat-col-head">4's</div>
+              <div class="stat-col-head">6's</div>
+              <div class="stat-col-head">SR</div>
+              <div class="stat-col-head">P'Ship</div>
+              <div class="stat-cell"></div>
+              <div class="stat-cell"></div>
+              <div class="stat-cell"></div>
+              <div class="stat-cell"></div>
+              <div class="stat-cell"></div>
+              <div class="stat-cell"></div>
+              <div class="stat-cell">12</div>
+              <div class="stat-cell">18</div>
+              <div class="stat-cell">1</div>
+              <div class="stat-cell">0</div>
+              <div class="stat-cell">66.67</div>
+              <div class="stat-cell">34</div>
+              <div class="stat-cell"></div>
+              <div class="stat-cell"></div>
+              <div class="stat-cell"></div>
+              <div class="stat-cell"></div>
+              <div class="stat-cell"></div>
+              <div class="stat-cell"></div>
+              <div class="stat-cell"></div>
+              <div class="stat-cell"></div>
+              <div class="stat-cell"></div>
+              <div class="stat-cell"></div>
+              <div class="stat-cell"></div>
+            </div>
+            <div class="stats-bowl">
+              <div class="stat-col-head">Spell</div>
+              <div class="stat-col-head">Overs</div>
+              <div class="stat-col-head">Runs</div>
+              <div class="stat-col-head">Mdns</div>
+              <div class="stat-col-head">Wkts</div>
+              <div class="stat-col-head">Eco</div>
+              <div class="stat-cell"></div>
+              <div class="stat-cell"></div>
+              <div class="stat-cell"></div>
+              <div class="stat-cell"></div>
+              <div class="stat-cell"></div>
+              <div class="stat-cell"></div>
+              <div class="stat-cell"></div>
+              <div class="stat-cell"></div>
+              <div class="stat-cell"></div>
+              <div class="stat-cell"></div>
+              <div class="stat-cell"></div>
+              <div class="stat-cell"></div>
+              <div class="stat-cell"></div>
+              <div class="stat-cell"></div>
+              <div class="stat-cell"></div>
+              <div class="stat-cell"></div>
+              <div class="stat-cell"></div>
+              <div class="stat-cell"></div>
+              <div class="stat-cell">7.2</div>
+              <div class="stat-cell">8.2</div>
+              <div class="stat-cell">38</div>
+              <div class="stat-cell">1</div>
+              <div class="stat-cell">2</div>
+              <div class="stat-cell">4.56</div>
+            </div>
+          </div>
+        </div>
+
+        <div class="header-right">
+          <button type="button" class="btn btn-block blue">RICHARD ILLINGWORTH</button>
+          <button type="button" class="btn btn-block blue">CHRIS GAFFANEY</button>
+          <button type="button" class="btn btn-block blue">OVER COMPARISION</button>
+          <button type="button" class="btn btn-block blue">BOWLING COMPUTE</button>
+        </div>
+      </header>
+
+      <section class="mid">
+        <div class="mid-left">
+          <div class="video-panel">
+            <div class="video-toolbar">
+              <span class="video-icon" title="Display">&#9635;</span>
+              <span class="video-icon" title="Camera">&#9673;</span>
+            </div>
+          </div>
+          <div class="video-actions">
+            <button type="button" class="btn wide red">End Over</button>
+            <button type="button" class="btn wide teal">Start Ball</button>
+            <button type="button" class="btn wide teal">Start Capture</button>
+            <button type="button" class="btn wide teal">LS</button>
+          </div>
+        </div>
+
+        <div class="mid-center">
+          <div class="log-toolbar">
+            <span class="ball-badge blue-badge">0</span>
+            <span class="ball-badge red-badge">W</span>
+          </div>
+          <div class="table-wrap">
+            <table class="ball-log">
+              <thead>
+                <tr>
+                  <th>#</th>
+                  <th>Bowler</th>
+                  <th>Striker</th>
+                  <th>Non-Striker</th>
+                  <th>Bowl Type</th>
+                  <th>Shot Type</th>
+                  <th>Runs</th>
+                  <th>Ext</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td>42.1</td>
+                  <td>PRATEESH</td>
+                  <td>JEET SHAH</td>
+                  <td>R PATEL</td>
+                  <td>Good</td>
+                  <td>Cover Drive</td>
+                  <td>1</td>
+                  <td></td>
+                </tr>
+                <tr>
+                  <td>42.2</td>
+                  <td>PRATEESH</td>
+                  <td>R PATEL</td>
+                  <td>JEET SHAH</td>
+                  <td>Short</td>
+                  <td>Pull</td>
+                  <td>4</td>
+                  <td></td>
+                </tr>
+                <tr>
+                  <td>41.6</td>
+                  <td>PRATEESH</td>
+                  <td>JEET SHAH</td>
+                  <td>R PATEL</td>
+                  <td>Full</td>
+                  <td>Lofted On</td>
+                  <td>0</td>
+                  <td></td>
+                </tr>
+                <tr>
+                  <td>41.5</td>
+                  <td>PRATEESH</td>
+                  <td>JEET SHAH</td>
+                  <td>R PATEL</td>
+                  <td>Yorker</td>
+                  <td>Dig Out</td>
+                  <td>1</td>
+                  <td></td>
+                </tr>
+                <tr>
+                  <td>41.4</td>
+                  <td>PRATEESH</td>
+                  <td>R PATEL</td>
+                  <td>JEET SHAH</td>
+                  <td>Good</td>
+                  <td>Single</td>
+                  <td>1</td>
+                  <td></td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <div class="mid-right">
+          <div class="mid-actions">
+            <button type="button" class="btn btn-block blue sm">Appeals</button>
+            <button type="button" class="btn btn-block blue sm">Fielding Events</button>
+            <button type="button" class="btn btn-block blue sm">Match Events</button>
+            <button type="button" class="btn btn-block blue sm">Remarks</button>
+            <button type="button" class="btn btn-block blue sm">Wickets</button>
+            <button type="button" class="btn btn-block blue sm">Edit Mode</button>
+          </div>
+          <div class="field-map-wrap">
+            <img
+              class="field-map-img"
+              src="assets/field-map.png"
+              width="642"
+              height="640"
+              alt="Cricket field: THIRD MAN, POINT, COVERS, LONG OFF, FINE LEG, SQUARE LEG, MID WICKET, LONG ON; OFF SIDE and ON SIDE"
+              draggable="false"
+            />
+          </div>
+        </div>
+      </section>
+
+      <footer class="footer">
+        <div class="footer-radios">
+          <label class="radio-pill"><input type="radio" name="otw" checked /> OTW</label>
+          <label class="radio-pill"><input type="radio" name="otw" /> RTW</label>
+          <label class="radio-pill"><input type="radio" name="otw" /> CD</label>
+          <label class="radio-pill"><input type="radio" name="ds" /> DS</label>
+          <label class="radio-pill"><input type="radio" name="ds" checked /> LI</label>
+          <label class="radio-pill"><input type="radio" name="btn" /> BTN</label>
+          <label class="radio-pill"><input type="radio" name="btn" checked /> UNC</label>
+          <div class="select-wrap">
+            <select class="dark-select">
+              <option>Select</option>
+              <option>Option A</option>
+              <option>Option B</option>
+            </select>
+          </div>
+          <label class="radio-pill"><input type="radio" name="wtb" /> WTB</label>
+          <label class="radio-pill"><input type="radio" name="wtb" checked /> RS</label>
+          <label class="radio-pill"><input type="radio" name="ff" /> FF</label>
+          <label class="radio-pill"><input type="radio" name="ff" checked /> BF</label>
+          <label class="radio-pill"><input type="radio" name="sd" /> SD</label>
+          <label class="radio-pill"><input type="radio" name="sd" checked /> CRM</label>
+        </div>
+
+        <div class="footer-main">
+          <div class="pitch-wrap">
+            <img
+              class="pitch-map-img"
+              src="assets/pitch-map.png"
+              width="776"
+              height="596"
+              alt="Pitch map: length zones and line; OTW, RTW, CD"
+              draggable="false"
+            />
+          </div>
+
+          <div class="bowl-panel panel">
+            <div class="toggle-row">
+              <button type="button" class="toggle active" data-group="pace">Fast</button>
+              <button type="button" class="toggle" data-group="pace">Spin</button>
+              <label class="mph-label">MPH <input type="text" class="tiny-input" value="82" /></label>
+            </div>
+            <div class="btn-grid cols-5" id="bowl-grid"></div>
+          </div>
+
+          <div class="bat-panel panel">
+            <div class="toggle-row">
+              <button type="button" class="toggle active" data-group="style">Aggressive</button>
+              <button type="button" class="toggle" data-group="style">Defensive</button>
+              <label class="mph-label">6's Distance <input type="text" class="tiny-input" value="" placeholder="—" /></label>
+            </div>
+            <div class="btn-grid cols-5" id="bat-grid"></div>
+          </div>
+
+          <div class="keypad-panel panel">
+            <button type="button" class="btn btn-block blue keypad-top">OVER THROW</button>
+            <div class="keypad-grid" id="keypad"></div>
+          </div>
+        </div>
+      </footer>
+    </div>
+    <script src="renderer.js"></script>
+  </body>
+</html>

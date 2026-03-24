@@ -1,0 +1,20 @@
+# macOS host + Docker Desktop: containers are Linux, so this produces Linux .deb / .tar.gz
+# only. Output is written to ./dist on your Mac.
+#
+#   docker compose build package && docker compose run --rm package
+#   docker compose run --rm --build package
+#
+# For a native Mac .dmg, run on the Mac (not in Docker):
+#
+#   npm install && npm run dist:mac
+#
+# Uses ad-hoc signing (no Apple Developer ID). For distribution outside your machine,
+# set up signing/notarization and remove CSC_IDENTITY_AUTO_DISCOVERY=false from dist:mac.
+
+services:
+  package:
+    build: .
+    image: cricket-analysis-pro:package
+    volumes:
+      - ./dist:/output
+    command: sh -c "rm -rf /output/* && cp -a /app/dist/. /output/"
