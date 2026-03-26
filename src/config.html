@@ -1,0 +1,65 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'self'; style-src 'self' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; media-src 'self' blob: mediastream:"
+    />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Configuration — Cricket Analysis Pro</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Roboto+Condensed:wght@400;500;600;700&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body class="screen-body">
+    <div class="screen-shell screen-config">
+      <header class="config-header">
+        <a class="btn-back-nav" href="home.html">← Back</a>
+        <h1 class="screen-title config-title">Configuration</h1>
+        <a class="nav-link" href="index.html">Match Analysis →</a>
+      </header>
+
+      <form class="config-form" id="config-form">
+        <div class="config-field">
+          <label class="config-label" for="recordings-path">Video recordings folder</label>
+          <div class="config-row">
+            <input type="text" id="recordings-path" class="config-input" placeholder="Leave empty to choose folder each time" />
+            <button type="button" class="btn blue" id="btn-browse-recordings">Browse…</button>
+          </div>
+          <p class="config-hint">Save dialog will start in this folder when you end a capture.</p>
+        </div>
+
+        <div class="config-field">
+          <label class="config-label" for="database-path">Database file</label>
+          <div class="config-row">
+            <input type="text" id="database-path" class="config-input" placeholder="e.g. /path/to/match.sqlite" />
+            <button type="button" class="btn blue" id="btn-browse-database">Browse…</button>
+          </div>
+          <p class="config-hint">Path to your SQLite database (for future use).</p>
+        </div>
+
+        <div class="config-field">
+          <label class="config-label" for="camera-select">Camera</label>
+          <div class="config-row config-row-select">
+            <select id="camera-select" class="config-select">
+              <option value="">Default camera</option>
+            </select>
+            <button type="button" class="btn blue" id="btn-refresh-cameras">Refresh list</button>
+          </div>
+          <p class="config-hint">Refresh may ask for camera permission once so device names can appear.</p>
+        </div>
+
+        <div class="config-actions">
+          <button type="submit" class="btn blue btn-block config-save">Save settings</button>
+        </div>
+        <p class="config-status" id="config-status" hidden></p>
+      </form>
+    </div>
+    <script src="config.js"></script>
+  </body>
+</html>

@@ -104,11 +104,37 @@ function pickRecorderMime() {
 }
 
 async function getCaptureStream() {
-  const v = { width: { ideal: 1280 }, height: { ideal: 720 }, facingMode: "user" };
+  let cfg = {};
   try {
-    return await navigator.mediaDevices.getUserMedia({ video: v, audio: true });
+    cfg = (await window.cricketApp?.getConfig?.()) || {};
   } catch {
-    return await navigator.mediaDevices.getUserMedia({ video: v, audio: false });
+    /* ignore */
+  }
+  const base = { width: { ideal: 1280 }, height: { ideal: 720 } };
+  const withDevice = cfg.cameraDeviceId
+    ? { ...base, deviceId: { exact: cfg.cameraDeviceId } }
+    : { ...base, facingMode: "user" };
+  const fallback = { ...base, facingMode: "user" };
+
+  async function tryStream(videoConstraints, audio) {
+    return navigator.mediaDevices.getUserMedia({ video: videoConstraints, audio });
+  }
+
+  try {
+    return await tryStream(withDevice, true);
+  } catch {
+    try {
+      return await tryStream(withDevice, false);
+    } catch (e2) {
+      if (cfg.cameraDeviceId) {
+        try {
+          return await tryStream(fallback, true);
+        } catch {
+          return await tryStream(fallback, false);
+        }
+      }
+      throw e2;
+    }
   }
 }
 

@@ -996,3 +996,271 @@ body {
     grid-template-columns: 1fr 2.3fr 0.7fr;
   }
 }
+
+/* ——— Home / configuration screens ——— */
+.screen-body {
+  margin: 0;
+  min-height: 100vh;
+  font-family: "Roboto Condensed", "Segoe UI", system-ui, sans-serif;
+  color: var(--text);
+  background: var(--bg);
+  background-image: radial-gradient(ellipse 120% 80% at 50% -20%, #1a2433 0%, transparent 55%),
+    linear-gradient(180deg, #0f141c 0%, #121820 40%, #0d1118 100%);
+}
+
+.screen-shell {
+  box-sizing: border-box;
+  min-height: 100vh;
+  padding: 32px 24px 48px;
+}
+
+.screen-home {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  gap: 12px;
+}
+
+.screen-title {
+  margin: 0;
+  font-size: clamp(1.75rem, 4vw, 2.25rem);
+  font-weight: 700;
+  color: var(--text);
+  letter-spacing: 0.02em;
+}
+
+.screen-subtitle {
+  margin: 0 0 28px;
+  font-size: 15px;
+  color: var(--muted);
+}
+
+.home-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 20px;
+  justify-content: center;
+}
+
+a.home-main-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 260px;
+  padding: 20px 32px;
+  font-size: 16px;
+  font-weight: 700;
+  text-decoration: none;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  border-radius: 4px;
+}
+
+.screen-config {
+  max-width: 720px;
+  margin: 0 auto;
+}
+
+.config-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+  margin-bottom: 32px;
+}
+
+.config-title {
+  flex: 1;
+  text-align: center;
+  margin: 0;
+  min-width: 200px;
+}
+
+.nav-link {
+  color: var(--blue-glow);
+  text-decoration: none;
+  font-size: 13px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.nav-link:hover {
+  text-decoration: underline;
+  color: #6eb8ff;
+}
+
+.header-back-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 6px;
+  flex-shrink: 0;
+}
+
+.btn-config-nav {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 6px 14px;
+  font-family: inherit;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  text-decoration: none;
+  text-transform: uppercase;
+  color: #fff;
+  background: linear-gradient(180deg, var(--blue) 0%, var(--blue-dark) 100%);
+  border: 1px solid #1a5080;
+  border-radius: 3px;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.1), 0 2px 4px rgba(0, 0, 0, 0.25);
+  transition: filter 0.12s ease, transform 0.08s ease;
+}
+
+.btn-config-nav:hover {
+  filter: brightness(1.08);
+}
+
+.btn-config-nav:active {
+  transform: translateY(1px);
+}
+
+.btn-back-nav {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 6px 14px;
+  font-family: inherit;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  text-decoration: none;
+  text-transform: uppercase;
+  color: #fff;
+  background: linear-gradient(180deg, #3d4d60 0%, #2a3544 100%);
+  border: 1px solid #4a5566;
+  border-radius: 3px;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08);
+  transition: filter 0.12s ease, transform 0.08s ease;
+}
+
+.btn-back-nav:hover {
+  filter: brightness(1.12);
+}
+
+.btn-back-nav:active {
+  transform: translateY(1px);
+}
+
+.btn-back-nav--compact {
+  padding: 4px 10px;
+  font-size: 11px;
+}
+
+.header-nav-bar {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-bottom: 6px;
+  flex-shrink: 0;
+}
+
+.header-nav-bar .nav-link {
+  font-size: 11px;
+}
+
+.nav-sep {
+  color: var(--muted);
+  font-size: 11px;
+  user-select: none;
+}
+
+.config-form {
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+}
+
+.config-field {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.config-label {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--yellow);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.config-row {
+  display: flex;
+  gap: 8px;
+  align-items: stretch;
+}
+
+.config-row-select {
+  flex-wrap: wrap;
+}
+
+.config-input {
+  flex: 1;
+  min-width: 0;
+  padding: 10px 12px;
+  font-family: inherit;
+  font-size: 13px;
+  color: var(--text);
+  background: #0d1218;
+  border: 1px solid #3a4a60;
+  border-radius: 3px;
+}
+
+.config-input:focus {
+  outline: 1px solid var(--blue);
+  border-color: var(--blue);
+}
+
+.config-select {
+  flex: 1;
+  min-width: 200px;
+  padding: 10px 12px;
+  font-family: inherit;
+  font-size: 13px;
+  color: var(--text);
+  background: #1a2433;
+  border: 1px solid #3a4a60;
+  border-radius: 3px;
+}
+
+.config-hint {
+  margin: 0;
+  font-size: 11px;
+  color: var(--muted);
+  line-height: 1.4;
+}
+
+.config-actions {
+  margin-top: 8px;
+}
+
+.config-save {
+  padding: 12px 20px;
+  font-size: 14px;
+}
+
+.config-status {
+  margin: 0;
+  font-size: 13px;
+  color: var(--green-border);
+  text-align: center;
+}
+
+.config-status-error {
+  color: #e07070;
+}
