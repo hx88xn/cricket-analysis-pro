@@ -1,52 +1,39 @@
+// Bowl types - 3 cols × 5 rows = 15 items (matches screenshot layout)
 const bowlTypes = [
-  "Inswinger",
-  "Outswinger",
-  "Leg Cutter",
-  "Off Cutter",
-  "Slower",
-  "Bouncer",
-  "Yorker",
-  "Full Toss",
-  "Knuckle",
-  "Back Of Hand",
-  "Wobble",
-  "Top Spinner",
-  "Googly",
-  "Doosra",
-  "Carrom",
+  "Inswinger",   "OutSwinger",   "Straight Ball",
+  "Angled In",   "Angled Across", "Bouncer",
+  "Nip Backer",  "Nipped Away",  "Slow Bouncer",
+  "Full Toss",   "Slower Ball",  "Yorker",
+  "Off Cutter",  "Leg Cutter",   "Cross Seam",
 ];
 
+// Shot types - 3 cols × 5 rows = 15 items (matches screenshot layout)
 const shotTypes = [
-  "Cover Drive",
-  "Straight Drive",
-  "On Drive",
-  "Square Cut",
-  "Late Cut",
-  "Pull",
-  "Hook",
-  "Sweep",
-  "Reverse Sweep",
-  "Slog Sweep",
-  "Lofted On",
-  "Chip",
-  "Glide",
-  "Steer",
-  "Defend",
+  "Cover Drive",  "Square Drive",     "Straight Drive",
+  "Off Drive",    "On Drive",         "Flick",
+  "Cut",          "Pull",             "Slash",
+  "Sweep Shot",   "Slog Sweep",       "Slag Shot",
+  "Lofted Off",   "Lofted On",        "Lofted Over Cover",
 ];
 
+// Keypad keys - 3 cols × 4 rows (matches screenshot exactly)
+// Row 1: 1, B4, NB
+// Row 2: 2, B6, WD
+// Row 3: 3, MARK FOR EDIT, LB
+// Row 4: ▲, RBW, B
 const keypadKeys = [
-  { label: "1", className: "" },
-  { label: "2", className: "" },
-  { label: "3", className: "" },
-  { label: "B4", className: "alt" },
-  { label: "B6", className: "alt" },
-  { label: "NB", className: "alt" },
-  { label: "WD", className: "alt" },
-  { label: "LB", className: "alt" },
-  { label: "B", className: "alt" },
+  { label: "1",            className: "" },
+  { label: "B4",           className: "alt" },
+  { label: "NB",           className: "alt" },
+  { label: "2",            className: "" },
+  { label: "B6",           className: "alt" },
+  { label: "WD",           className: "alt" },
+  { label: "3",            className: "" },
   { label: "MARK FOR EDIT", className: "alt narrow" },
-  { label: "RBW", className: "alt" },
-  { label: "▲", className: "icon-up" },
+  { label: "LB",           className: "alt" },
+  { label: "▲",            className: "icon-up" },
+  { label: "RBW",          className: "alt" },
+  { label: "B",            className: "alt" },
 ];
 
 function fillGrid(containerId, labels, options = {}) {
@@ -85,6 +72,15 @@ document.querySelectorAll(".toggle").forEach((btn) => {
   btn.addEventListener("click", () => {
     const g = btn.getAttribute("data-group");
     document.querySelectorAll(`.toggle[data-group="${g}"]`).forEach((t) => t.classList.remove("active"));
+    btn.classList.add("active");
+  });
+});
+
+// OTW / RTW / CD overlay button toggle
+document.querySelectorAll(".pitch-overlay-btn").forEach((btn) => {
+  btn.addEventListener("click", () => {
+    const g = btn.getAttribute("data-group");
+    document.querySelectorAll(`.pitch-overlay-btn[data-group="${g}"]`).forEach((t) => t.classList.remove("active"));
     btn.classList.add("active");
   });
 });

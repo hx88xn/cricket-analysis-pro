@@ -20,31 +20,46 @@
     <div class="app">
       <header class="header">
         <div class="header-left">
-          <div class="score-block">
-            <span class="team-abbr">OW</span>
-            <span class="score-main">247/7</span>
+          <div class="score-top-row">
+            <div class="score-block">
+              <span class="score-ow-label">OW</span>
+              <span class="score-main">247/7</span>
+            </div>
+            <div class="overs-block">
+              <span class="overs-label">OVERS</span>
+              <span class="overs-value yellow">42.2</span>
+            </div>
           </div>
-          <div class="score-meta">
-            <span>OVERS <strong class="yellow">42.2</strong></span>
-            <span>RUN RATE: <strong class="yellow">5.83</strong></span>
+          <div class="score-second-row">
+            <span class="vs-label">VS</span>
+            <span class="runrate-label">RUN RATE: <strong class="yellow">5.83</strong></span>
           </div>
-          <button type="button" class="btn btn-match-report">MATCH REPORT</button>
+          <div class="score-third-row">
+            <span class="ow-label">OW</span>
+            <span class="or-label">OR</span>
+          </div>
+          <div class="match-report-row">
+            <button type="button" class="btn btn-match-report">MATCH REPORT</button>
+          </div>
         </div>
 
         <div class="header-center">
           <div class="stats-grid">
+            <!-- Labels column -->
             <div class="stats-labels">
-              <div class="stat-row-label yellow">STRIKER</div>
-              <div class="stat-row-label yellow">NON-STR</div>
-              <div class="stat-row-label yellow">BOWL END</div>
-              <div class="stat-row-label yellow">BOWLER</div>
+              <div class="stat-row-label yellow">*STRIKER :</div>
+              <div class="stat-row-label yellow">NON-STR :</div>
+              <div class="stat-row-label yellow">BOWL END :</div>
+              <div class="stat-row-label yellow">BOWLER :</div>
             </div>
+            <!-- Names column -->
             <div class="stats-names">
-              <div class="stat-name-cell"></div>
+              <div class="stat-name-cell filled"></div>
               <div class="stat-name-cell filled">JEET SHAH</div>
               <div class="stat-name-cell filled">NEAR END</div>
-              <div class="stat-name-cell filled">PRATEESH - R FAST</div>
+              <div class="stat-name-cell filled">PRATEESH -R FAST</div>
             </div>
+            <!-- Batting stats -->
             <div class="stats-bat">
               <div class="stat-col-head">Runs</div>
               <div class="stat-col-head">Balls</div>
@@ -52,23 +67,28 @@
               <div class="stat-col-head">6's</div>
               <div class="stat-col-head">SR</div>
               <div class="stat-col-head">P'Ship</div>
-              <div class="stat-cell"></div>
-              <div class="stat-cell"></div>
-              <div class="stat-cell"></div>
-              <div class="stat-cell"></div>
-              <div class="stat-cell"></div>
-              <div class="stat-cell"></div>
-              <div class="stat-cell">12</div>
-              <div class="stat-cell">18</div>
-              <div class="stat-cell">1</div>
+              <!-- Striker row - all zeros -->
               <div class="stat-cell">0</div>
-              <div class="stat-cell">66.67</div>
-              <div class="stat-cell">34</div>
+              <div class="stat-cell">0</div>
+              <div class="stat-cell">0</div>
+              <div class="stat-cell">0</div>
+              <div class="stat-cell">0.0</div>
+              <div class="stat-cell">0</div>
+              <!-- Non-striker row -->
+              <div class="stat-cell">17</div>
+              <div class="stat-cell">12</div>
+              <div class="stat-cell">0</div>
+              <div class="stat-cell">1</div>
+              <div class="stat-cell">141.67</div>
+              <div class="stat-cell yellow-parens">(0)</div>
+              <!-- Bowl end row - empty -->
               <div class="stat-cell"></div>
               <div class="stat-cell"></div>
               <div class="stat-cell"></div>
               <div class="stat-cell"></div>
               <div class="stat-cell"></div>
+              <div class="stat-cell"></div>
+              <!-- Bowler row - empty -->
               <div class="stat-cell"></div>
               <div class="stat-cell"></div>
               <div class="stat-cell"></div>
@@ -76,37 +96,49 @@
               <div class="stat-cell"></div>
               <div class="stat-cell"></div>
             </div>
-            <div class="stats-bowl">
-              <div class="stat-col-head">Spell</div>
-              <div class="stat-col-head">Overs</div>
-              <div class="stat-col-head">Runs</div>
-              <div class="stat-col-head">Mdns</div>
-              <div class="stat-col-head">Wkts</div>
-              <div class="stat-col-head">Eco</div>
-              <div class="stat-cell"></div>
-              <div class="stat-cell"></div>
-              <div class="stat-cell"></div>
-              <div class="stat-cell"></div>
-              <div class="stat-cell"></div>
-              <div class="stat-cell"></div>
-              <div class="stat-cell"></div>
-              <div class="stat-cell"></div>
-              <div class="stat-cell"></div>
-              <div class="stat-cell"></div>
-              <div class="stat-cell"></div>
-              <div class="stat-cell"></div>
-              <div class="stat-cell"></div>
-              <div class="stat-cell"></div>
-              <div class="stat-cell"></div>
-              <div class="stat-cell"></div>
-              <div class="stat-cell"></div>
-              <div class="stat-cell"></div>
-              <div class="stat-cell">7.2</div>
-              <div class="stat-cell">8.2</div>
-              <div class="stat-cell">38</div>
-              <div class="stat-cell">1</div>
-              <div class="stat-cell">2</div>
-              <div class="stat-cell">4.56</div>
+            <!-- Bowling stats (arrows + headers) -->
+            <div class="stats-bowl-wrap">
+              <div class="stats-bowl-arrows">
+                <span class="arrow-icon">&#8645;</span>
+                <span class="arrow-spacer"></span>
+                <span class="arrow-icon">&#8645;</span>
+              </div>
+              <div class="stats-bowl">
+                <div class="stat-col-head">Spell</div>
+                <div class="stat-col-head">Overs</div>
+                <div class="stat-col-head">Runs</div>
+                <div class="stat-col-head">Mdns</div>
+                <div class="stat-col-head">Wkts</div>
+                <div class="stat-col-head">Eco</div>
+                <!-- Striker empty -->
+                <div class="stat-cell"></div>
+                <div class="stat-cell"></div>
+                <div class="stat-cell"></div>
+                <div class="stat-cell"></div>
+                <div class="stat-cell"></div>
+                <div class="stat-cell"></div>
+                <!-- Non-striker empty -->
+                <div class="stat-cell"></div>
+                <div class="stat-cell"></div>
+                <div class="stat-cell"></div>
+                <div class="stat-cell"></div>
+                <div class="stat-cell"></div>
+                <div class="stat-cell"></div>
+                <!-- Bowl End empty -->
+                <div class="stat-cell"></div>
+                <div class="stat-cell"></div>
+                <div class="stat-cell"></div>
+                <div class="stat-cell"></div>
+                <div class="stat-cell"></div>
+                <div class="stat-cell"></div>
+                <!-- Bowler row -->
+                <div class="stat-cell">3</div>
+                <div class="stat-cell">7.0</div>
+                <div class="stat-cell">44</div>
+                <div class="stat-cell">0</div>
+                <div class="stat-cell">3</div>
+                <div class="stat-cell">6.29</div>
+              </div>
             </div>
           </div>
         </div>
@@ -131,8 +163,8 @@
               aria-label="Camera preview"
             ></video>
             <div class="video-toolbar">
-              <span class="video-icon" title="Display">&#9635;</span>
-              <span class="video-icon" title="Camera">&#9673;</span>
+              <span class="video-icon monitor-icon" title="Display">&#9635;</span>
+              <span class="video-icon camera-icon red-icon" title="Camera">&#9673;</span>
             </div>
           </div>
           <div class="video-actions">
@@ -140,6 +172,7 @@
             <button type="button" class="btn wide teal">Start Ball</button>
             <button type="button" id="btn-capture" class="btn wide teal">Start Capture</button>
             <button type="button" class="btn wide teal">LS</button>
+            <button type="button" class="btn wide teal icon-refresh">&#8635;</button>
           </div>
         </div>
 
@@ -166,52 +199,22 @@
                 <tr>
                   <td>42.1</td>
                   <td>PRATEESH</td>
+                  <td>ARYAN BISHT</td>
                   <td>JEET SHAH</td>
-                  <td>R PATEL</td>
-                  <td>Good</td>
-                  <td>Cover Drive</td>
-                  <td>1</td>
                   <td></td>
+                  <td></td>
+                  <td>0</td>
+                  <td>0</td>
                 </tr>
                 <tr>
                   <td>42.2</td>
                   <td>PRATEESH</td>
-                  <td>R PATEL</td>
+                  <td>ARYAN BISHT</td>
                   <td>JEET SHAH</td>
-                  <td>Short</td>
-                  <td>Pull</td>
-                  <td>4</td>
                   <td></td>
-                </tr>
-                <tr>
-                  <td>41.6</td>
-                  <td>PRATEESH</td>
-                  <td>JEET SHAH</td>
-                  <td>R PATEL</td>
-                  <td>Full</td>
-                  <td>Lofted On</td>
+                  <td></td>
                   <td>0</td>
-                  <td></td>
-                </tr>
-                <tr>
-                  <td>41.5</td>
-                  <td>PRATEESH</td>
-                  <td>JEET SHAH</td>
-                  <td>R PATEL</td>
-                  <td>Yorker</td>
-                  <td>Dig Out</td>
-                  <td>1</td>
-                  <td></td>
-                </tr>
-                <tr>
-                  <td>41.4</td>
-                  <td>PRATEESH</td>
-                  <td>R PATEL</td>
-                  <td>JEET SHAH</td>
-                  <td>Good</td>
-                  <td>Single</td>
-                  <td>1</td>
-                  <td></td>
+                  <td>0</td>
                 </tr>
               </tbody>
             </table>
@@ -220,7 +223,10 @@
 
         <div class="mid-right">
           <div class="mid-actions">
-            <button type="button" class="btn btn-block blue sm">Appeals</button>
+            <div class="appeals-row">
+              <input type="checkbox" class="appeals-check" />
+              <button type="button" class="btn btn-block blue sm appeals-btn">Appeals</button>
+            </div>
             <button type="button" class="btn btn-block blue sm">Fielding Events</button>
             <button type="button" class="btn btn-block blue sm">Match Events</button>
             <button type="button" class="btn btn-block blue sm">Remarks</button>
@@ -241,29 +247,6 @@
       </section>
 
       <footer class="footer">
-        <div class="footer-radios">
-          <label class="radio-pill"><input type="radio" name="otw" checked /> OTW</label>
-          <label class="radio-pill"><input type="radio" name="otw" /> RTW</label>
-          <label class="radio-pill"><input type="radio" name="otw" /> CD</label>
-          <label class="radio-pill"><input type="radio" name="ds" /> DS</label>
-          <label class="radio-pill"><input type="radio" name="ds" checked /> LI</label>
-          <label class="radio-pill"><input type="radio" name="btn" /> BTN</label>
-          <label class="radio-pill"><input type="radio" name="btn" checked /> UNC</label>
-          <div class="select-wrap">
-            <select class="dark-select">
-              <option>Select</option>
-              <option>Option A</option>
-              <option>Option B</option>
-            </select>
-          </div>
-          <label class="radio-pill"><input type="radio" name="wtb" /> WTB</label>
-          <label class="radio-pill"><input type="radio" name="wtb" checked /> RS</label>
-          <label class="radio-pill"><input type="radio" name="ff" /> FF</label>
-          <label class="radio-pill"><input type="radio" name="ff" checked /> BF</label>
-          <label class="radio-pill"><input type="radio" name="sd" /> SD</label>
-          <label class="radio-pill"><input type="radio" name="sd" checked /> CRM</label>
-        </div>
-
         <div class="footer-main">
           <div class="pitch-wrap">
             <img
@@ -274,24 +257,60 @@
               alt="Pitch map: length zones and line; OTW, RTW, CD"
               draggable="false"
             />
+            <!-- OTW: top-left corner -->
+            <button type="button" class="pitch-overlay-btn otw-btn active" data-group="otw">OTW</button>
+            <!-- RTW: top-right corner -->
+            <button type="button" class="pitch-overlay-btn rtw-btn" data-group="otw">RTW</button>
+            <!-- CD: below RTW, top-right -->
+            <button type="button" class="pitch-overlay-btn cd-btn" data-group="otw">CD</button>
           </div>
 
-          <div class="bowl-panel panel">
-            <div class="toggle-row">
-              <button type="button" class="toggle active" data-group="pace">Fast</button>
-              <button type="button" class="toggle" data-group="pace">Spin</button>
-              <label class="mph-label">MPH <input type="text" class="tiny-input" value="82" /></label>
-            </div>
-            <div class="btn-grid cols-5" id="bowl-grid"></div>
-          </div>
 
-          <div class="bat-panel panel">
-            <div class="toggle-row">
-              <button type="button" class="toggle active" data-group="style">Aggressive</button>
-              <button type="button" class="toggle" data-group="style">Defensive</button>
-              <label class="mph-label">6's Distance <input type="text" class="tiny-input" value="" placeholder="—" /></label>
+          <div class="footer-right-col">
+            <div class="footer-radios">
+              <label class="radio-pill"><input type="radio" name="ds" /> DS</label>
+              <label class="radio-pill"><input type="radio" name="ds" checked /> LI</label>
+              <span class="spacer"></span>
+              <label class="radio-pill"><input type="radio" name="btn" /> BTN</label>
+              <label class="radio-pill"><input type="radio" name="btn" checked /> UNC</label>
+              <div class="select-wrap">
+                <select class="dark-select">
+                  <option>Select</option>
+                  <option>Option A</option>
+                  <option>Option B</option>
+                </select>
+              </div>
+              <span class="spacer"></span>
+              <label class="radio-pill"><input type="radio" name="wtb" /> WTB</label>
+              <label class="radio-pill"><input type="radio" name="wtb" checked /> RS</label>
+              <span class="spacer"></span>
+              <label class="radio-pill"><input type="radio" name="ff" /> FF</label>
+              <label class="radio-pill"><input type="radio" name="ff" checked /> BF</label>
+              <span class="spacer"></span>
+              <label class="radio-pill"><input type="radio" name="sd" /> SD</label>
+              <label class="radio-pill"><input type="radio" name="sd" checked /> CRM</label>
             </div>
-            <div class="btn-grid cols-5" id="bat-grid"></div>
+            <div class="footer-panels-row">
+              <div class="bowl-panel panel">
+                <div class="toggle-row">
+                  <button type="button" class="plus-btn">+</button>
+                  <button type="button" class="toggle active" data-group="pace">Fast</button>
+                  <button type="button" class="toggle" data-group="pace">Spin</button>
+                  <label class="mph-label">MPH <input type="text" class="tiny-input" value="" /></label>
+                </div>
+                <div class="btn-grid cols-3" id="bowl-grid"></div>
+              </div>
+
+              <div class="bat-panel panel">
+                <div class="toggle-row">
+                  <button type="button" class="plus-btn">+</button>
+                  <button type="button" class="toggle active" data-group="style">Aggressive</button>
+                  <button type="button" class="toggle" data-group="style">Defensive</button>
+                  <label class="mph-label distance-label">6's Distance <input type="text" class="tiny-input" value="" placeholder="—" /></label>
+                </div>
+                <div class="btn-grid cols-3" id="bat-grid"></div>
+              </div>
+            </div>
           </div>
 
           <div class="keypad-panel panel">
