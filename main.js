@@ -110,6 +110,8 @@ ipcMain.handle("db:player:save", (_e, player) => db.savePlayer(player));
 ipcMain.handle("db:match:save", (_e, match) => db.saveMatch(match));
 ipcMain.handle("db:match:saveState", (_e, { id, state, status }) => db.saveMatchState(id, state, status));
 ipcMain.handle("db:match:delete", (_e, id) => db.deleteMatch(id));
+ipcMain.handle("db:report:bowling", (_e, matchId) => db.bowlingFigures(matchId));
+ipcMain.handle("db:report:batting", (_e, matchId) => db.battingCard(matchId));
 
 function createWindow() {
   const win = new BrowserWindow({

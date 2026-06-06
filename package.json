@@ -10,7 +10,8 @@
     "dist": "electron-builder",
     "dist:linux": "electron-builder --linux",
     "dist:mac": "env CSC_IDENTITY_AUTO_DISCOVERY=false electron-builder --mac",
-    "dist:win": "electron-builder --win"
+    "dist:win": "electron-builder --win",
+    "postinstall": "electron-builder install-app-deps"
   },
   "devDependencies": {
     "electron": "^33.2.1",
@@ -26,10 +27,16 @@
       "main.js",
       "preload.js",
       "package.json",
-      "src/**/*"
+      "src/**/*",
+      "node_modules/**/*"
+    ],
+    "asarUnpack": [
+      "**/node_modules/better-sqlite3/**"
     ],
     "mac": {
-      "target": ["dmg"],
+      "target": [
+        "dmg"
+      ],
       "category": "public.app-category.utilities",
       "extendInfo": {
         "NSCameraUsageDescription": "Record match video for cricket analysis.",
@@ -37,7 +44,9 @@
       }
     },
     "win": {
-      "target": ["nsis"]
+      "target": [
+        "nsis"
+      ]
     },
     "nsis": {
       "oneClick": false,
@@ -48,9 +57,15 @@
       "shortcutName": "Cricket Analysis Pro"
     },
     "linux": {
-      "target": ["deb", "tar.gz"],
+      "target": [
+        "deb",
+        "tar.gz"
+      ],
       "category": "Utility",
       "maintainer": "Cricket Analysis Pro <noreply@local>"
     }
+  },
+  "dependencies": {
+    "better-sqlite3": "^11.10.0"
   }
 }

@@ -22,5 +22,7 @@ contextBridge.exposeInMainWorld("cricketApp", {
     saveMatch: (match) => ipcRenderer.invoke("db:match:save", match),
     saveMatchState: (payload) => ipcRenderer.invoke("db:match:saveState", payload),
     deleteMatch: (id) => ipcRenderer.invoke("db:match:delete", id),
+    reportBowling: (matchId) => ipcRenderer.invoke("db:report:bowling", matchId),
+    reportBatting: (matchId) => ipcRenderer.invoke("db:report:batting", matchId),
   },
 });

@@ -41,20 +41,48 @@ const SHOT_TYPES = {
   ],
 };
 
-const KEYPAD_KEYS = [
-  { label: "1", type: "run", val: 1 },
-  { label: "B4", type: "run", val: 4, cls: "alt", boundary: true },
-  { label: "NB", type: "ext", ext: "NB", cls: "alt" },
-  { label: "2", type: "run", val: 2 },
-  { label: "B6", type: "run", val: 6, cls: "alt", boundary: true },
-  { label: "WD", type: "ext", ext: "WD", cls: "alt" },
-  { label: "3", type: "run", val: 3 },
-  { label: "MARK FOR EDIT", type: "mark", cls: "alt narrow" },
-  { label: "LB", type: "ext", ext: "LB", cls: "alt" },
-  { label: "▲", type: "up", cls: "icon-up" },
-  { label: "RBW", type: "ext", ext: "RBW", cls: "alt" },
-  { label: "B", type: "ext", ext: "B", cls: "alt" },
-];
+// The ▲ key is a "shift" toggle: the default page exposes 1/2/3 + boundary
+// B4/B6, while the shifted page swaps the first two columns to plain run values
+// 4/5/6/7/8 (so big run totals can be entered without the boundary flag). The
+// ▲ cell highlights red while shifted.
+function getKeypadKeys() {
+  // RBW (run-out) page: record runs completed before the run out. The right
+  // column (NB/WD/LB/B) is shown but disabled — extras don't apply on a run out.
+  if (state.keypadMode === "rbw") {
+    const dis = (label, ext) => ({ label, type: "ext", ext, cls: "alt", disabled: true });
+    return [
+      { label: "-1", type: "runout", val: -1 },
+      { label: "1", type: "runout", val: 1 },
+      dis("NB", "NB"),
+      { label: "-2", type: "runout", val: -2 },
+      { label: "2", type: "runout", val: 2 },
+      dis("WD", "WD"),
+      { label: "-3", type: "runout", val: -3 },
+      { label: "3", type: "runout", val: 3 },
+      dis("LB", "LB"),
+      { label: "▲", type: "shift", cls: "icon-up" },
+      { label: "RBW", type: "rbw", cls: "alt active-mode" },
+      dis("B", "B"),
+    ];
+  }
+
+  // Normal page; ▲ toggles the 4-8 "shifted" run values in the first two cols.
+  const s = state.keypadShifted;
+  return [
+    { label: s ? "4" : "1", type: "run", val: s ? 4 : 1 },
+    s ? { label: "7", type: "run", val: 7 } : { label: "B4", type: "run", val: 4, cls: "alt", boundary: true },
+    { label: "NB", type: "ext", ext: "NB", cls: "alt" },
+    { label: s ? "5" : "2", type: "run", val: s ? 5 : 2 },
+    s ? { label: "8", type: "run", val: 8 } : { label: "B6", type: "run", val: 6, cls: "alt", boundary: true },
+    { label: "WD", type: "ext", ext: "WD", cls: "alt" },
+    { label: s ? "6" : "3", type: "run", val: s ? 6 : 3 },
+    { label: "MARK FOR EDIT", type: "mark", cls: "alt narrow" },
+    { label: "LB", type: "ext", ext: "LB", cls: "alt" },
+    { label: "▲", type: "shift", cls: `icon-up${s ? " shifted" : ""}` },
+    { label: "RBW", type: "rbw", cls: "alt" },
+    { label: "B", type: "ext", ext: "B", cls: "alt" },
+  ];
+}
 
 // Squads. Default to the recorded Canada-vs-Oman session so the screen still
 // works when opened standalone; replaced at boot when a ?match=<id> is loaded
@@ -112,6 +140,8 @@ const state = {
   ball: 3,            // legal balls bowled in the current over
   pace: "Fast",
   style: "Aggressive",
+  keypadShifted: false,
+  keypadMode: "normal", // "normal" | "rbw"
   bowlType: null,
   shotType: null,
   striker: "RAVINDERPAL SINGH",
@@ -171,12 +201,17 @@ function fillKeypad() {
   const el = document.getElementById("keypad");
   if (!el) return;
   el.innerHTML = "";
-  KEYPAD_KEYS.forEach((k) => {
+  getKeypadKeys().forEach((k) => {
     const b = document.createElement("button");
     b.type = "button";
     b.className = `keypad-btn ${k.cls || ""}`.trim();
     b.textContent = k.label;
-    b.addEventListener("click", () => handleKeypad(k, b));
+    if (k.disabled) {
+      b.disabled = true;
+      b.classList.add("disabled");
+    } else {
+      b.addEventListener("click", () => handleKeypad(k, b));
+    }
     el.appendChild(b);
   });
 }
@@ -257,7 +292,25 @@ function wireFieldMap() {
 // ---- Keypad / scoring -----------------------------------------------------
 
 function handleKeypad(k, btn) {
-  if (k.type === "up") { swapStrike(); render(); return; }
+  if (k.type === "shift") {
+    // ▲ only shifts run values on the normal page
+    if (state.keypadMode !== "rbw") { state.keypadShifted = !state.keypadShifted; fillKeypad(); }
+    return;
+  }
+  if (k.type === "rbw") {
+    // toggle the run-out page on / off
+    state.keypadMode = state.keypadMode === "rbw" ? "normal" : "rbw";
+    fillKeypad();
+    return;
+  }
+  if (k.type === "runout") {
+    // runs completed before the run out, then a wicket; back to the normal page
+    logBall({ runs: k.val, ext: 0, legal: true, wicket: true });
+    state.keypadMode = "normal";
+    fillKeypad();
+    flash(btn);
+    return;
+  }
   if (k.type === "mark") {
     document.querySelectorAll("#keypad .keypad-btn").forEach((x) => x.classList.remove("marked"));
     btn.classList.add("marked");
@@ -305,13 +358,13 @@ function logBall({ runs = 0, ext = 0, boundary = false, legal = true, bye = fals
     extCol,
   ));
 
-  // team score
-  state.runs += runs + ext;
+  // team score (never let a negative run-out adjustment push the total below 0)
+  state.runs = Math.max(0, state.runs + runs + ext);
 
-  // batter credit (byes/extras don't credit the batter)
+  // batter credit (byes/extras don't credit the batter; never credit negatives)
   if (!bye && legal) {
     const s = state.bat.striker;
-    s.runs += runs;
+    s.runs += Math.max(0, runs);
     s.balls += 1;
     if (boundary && runs === 4) s.fours += 1;
     if (boundary && runs === 6) s.sixes += 1;
@@ -319,8 +372,8 @@ function logBall({ runs = 0, ext = 0, boundary = false, legal = true, bye = fals
     state.bat.striker.balls += 1; // legal bye still a ball faced
   }
 
-  // bowler figures (concedes everything except byes/leg-byes)
-  state.bowl.runs += runs + (bye ? 0 : ext);
+  // bowler figures (concedes everything except byes/leg-byes; run-outs not negative)
+  state.bowl.runs += Math.max(0, runs) + (bye ? 0 : ext);
   if (legal) state.bowl.balls += 1;
 
   // over running tally
@@ -501,7 +554,43 @@ function wireActionButtons() {
 
   undoBtn?.addEventListener("click", undo);
   document.getElementById("swap-bat")?.addEventListener("click", () => { swapStrike(); render(); });
-  document.getElementById("overthrow-btn")?.addEventListener("click", () => logBall({ runs: 1, ext: 0, legal: true }));
+  wireOverthrow();
+}
+
+// Over-throw: the button toggles a 1–12 run picker. Numbers are laid out
+// column-major (1-4 / 5-8 / 9-12) to match the reference keypad, so the grid
+// is filled row by row as 1,5,9 · 2,6,10 · 3,7,11 · 4,8,12.
+function wireOverthrow() {
+  const btn = document.getElementById("overthrow-btn");
+  const grid = document.getElementById("overthrow-grid");
+  if (!btn || !grid) return;
+
+  const order = [];
+  for (let row = 0; row < 4; row++) {
+    for (let col = 0; col < 3; col++) order.push(col * 4 + row + 1);
+  }
+  grid.innerHTML = order
+    .map((n) => `<button type="button" class="overthrow-btn" data-ot="${n}">${n}</button>`)
+    .join("");
+
+  const keypad = document.getElementById("keypad");
+  const setOpen = (open) => {
+    grid.hidden = !open;
+    if (keypad) keypad.hidden = open; // overthrow picker takes the keypad's place
+    btn.classList.toggle("active", open);
+    btn.setAttribute("aria-expanded", String(open));
+  };
+
+  btn.addEventListener("click", () => setOpen(grid.hidden));
+
+  grid.querySelectorAll("[data-ot]").forEach((b) => {
+    b.addEventListener("click", () => {
+      const runs = Number(b.getAttribute("data-ot")) || 0;
+      logBall({ runs, ext: 0, boundary: runs === 4 || runs === 6, legal: true });
+      flash(b);
+      setOpen(false);
+    });
+  });
 }
 
 function flash(el) {

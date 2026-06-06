@@ -682,9 +682,9 @@ async function refreshMatchesTable(root) {
 function renderMatchesTable(matches, withName) {
   const cols = ["Competition Name", "Match Name", "Match Type", "Team A", "Team B", "Status"];
   if (withName) cols.push("Delete");
-  // last column is a fixed, narrow track for the delete toggle on registration
+  // last column is a fixed, narrow track for the delete button on registration
   const grid = withName
-    ? `repeat(6, minmax(0, 1fr)) 88px`
+    ? `repeat(6, minmax(0, 1fr)) 110px`
     : `repeat(${cols.length}, minmax(0, 1fr))`;
   const head = cols.map((c) => `<span>${c}</span>`).join("");
   const body = matches.length
@@ -698,10 +698,7 @@ function renderMatchesTable(matches, withName) {
             ? `<button class="row-link" data-edit="${m.id}">${esc(m.matchName)}</button>`
             : esc(m.matchName);
           const deleteCell = withName
-            ? `<span><label class="del-toggle" title="Toggle on to delete this match">
-                 <input type="checkbox" data-del="${m.id}" />
-                 <span class="del-slider"></span>
-               </label></span>`
+            ? `<span><button type="button" class="row-del-btn" data-del="${m.id}" title="Delete this match">Delete</button></span>`
             : "";
           return `<div class="table-row" style="grid-template-columns:${grid};">
             <span>${esc(m.competitionName)}</span>
@@ -722,16 +719,12 @@ function wireMatchesTable(root, matches) {
   root.querySelectorAll("#rg-table [data-edit]").forEach((btn) => {
     btn.addEventListener("click", () => loadMatchIntoForm(btn.getAttribute("data-edit"), root, matches));
   });
-  root.querySelectorAll("#rg-table [data-del]").forEach((box) => {
-    box.addEventListener("change", async () => {
-      if (!box.checked) return;
-      const id = box.getAttribute("data-del");
+  root.querySelectorAll("#rg-table [data-del]").forEach((btn) => {
+    btn.addEventListener("click", async () => {
+      const id = btn.getAttribute("data-del");
       const m = (matches || []).find((x) => x.id === id);
       const label = m ? m.matchName : "this match";
-      if (!window.confirm(`Delete ${label}? This cannot be undone.`)) {
-        box.checked = false;
-        return;
-      }
+      if (!window.confirm(`Delete ${label}? This cannot be undone.`)) return;
       await dbCall("deleteMatch", id);
       if (reg.editingId === id) clearRegForm(root);
       toast(`Deleted ${label}`);
