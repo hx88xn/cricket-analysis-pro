@@ -1,0 +1,386 @@
+[   29.1 ->    39.1] So this is the start ball. I was telling you that after over-start, start ball and then capture the video.
+[   39.1 ->    47.6] And then add all the details and end ball. So this is a ball record. Let's suppose I did either a ball pitch here,
+[   47.6 ->    64.4] it was a faster one. Since it's an off spinner, it has options. It was a faster one, it was an off drive, the ball went here and it was two runs.
+[   64.4 ->    68.8] And I scanned it. So the ball is recorded here again.
+[   68.8 ->    76.8] Mr. Zeeshan, one of the places where you add runs is Mark for Edit.
+[   76.8 ->    88.7] Mark for Edit. This is also an input on this ball.
+[   88.7 ->    95.7] Mark for Edit means I have done this on the next ball. When the start ball is done, I have added Mark for Edit.
+[   95.7 ->   105.4] So later I will have a filter. I can see which balls I have to edit. So this is its mark.
+[  105.4 ->   120.8] And this is RBW. This is running between the wicket.
+[  120.8 ->   130.8] If you do this while bedding, you were doing the right click.
+[  130.8 ->   139.0] These were all the details of the fielding. If you miss a filter or something, you do the right click.
+[  139.0 ->   142.0] It does good and bad.
+[  142.0 ->   148.3] In the same way, the batsman is sometimes slow in running between the wicket.
+[  148.3 ->   151.3] So this is the running between the wicket to mark it.
+[  151.3 ->   155.3] Now he can score in that too. If he took an extra run, it was plus one.
+[  155.3 ->   159.6] This will not go to the total score.
+[  159.6 ->   166.6] But the marks on the batsman's running between the wicket are marked on the ball.
+[  166.6 ->   176.1] If he took an extra run or missed one run, he did two or three runs.
+[  176.1 ->   178.9] Do you understand?
+[  178.9 ->   179.9] Yes, sir.
+[  179.9 ->   181.9] This is the running between the wicket.
+[  181.9 ->   186.9] This one, what is he doing? He took it back.
+[  186.9 ->   193.2] But I do not understand this one. What is this icon doing?
+[  193.2 ->   194.2] Okay.
+[  194.2 ->   198.7] What did the overthrows mean?
+[  198.7 ->   200.7] He overthrowed it.
+[  200.7 ->   205.7] You know how many runs he can run in the field.
+[  205.7 ->   208.9] I suppose he made it five runs.
+[  208.9 ->   213.3] So these are all the rounds.
+[  213.3 ->   215.3] But this will run in the field.
+[  215.3 ->   219.3] See, if I end the ball, what is the score?
+[  219.3 ->   222.8] I am telling you the threshold.
+[  222.8 ->   225.8] Now I have scored five overthrows.
+[  225.8 ->   234.3] So these overthrows mean that batsmen go for batsmen.
+[  234.3 ->   237.3] But they do not get overthrowed.
+[  237.3 ->   240.3] This is the start ball.
+[  240.3 ->   242.8] Then the overthrow.
+[  242.8 ->   250.5] If the overthrow is running, one, two, three, boundary, six.
+[  250.5 ->   252.5] No goal.
+[  252.5 ->   254.2] Wide ball.
+[  254.2 ->   255.2] L by W.
+[  255.2 ->   257.2] Yes, L by W.
+[  257.2 ->   259.2] What is he doing?
+[  259.2 ->   261.2] There are very few in the cricket.
+[  261.2 ->   263.2] One, two, three, four.
+[  263.2 ->   265.2] Sometimes he can run five runs.
+[  265.2 ->   268.2] So if he runs, he will click here.
+[  268.2 ->   272.3] Five, six, seven, eight.
+[  272.3 ->   275.3] And why did he put four?
+[  275.3 ->   276.3] There is a difference.
+[  276.3 ->   278.3] This is the boundary four.
+[  278.3 ->   282.3] And if he runs four runs, he will come from here.
+[  282.3 ->   283.7] Do you understand?
+[  283.7 ->   287.4] Yes, sir.
+[  287.4 ->   290.5] And if he runs six runs, he will come from here.
+[  290.5 ->   294.5] So he put all these runs in here.
+[  294.5 ->   296.8] Running between the wickets.
+[  296.8 ->   299.8] This will come in the batsmen's hands.
+[  299.8 ->   300.8] Plus one, minus one.
+[  300.8 ->   302.9] Look at the total sport base.
+[  302.9 ->   303.9] No difference.
+[  303.9 ->   307.9] From there, we will catch what he has done.
+[  307.9 ->   310.3] Boundary four is hitting, boundary six is hitting.
+[  310.3 ->   314.3] And running between the wickets, he missed one run.
+[  314.3 ->   317.3] So this is how this is going.
+[  317.3 ->   320.9] So you can move, you can do it.
+[  320.9 ->   325.8] Let's click again and deselect.
+[  325.8 ->   330.9] One is selected, click here and deselect.
+[  330.9 ->   332.8] Correct?
+[  332.8 ->   335.8] For example, we do not enter the wagon wheel.
+[  335.8 ->   337.8] We put B four in the short way.
+[  337.8 ->   340.8] We put B six or singledub.
+[  340.8 ->   343.8] This will be entered in the record.
+[  343.8 ->   346.8] But it will not come in the pitch map.
+[  346.8 ->   352.0] In the wagon wheel, batsmen's wagon wheel will miss.
+[  352.0 ->   353.0] Correct.
+[  353.0 ->   355.0] But there will be a lot of entry.
+[  355.0 ->   356.0] Yes.
+[  356.0 ->   358.0] If I do this, I will just do B four.
+[  358.0 ->   361.0] And if I do end ball, I will not do any more entry.
+[  361.0 ->   364.4] But there will be an entry.
+[  364.4 ->   365.4] Yes.
+[  365.4 ->   366.4] No, he is asking.
+[  366.4 ->   367.4] He is a compass.
+[  367.4 ->   369.4] He will leave you on the zero.
+[  369.4 ->   371.4] But he will ask you this.
+[  371.4 ->   374.4] But still, what did you say to me?
+[  374.4 ->   376.4] If we want to continue this, do you want to continue?
+[  376.4 ->   377.4] Yes.
+[  377.4 ->   379.7] So he has accepted it.
+[  379.7 ->   381.7] But four went on the last ball.
+[  381.7 ->   385.0] But his wagon wheel did not enter.
+[  385.0 ->   387.0] But he gives you a run.
+[  387.0 ->   389.0] So you must put a wagon wheel on it.
+[  389.0 ->   391.0] He will give you a message.
+[  391.0 ->   396.8] Okay.
+[  396.8 ->   398.7] Yes, sir.
+[  398.7 ->   402.1] So we have seen these menus.
+[  402.1 ->   404.1] We have seen all these menus.
+[  404.1 ->   409.1] From here, I have told you that.
+[  409.1 ->   412.5] If you look from the other side, you will see a break.
+[  412.5 ->   414.5] You will see a line here.
+[  414.5 ->   417.5] One now.
+[  417.5 ->   420.6] OSBF, SD, CRM.
+[  420.6 ->   423.6] All these things are the same.
+[  423.6 ->   427.6] One minute.
+[  427.6 ->   459.9] One minute.
+[  459.9 ->   460.9] Yes.
+[  460.9 ->   463.3] So what was I telling you?
+[  463.3 ->   465.6] Yes.
+[  465.6 ->   468.6] I was telling you that there is a block here.
+[  468.6 ->   470.6] You will see a line here.
+[  470.6 ->   472.6] So this is an option.
+[  472.6 ->   474.6] There is a radio button.
+[  474.6 ->   475.6] There will be only one option.
+[  475.6 ->   477.6] And this is multiple.
+[  477.6 ->   479.6] There can be multiple options.
+[  479.6 ->   483.3] RSL, WTB.
+[  483.3 ->   485.3] And uncomfortable or beaten.
+[  485.3 ->   487.3] And this is also a pair.
+[  487.3 ->   488.3] There is one option.
+[  488.3 ->   489.3] Last instance.
+[  489.3 ->   491.3] And this is a TS default set.
+[  491.3 ->   493.6] So this is done.
+[  493.6 ->   496.6] And after this, I have told you about the runs.
+[  496.6 ->   498.6] I have told you about the wagon wheel.
+[  498.6 ->   500.6] You can right click on the wagon wheel.
+[  500.6 ->   506.6] You can also add the fielding in it.
+[  506.6 ->   508.6] All these things are done.
+[  508.6 ->   511.6] After that, we have seen all these menus.
+[  511.6 ->   513.6] All these are auto generated.
+[  513.6 ->   516.6] This ball by ball is also auto generated.
+[  516.6 ->   520.6] If you click on the devil, it goes directly to edit mode.
+[  520.6 ->   523.6] If I have done it directly on the ball.
+[  523.6 ->   525.6] I have done it in two runs.
+[  525.6 ->   527.6] I have done it in one run.
+[  527.6 ->   529.6] And I have done it in the end ball.
+[  529.6 ->   531.6] So this ball has been edited.
+[  531.6 ->   533.6] This ball has been edited in mode.
+[  533.6 ->   535.6] If you don't want to edit the ball,
+[  535.6 ->   538.0] then take it in live mode.
+[  538.0 ->   542.0] So you have the distance of the ball.
+[  542.0 ->   545.0] And the speed of the ball.
+[  545.0 ->   547.2] This is also additional.
+[  547.2 ->   549.2] If you want to add, you can add.
+[  549.2 ->   551.3] If you want to add, you can add.
+[  551.3 ->   553.3] Yes, this is the distance.
+[  553.3 ->   556.9] Sir, tell us about this thing.
+[  556.9 ->   562.1] This is the last instance.
+[  562.1 ->   565.6] What happened after the last instance?
+[  565.6 ->   568.6] The boundary code is written here.
+[  568.6 ->   572.6] So it is showing you the last instance.
+[  572.8 ->   575.8] If I remove it now, it won't show you
+[  575.8 ->   579.6] when I start ball, it won't show.
+[  579.6 ->   581.6] It will show you.
+[  581.6 ->   583.6] So you have to remove it from here.
+[  583.6 ->   586.6] But on the default set.
+[  586.6 ->   590.0] Now it is on the default set.
+[  590.0 ->   593.0] The last instance means the last thing you want to write.
+[  593.0 ->   596.0] If I do one ball properly, then I show you.
+[  596.0 ->   598.0] I will bring it to the default set.
+[  598.0 ->   600.1] This ball started.
+[  600.1 ->   602.1] I have put this on it.
+[  602.1 ->   603.1] I have put this on it.
+[  603.1 ->   605.1] I have done every entry.
+[  605.1 ->   606.2] Almost.
+[  606.2 ->   609.2] I have put this in one run.
+[  609.2 ->   611.4] Back foot.
+[  611.4 ->   613.8] And beaten needle.
+[  613.8 ->   615.9] Release short.
+[  615.9 ->   617.9] I have done all these things.
+[  617.9 ->   619.9] And I have put this here.
+[  619.9 ->   621.9] I have done the end ball.
+[  621.9 ->   625.5] Now I say that the last instance.
+[  625.5 ->   627.5] I have put a lot of things on it.
+[  627.5 ->   629.5] Everything is written here.
+[  629.5 ->   631.5] When I am always on it.
+[  631.5 ->   633.7] So what I will do now.
+[  633.7 ->   634.7] I have started a new ball.
+[  634.7 ->   636.7] You see all the entries are old.
+[  636.7 ->   639.3] I have put it on it.
+[  639.3 ->   642.3] So when I place it on the default.
+[  642.3 ->   645.6] So it will be fresh entry.
+[  645.6 ->   648.6] Basically it is copying the last entry.
+[  648.6 ->   651.6] Last instance copy card.
+[  651.6 ->   652.6] Okay.
+[  652.6 ->   655.7] This is the CD option.
+[  655.7 ->   657.7] What is CD in this?
+[  657.7 ->   660.7] Cutting diagonal.
+[  660.7 ->   663.0] You should see.
+[  663.0 ->   666.0] There are some players who go from the center of the umpire.
+[  666.0 ->   669.0] called cutting diagonal.
+[  669.0 ->   698.4] A round the wicket comes, a quarter of the wicket comes, for example, in the left hand, there are spinners in the middle of the wicket, the card passes, the cross passes, so this is the cutting diagonal, this also means the baller can also come like this.
+[  700.7 ->   709.7] And one thing, sir, this batsman is now on the left, all this customization, the data of the player is in the right hand.
+[  710.7 ->   716.7] This is the master data, the player is on the left hand, then he will show it in the left hand.
+[  717.7 ->   723.8] And the left side of it, the lefty batsman is long on this side.
+[  723.8 ->   729.3] Okay, I will tell you that this batsman has gone up and down, that will change quickly.
+[  730.3 ->   733.3] So he will be long on this side, this is also his subscription.
+[  734.8 ->   741.9] Okay, sir, this is all your shots, I will extend it so that it goes well.
+[  741.9 ->   747.2] This is the way, look, these shots have come out.
+[  748.2 ->   759.3] And these defenses, there was no obstacle in this, there was a hidden one in this, but it has come out.
+[  760.3 ->   769.8] Okay, look, if you want to use this in the in on and off systems, like on drive, out drive, then you can make it 1-2.
+[  769.8 ->   773.8] You can make it 1-2, but they will show you the highest.
+[  773.8 ->   775.8] You can also change the Seekers.
+[  775.8 ->   783.3] When you look at the Master Data, you can do it.
+[  783.3 ->   786.3] Defensive is very low.
+[  786.3 ->   790.3] There are things like this.
+[  790.3 ->   795.3] Under spin, slide, back spin, yorker, wide yorker.
+[  795.3 ->   797.4] You can't see anything.
+[  797.4 ->   799.4] But with this, there are additional things.
+[  799.4 ->   804.3] If you hold fast, you will be able to do it fast.
+[  804.3 ->   807.5] Knuckleball, slower ball, reverse swing.
+[  807.5 ->   809.5] There are additional things.
+[  809.5 ->   816.3] If you are not in one frame, then you can just pop off.
+[  816.3 ->   818.5] One more thing.
+[  818.5 ->   823.5] When you start ball or end ball,
+[  823.5 ->   826.5] if you want a video with this ball,
+[  826.5 ->   836.9] do you start or hold it?
+[  836.9 ->   840.9] No, I don't hold it. I have to do it manually.
+[  840.9 ->   844.9] I didn't start or end capture.
+[  844.9 ->   847.9] In this system, if you start and capture,
+[  847.9 ->   850.9] the live feed will start capturing it.
+[  850.9 ->   855.9] And when I stop, it will capture it and drop it.
+[  855.9 ->   860.0] Camera on, recording from here.
+[  860.0 ->   865.0] The recording of the ball will be on this.
+[  865.0 ->   868.0] Sir, with my developer,
+[  868.0 ->   871.0] the screen that you end ball with,
+[  871.0 ->   873.0] if you start and end ball,
+[  873.0 ->   875.0] it will be recorded.
+[  875.0 ->   879.6] No, it will be recorded in the video.
+[  879.6 ->   882.6] Yes, it will be recorded in the video.
+[  882.6 ->   886.0] I will show you.
+[  886.0 ->   889.4] In the data team.
+[  889.4 ->   893.4] Yes, like we were doing in this.
+[  893.4 ->   897.7] There is a folder for this match, right?
+[  897.7 ->   899.7] This is the folder for the match.
+[  899.7 ->   907.5] Now it is showing in the arch.
+[  907.5 ->   909.5] Now all these balls are recorded.
+[  909.5 ->   912.0] When we started the ball,
+[  912.0 ->   914.0] these balls will be recorded in this match.
+[  914.0 ->   916.2] Like we started the ball.
+[  916.2 ->   918.2] We have started capturing it.
+[  918.2 ->   921.2] This start capture is going on and on.
+[  921.2 ->   926.0] And we haven't done the end capture yet.
+[  926.0 ->   929.0] Because maybe he is doing the replay.
+[  929.0 ->   933.4] So sometimes he keeps watching it for a while because of the replay.
+[  933.4 ->   935.4] So there is no replay on it.
+[  935.4 ->   938.4] But what we did start capture and end capture,
+[  938.4 ->   940.4] start capture and end capture,
+[  940.4 ->   944.0] these files come here and get saved.
+[  944.0 ->   945.0] Right?
+[  945.0 ->   946.1] Yes.
+[  946.1 ->   948.1] And sometimes we clicked it wrong.
+[  948.1 ->   951.1] Like we did it quickly or late.
+[  951.1 ->   954.1] Let's suppose we give you an example of bats.
+[  954.1 ->   955.1] Like this ball.
+[  955.1 ->   957.8] Now it has started.
+[  957.8 ->   958.8] Right.
+[  958.8 ->   960.8] From here it has started and stopped.
+[  960.8 ->   962.8] It stopped on the way.
+[  962.8 ->   964.3] The ball didn't happen.
+[  964.3 ->   965.3] Right?
+[  965.3 ->   967.6] The ball didn't happen.
+[  967.6 ->   968.6] It stopped somehow.
+[  968.6 ->   970.6] It got some pain.
+[  970.6 ->   971.6] It got some problem.
+[  971.6 ->   973.6] So the ball didn't happen.
+[  973.6 ->   975.6] So we clicked the start capture.
+[  975.6 ->   977.7] So what happens in this system,
+[  977.7 ->   979.7] we stop the capture.
+[  979.7 ->   981.7] And when we start again,
+[  981.7 ->   983.7] if we start again,
+[  983.7 ->   986.8] we will overwrite that file.
+[  986.8 ->   988.8] The file that was created earlier.
+[  988.8 ->   990.8] And the new file that we created,
+[  990.8 ->   992.8] we will overwrite it.
+[  992.8 ->   995.1] So the last one,
+[  995.1 ->   997.1] start capture and end capture,
+[  997.1 ->   998.1] it will save.
+[  998.1 ->  1000.1] Sir, leave this button.
+[ 1000.1 ->  1002.9] Leave this button.
+[ 1002.9 ->  1005.9] Leave this button.
+[ 1005.9 ->  1008.9] I was giving you an example of how this works.
+[ 1008.9 ->  1016.3] Is this clear?
+[ 1016.3 ->  1018.3] Leave this button.
+[ 1018.3 ->  1026.3] Leave this button.
+[ 1026.3 ->  1039.5] Leave this button.
+[ 1039.5 ->  1047.4] Leave this button.
+[ 1047.4 ->  1049.4] This is a library.
+[ 1049.4 ->  1051.7] This is a multiple.
+[ 1051.7 ->  1053.7] If there is a video recording,
+[ 1053.7 ->  1054.7] you can do it.
+[ 1054.7 ->  1055.8] Actually,
+[ 1055.8 ->  1057.8] when this place is
+[ 1057.8 ->  1059.8] where the video is coming from,
+[ 1059.8 ->  1062.7] then sometimes,
+[ 1062.7 ->  1064.7] the big matches,
+[ 1064.7 ->  1066.7] like the World Cup matches,
+[ 1066.7 ->  1068.7] international matches,
+[ 1068.7 ->  1070.7] then the feed is
+[ 1070.7 ->  1073.1] giving broadcasters.
+[ 1073.1 ->  1075.1] So broadcasters,
+[ 1075.1 ->  1077.1] if you watch a TV match,
+[ 1077.1 ->  1079.3] then you will see multiple times,
+[ 1079.3 ->  1081.3] different views,
+[ 1081.3 ->  1083.7] replay.
+[ 1083.7 ->  1085.8] Different angles.
+[ 1085.8 ->  1087.8] So this is to save it.
+[ 1087.8 ->  1090.0] So if there is a replay later,
+[ 1090.0 ->  1092.0] then you can save it
+[ 1092.0 ->  1094.0] in front view or side view.
+[ 1094.0 ->  1096.0] You can save it in the side view.
+[ 1096.0 ->  1099.7] There is something like this.
+[ 1099.7 ->  1101.7] If you want an exit,
+[ 1101.7 ->  1103.7] then I will clear it.
+[ 1103.7 ->  1105.7] This is the early
+[ 1105.7 ->  1108.0] and this is the
+[ 1108.0 ->  1110.0] show library info.
+[ 1110.0 ->  1112.2] I will tell you this
+[ 1112.2 ->  1114.2] because I didn't use it much myself.
+[ 1114.2 ->  1116.2] Maybe they told me that I didn't use it.
+[ 1116.2 ->  1118.2] So I don't have it in my mind.
+[ 1118.2 ->  1120.2] Okay, sir.
+[ 1120.2 ->  1122.5] Now this is the overcomparison.
+[ 1122.5 ->  1124.5] This is part of reports.
+[ 1124.5 ->  1126.6] Now I will do it on overcomparison.
+[ 1126.6 ->  1128.6] They did it like this.
+[ 1128.6 ->  1130.6] I said, this is the instant
+[ 1130.6 ->  1132.6] that the report came out.
+[ 1132.6 ->  1134.9] And it goes back
+[ 1134.9 ->  1136.9] and it goes back.
+[ 1136.9 ->  1138.9] So what is this?
+[ 1138.9 ->  1140.9] The actual umpire,
+[ 1140.9 ->  1143.0] he needed the coach.
+[ 1143.0 ->  1145.0] That's why he put it on.
+[ 1145.0 ->  1147.0] First training score.
+[ 1147.0 ->  1149.0] Overwise score.
+[ 1149.0 ->  1151.3] What was the score in the first one?
+[ 1151.3 ->  1153.3] In the sixth one?
+[ 1153.3 ->  1155.3] In the seventh one?
+[ 1155.3 ->  1158.7] Okay.
+[ 1158.7 ->  1161.0] Okay, sir.
+[ 1161.0 ->  1163.0] It's going to slide like this.
+[ 1163.0 ->  1165.0] What do you do?
+[ 1165.0 ->  1167.0] What was the score in the fifth one?
+[ 1167.0 ->  1169.0] What was the score in the fifth one?
+[ 1169.0 ->  1171.2] Second inning.
+[ 1171.2 ->  1173.2] Second inning runs will come here.
+[ 1173.2 ->  1175.2] They will come in this column.
+[ 1175.2 ->  1177.2] If there is a second inning,
+[ 1177.2 ->  1179.2] in the fifth one,
+[ 1179.2 ->  1181.4] in the sixth one,
+[ 1181.4 ->  1183.4] whatever runs will come here.
+[ 1183.4 ->  1185.4] That information will come.
+[ 1185.4 ->  1189.6] The rest is run rate.
+[ 1189.6 ->  1191.7] How much was the run rate of 5 hours?
+[ 1191.7 ->  1193.7] Rate required,
+[ 1193.7 ->  1195.7] runs required, balls remaining.
+[ 1195.7 ->  1197.7] Anyone will tell you how much runs
+[ 1197.7 ->  1199.9] it needs
+[ 1199.9 ->  1201.9] and how much balls are left.
+[ 1201.9 ->  1203.9] Anyone will tell you how much
+[ 1203.9 ->  1206.2] rate required is.
+[ 1206.2 ->  1209.0] Okay sir.
+[ 1209.0 ->  1211.0] Sir, it looks like this is a logic
+[ 1211.0 ->  1213.0] behind the run rate.
+[ 1213.0 ->  1215.0] It looks like this is a logic behind the run rate.
+[ 1215.0 ->  1217.0] It looks like this is a logic behind the run rate.
+[ 1217.0 ->  1219.0] It looks like this is a logic behind the run rate.
+[ 1219.0 ->  1221.2] 100, what happened?
+[ 1221.2 ->  1226.7] Now you have done
+[ 1226.7 ->  1228.7] 75 runs in 15 hours.
+[ 1228.7 ->  1230.9] So your run rate is 5.
+[ 1230.9 ->  1233.2] That means
+[ 1233.2 ->  1235.5] how much you have to do in every hour?
+[ 1235.5 ->  1237.5] You have to play over 5 runs.
+[ 1237.5 ->  1239.5] So if you
+[ 1239.5 ->  1241.5] this is the run rate.
+[ 1241.5 ->  1243.5] You have done 90 in 15 hours.
+[ 1243.5 ->  1245.5] So your run rate is 6.
+[ 1245.5 ->  1247.7] So you are doing 6 runs in every hour.
+[ 1247.7 ->  1249.7] This is the run rate.
+[ 1249.7 ->  1251.7] What is the required run rate?
+[ 1251.7 ->  1253.7] You have to run 90
+[ 1253.7 ->  1255.7] and you have 12 more
+[ 1255.7 ->  1257.8] runs left.

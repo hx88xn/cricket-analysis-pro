@@ -4,14 +4,14 @@
     <meta charset="UTF-8" />
     <meta
       http-equiv="Content-Security-Policy"
-      content="default-src 'self'; style-src 'self' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; media-src 'self' blob: mediastream:"
+      content="default-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; media-src 'self' blob: mediastream:"
     />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Cricket Analysis Pro</title>
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link
-      href="https://fonts.googleapis.com/css2?family=Roboto+Condensed:wght@400;500;600;700&display=swap"
+      href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=Sora:wght@600;700&display=swap"
       rel="stylesheet"
     />
     <link rel="stylesheet" href="styles.css" />
@@ -25,24 +25,24 @@
           </div>
           <div class="score-top-row">
             <div class="score-block">
-              <span class="score-ow-label">OW</span>
-              <span class="score-main">247/7</span>
+              <span class="score-ow-label" id="bat-team-code">CANA</span>
+              <span class="score-main" id="score-main">49/0</span>
             </div>
             <div class="overs-block">
               <span class="overs-label">OVERS</span>
-              <span class="overs-value yellow">42.2</span>
+              <span class="overs-value yellow" id="overs-value">4.3</span>
             </div>
           </div>
           <div class="score-second-row">
             <span class="vs-label">VS</span>
-            <span class="runrate-label">RUN RATE: <strong class="yellow">5.83</strong></span>
+            <span class="runrate-label">RUN RATE: <strong class="yellow" id="runrate-value">10.89</strong></span>
           </div>
           <div class="score-third-row">
-            <span class="ow-label">OW</span>
-            <span class="or-label">OR</span>
+            <span class="ow-label" id="team-a-label">CANA</span>
+            <span class="or-label" id="team-b-label">OMN</span>
           </div>
           <div class="match-report-row">
-            <button type="button" class="btn btn-match-report">MATCH REPORT</button>
+            <button type="button" class="btn btn-match-report" data-overlay="scorecard">MATCH REPORT</button>
           </div>
         </div>
 
@@ -57,10 +57,10 @@
             </div>
             <!-- Names column -->
             <div class="stats-names">
-              <div class="stat-name-cell filled"></div>
-              <div class="stat-name-cell filled">JEET SHAH</div>
-              <div class="stat-name-cell filled">NEAR END</div>
-              <div class="stat-name-cell filled">PRATEESH -R FAST</div>
+              <div class="stat-name-cell filled" id="name-striker">RAVINDERPAL SINGH</div>
+              <div class="stat-name-cell filled" id="name-nonstriker">SAAD BIN ZAFAR</div>
+              <div class="stat-name-cell filled" id="name-bowlend">FAR END</div>
+              <div class="stat-name-cell filled" id="name-bowler">JITEN RAMANANDI -L FAST</div>
             </div>
             <!-- Batting stats -->
             <div class="stats-bat">
@@ -70,20 +70,20 @@
               <div class="stat-col-head">6's</div>
               <div class="stat-col-head">SR</div>
               <div class="stat-col-head">P'Ship</div>
-              <!-- Striker row - all zeros -->
-              <div class="stat-cell">0</div>
-              <div class="stat-cell">0</div>
-              <div class="stat-cell">0</div>
-              <div class="stat-cell">0</div>
-              <div class="stat-cell">0.0</div>
-              <div class="stat-cell">0</div>
+              <!-- Striker row -->
+              <div class="stat-cell" data-bat="striker" data-k="runs">31</div>
+              <div class="stat-cell" data-bat="striker" data-k="balls">14</div>
+              <div class="stat-cell" data-bat="striker" data-k="fours">3</div>
+              <div class="stat-cell" data-bat="striker" data-k="sixes">1</div>
+              <div class="stat-cell" data-bat="striker" data-k="sr">221.43</div>
+              <div class="stat-cell" data-bat="striker" data-k="ps">49</div>
               <!-- Non-striker row -->
-              <div class="stat-cell">17</div>
-              <div class="stat-cell">12</div>
-              <div class="stat-cell">0</div>
-              <div class="stat-cell">1</div>
-              <div class="stat-cell">141.67</div>
-              <div class="stat-cell yellow-parens">(0)</div>
+              <div class="stat-cell" data-bat="nonstriker" data-k="runs">18</div>
+              <div class="stat-cell" data-bat="nonstriker" data-k="balls">10</div>
+              <div class="stat-cell" data-bat="nonstriker" data-k="fours">0</div>
+              <div class="stat-cell" data-bat="nonstriker" data-k="sixes">0</div>
+              <div class="stat-cell" data-bat="nonstriker" data-k="sr">180.00</div>
+              <div class="stat-cell yellow-parens" data-bat="nonstriker" data-k="ps">(24)</div>
               <!-- Bowl end row - empty -->
               <div class="stat-cell"></div>
               <div class="stat-cell"></div>
@@ -102,7 +102,7 @@
             <!-- Bowling stats (arrows + headers) -->
             <div class="stats-bowl-wrap">
               <div class="stats-bowl-arrows">
-                <span class="arrow-icon">&#8645;</span>
+                <span class="arrow-icon" title="Swap striker / non-striker" id="swap-bat">&#8645;</span>
                 <span class="arrow-spacer"></span>
                 <span class="arrow-icon">&#8645;</span>
               </div>
@@ -135,22 +135,24 @@
                 <div class="stat-cell"></div>
                 <div class="stat-cell"></div>
                 <!-- Bowler row -->
-                <div class="stat-cell">3</div>
-                <div class="stat-cell">7.0</div>
-                <div class="stat-cell">44</div>
-                <div class="stat-cell">0</div>
-                <div class="stat-cell">3</div>
-                <div class="stat-cell">6.29</div>
+                <div class="stat-cell" data-bowl="spell">1</div>
+                <div class="stat-cell" data-bowl="overs">0.3</div>
+                <div class="stat-cell" data-bowl="runs">5</div>
+                <div class="stat-cell" data-bowl="mdns">0</div>
+                <div class="stat-cell" data-bowl="wkts">0</div>
+                <div class="stat-cell" data-bowl="eco">10.00</div>
               </div>
             </div>
           </div>
         </div>
 
         <div class="header-right">
-          <button type="button" class="btn btn-block blue">RICHARD ILLINGWORTH</button>
-          <button type="button" class="btn btn-block blue">CHRIS GAFFANEY</button>
-          <button type="button" class="btn btn-block blue">OVER COMPARISION</button>
-          <button type="button" class="btn btn-block blue">BOWLING COMPUTE</button>
+          <div class="umpire-row">
+            <button type="button" class="btn btn-block blue" data-overlay="umpire" data-arg="RICHARD ILLINGWORTH">UMPIRE 1</button>
+            <button type="button" class="btn btn-block blue" data-overlay="umpire" data-arg="CHRIS GAFFANEY">UMPIRE 2</button>
+          </div>
+          <button type="button" class="btn btn-block blue" data-overlay="overcomp">OVER COMPARISION</button>
+          <button type="button" class="btn btn-block blue" data-overlay="bowlcompute">BOWLING COMPUTE</button>
         </div>
       </header>
 
@@ -171,18 +173,19 @@
             </div>
           </div>
           <div class="video-actions">
-            <button type="button" class="btn wide red">End Over</button>
-            <button type="button" class="btn wide teal">Start Ball</button>
+            <button type="button" id="btn-over" class="btn wide teal">Start Over</button>
+            <button type="button" id="btn-ball" class="btn wide teal">Start Ball</button>
             <button type="button" id="btn-capture" class="btn wide teal">Start Capture</button>
-            <button type="button" class="btn wide teal">LS</button>
-            <button type="button" class="btn wide teal icon-refresh">&#8635;</button>
+            <button type="button" class="btn wide teal" title="Live Score">LS</button>
+            <button type="button" id="btn-undo" class="btn wide teal icon-refresh" title="Undo last ball">&#8635;</button>
           </div>
         </div>
 
         <div class="mid-center">
           <div class="log-toolbar">
-            <span class="ball-badge blue-badge">0</span>
+            <span class="ball-badge blue-badge" id="over-runs-badge">0</span>
             <span class="ball-badge red-badge">W</span>
+            <span class="this-over" id="this-over"></span>
           </div>
           <div class="table-wrap">
             <table class="ball-log">
@@ -198,28 +201,7 @@
                   <th>Ext</th>
                 </tr>
               </thead>
-              <tbody>
-                <tr>
-                  <td>42.1</td>
-                  <td>PRATEESH</td>
-                  <td>ARYAN BISHT</td>
-                  <td>JEET SHAH</td>
-                  <td></td>
-                  <td></td>
-                  <td>0</td>
-                  <td>0</td>
-                </tr>
-                <tr>
-                  <td>42.2</td>
-                  <td>PRATEESH</td>
-                  <td>ARYAN BISHT</td>
-                  <td>JEET SHAH</td>
-                  <td></td>
-                  <td></td>
-                  <td>0</td>
-                  <td>0</td>
-                </tr>
-              </tbody>
+              <tbody id="ball-log-body"></tbody>
             </table>
           </div>
         </div>
@@ -228,15 +210,15 @@
           <div class="mid-actions">
             <div class="appeals-row">
               <input type="checkbox" class="appeals-check" />
-              <button type="button" class="btn btn-block blue sm appeals-btn">Appeals</button>
+              <button type="button" class="btn btn-block blue sm appeals-btn" data-overlay="appeals">Appeals</button>
             </div>
-            <button type="button" class="btn btn-block blue sm">Fielding Events</button>
-            <button type="button" class="btn btn-block blue sm">Match Events</button>
-            <button type="button" class="btn btn-block blue sm">Remarks</button>
-            <button type="button" class="btn btn-block blue sm">Wickets</button>
-            <button type="button" class="btn btn-block blue sm">Edit Mode</button>
+            <button type="button" class="btn btn-block blue sm" data-overlay="fielding">Fielding Events</button>
+            <button type="button" class="btn btn-block blue sm" data-overlay="matchevents">Match Events</button>
+            <button type="button" class="btn btn-block blue sm" data-overlay="remarks">Remarks</button>
+            <button type="button" class="btn btn-block blue sm" data-overlay="wickets">Wickets</button>
+            <button type="button" class="btn btn-block blue sm" id="btn-editmode">Edit Mode</button>
           </div>
-          <div class="field-map-wrap">
+          <div class="field-map-wrap" id="field-map-wrap">
             <img
               class="field-map-img"
               src="assets/field-map.png"
@@ -245,13 +227,14 @@
               alt="Cricket field: THIRD MAN, POINT, COVERS, LONG OFF, FINE LEG, SQUARE LEG, MID WICKET, LONG ON; OFF SIDE and ON SIDE"
               draggable="false"
             />
+            <svg class="wagon-overlay" id="wagon-overlay" viewBox="0 0 100 100" preserveAspectRatio="none"></svg>
           </div>
         </div>
       </section>
 
       <footer class="footer">
         <div class="footer-main">
-          <div class="pitch-wrap">
+          <div class="pitch-wrap" id="pitch-wrap">
             <img
               class="pitch-map-img"
               src="assets/pitch-map.png"
@@ -260,6 +243,7 @@
               alt="Pitch map: length zones and line; OTW, RTW, CD"
               draggable="false"
             />
+            <svg class="pitch-overlay-svg" id="pitch-overlay-svg" viewBox="0 0 100 100" preserveAspectRatio="none"></svg>
             <!-- OTW: top-left corner -->
             <button type="button" class="pitch-overlay-btn otw-btn active" data-group="otw">OTW</button>
             <!-- RTW: top-right corner -->
@@ -299,7 +283,7 @@
                   <button type="button" class="plus-btn">+</button>
                   <button type="button" class="toggle active" data-group="pace">Fast</button>
                   <button type="button" class="toggle" data-group="pace">Spin</button>
-                  <label class="mph-label">MPH <input type="text" class="tiny-input" value="" /></label>
+                  <label class="mph-label">KPH <input type="text" class="tiny-input" id="kph-input" value="" /></label>
                 </div>
                 <div class="btn-grid cols-3" id="bowl-grid"></div>
               </div>
@@ -317,12 +301,16 @@
           </div>
 
           <div class="keypad-panel panel">
-            <button type="button" class="btn btn-block blue keypad-top">OVER THROW</button>
+            <button type="button" class="btn btn-block blue keypad-top" id="overthrow-btn">OVER THROW</button>
             <div class="keypad-grid" id="keypad"></div>
           </div>
         </div>
       </footer>
     </div>
+
+    <!-- Overlay root for modals / full-screen modules -->
+    <div class="overlay-root" id="overlay-root" hidden></div>
+
     <script src="renderer.js"></script>
   </body>
 </html>

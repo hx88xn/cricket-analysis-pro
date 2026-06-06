@@ -1,6 +1,7 @@
 const { app, BrowserWindow, ipcMain, dialog } = require("electron");
 const path = require("path");
 const fs = require("fs");
+const db = require("./src/db");
 
 if (process.env.ELECTRON_DOCKER === "1") {
   app.commandLine.appendSwitch("no-sandbox");
@@ -94,6 +95,22 @@ ipcMain.handle("save-recording", async (event, arrayBuffer, defaultName) => {
   return { ok: true, filePath };
 });
 
+// ---- Database IPC ---------------------------------------------------------
+
+ipcMain.handle("db:teams", () => db.teams());
+ipcMain.handle("db:players", (_e, teamId) => (teamId ? db.playersByTeam(teamId) : db.allPlayers()));
+ipcMain.handle("db:competitions", () => db.competitions());
+ipcMain.handle("db:officials", (_e, role) => db.officials(role));
+ipcMain.handle("db:grounds", () => db.grounds());
+ipcMain.handle("db:matchTypes", () => db.matchTypes());
+ipcMain.handle("db:matches", () => db.matches());
+ipcMain.handle("db:match:get", (_e, id) => db.getMatchExpanded(id));
+ipcMain.handle("db:team:save", (_e, team) => db.saveTeam(team));
+ipcMain.handle("db:player:save", (_e, player) => db.savePlayer(player));
+ipcMain.handle("db:match:save", (_e, match) => db.saveMatch(match));
+ipcMain.handle("db:match:saveState", (_e, { id, state, status }) => db.saveMatchState(id, state, status));
+ipcMain.handle("db:match:delete", (_e, id) => db.deleteMatch(id));
+
 function createWindow() {
   const win = new BrowserWindow({
     width: 1920,
@@ -108,10 +125,21 @@ function createWindow() {
     },
   });
 
-  win.loadFile(path.join(__dirname, "src", "home.html"));
+  // Dev affordance: CAP_START="prototype.html?screen=match-registration" jumps
+  // straight to a screen so individual flows can be inspected in isolation.
+  const start = process.env.CAP_START;
+  if (start) {
+    const [file, query] = start.split("?");
+    win.loadFile(path.join(__dirname, "src", file), query ? { search: query } : undefined);
+  } else {
+    win.loadFile(path.join(__dirname, "src", "home.html"));
+  }
 }
 
-app.whenReady().then(createWindow);
+app.whenReady().then(() => {
+  db.init(app.getPath("userData"));
+  createWindow();
+});
 
 app.on("window-all-closed", () => {
   if (process.platform !== "darwin") app.quit();

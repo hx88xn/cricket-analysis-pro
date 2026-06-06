@@ -11,7 +11,7 @@
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link
-      href="https://fonts.googleapis.com/css2?family=Roboto+Condensed:wght@400;500;600;700&display=swap"
+      href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=Sora:wght@600;700&display=swap"
       rel="stylesheet"
     />
     <link rel="stylesheet" href="styles.css" />
@@ -22,6 +22,8 @@
         <a class="btn-back-nav" href="home.html">← Back</a>
         <h1 class="screen-title config-title">Configuration</h1>
       </header>
+
+      <p class="screen-subtitle">Manage capture paths, database location, and camera preferences for the desktop workspace.</p>
 
       <form class="config-form" id="config-form">
         <div class="config-field">
@@ -39,7 +41,7 @@
             <input type="text" id="database-path" class="config-input" placeholder="e.g. /path/to/match.sqlite" />
             <button type="button" class="btn blue" id="btn-browse-database">Browse…</button>
           </div>
-          <p class="config-hint">Path to your SQLite database (for future use).</p>
+          <p class="config-hint">Path to your SQLite database for future data integration.</p>
         </div>
 
         <div class="config-field">
@@ -50,7 +52,7 @@
             </select>
             <button type="button" class="btn blue" id="btn-refresh-cameras">Refresh list</button>
           </div>
-          <p class="config-hint">Refresh may ask for camera permission once so device names can appear.</p>
+          <p class="config-hint">Refreshing may request camera permission once so device names can be resolved.</p>
         </div>
 
         <div class="config-actions">
