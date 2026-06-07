@@ -697,6 +697,7 @@ async function buildCompetitionMaster() {
 const COMPETITION_COLUMNS = [
   { key: "name", label: "Competition Name" }, { key: "trophy", label: "Trophy" },
   { key: "matchType", label: "Match Type" }, { key: "season", label: "Season" },
+  { key: "startDate", label: "Start Date" }, { key: "endDate", label: "End Date" },
   { key: "teamsLabel", label: "Teams" },
 ];
 

@@ -72,6 +72,16 @@ function safeSegment(s) {
   return String(s || "").replace(/[^A-Za-z0-9 _-]/g, "").replace(/\s+/g, " ").trim();
 }
 
+// Sanitise an untrusted relative subpath (e.g. "Tournament/Match") segment by
+// segment so it can't escape the recordings root, then join with the OS sep.
+function safeSubpath(rel) {
+  return String(rel || "")
+    .split(/[\\/]+/)
+    .map(safeSegment)
+    .filter(Boolean)
+    .join(path.sep);
+}
+
 // Create the per-match subfolder under the configured recordings root. Called
 // as soon as a match opens so its folder exists before any recording. Returns
 // { ok, path } when a root is configured, otherwise { ok:false } so the renderer
@@ -79,7 +89,7 @@ function safeSegment(s) {
 ipcMain.handle("recordings:ensure-folder", async (_event, folderName) => {
   const cfg = loadConfig();
   const root = (cfg.recordingsPath || "").trim();
-  const sub = safeSegment(folderName);
+  const sub = safeSubpath(folderName);
   if (!root || !sub) return { ok: false };
   try {
     const dir = path.join(root, sub);
@@ -95,7 +105,7 @@ ipcMain.handle("save-recording", async (event, arrayBuffer, defaultName, subfold
   const cfg = loadConfig();
   const baseName = defaultName || "cricket-capture.webm";
   const root = (cfg.recordingsPath || "").trim();
-  const sub = safeSegment(subfolder);
+  const sub = safeSubpath(subfolder);
 
   // If a recordings root is configured, save straight into it (inside the
   // per-match subfolder when given) without prompting. Dialog only on failure.

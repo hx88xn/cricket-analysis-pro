@@ -576,6 +576,37 @@ a.home-main-btn {
   box-shadow: inset 2px 0 0 var(--accent, #4db3ff);
 }
 
+/* Balls flagged via "MARK FOR EDIT" — persisted on the entry, shown in the log */
+.ball-log tbody tr.marked-ball {
+  background: rgba(240, 199, 97, 0.12);
+  box-shadow: inset 3px 0 0 var(--warning, #f0c761);
+}
+.ball-log tbody tr.marked-ball:hover { background: rgba(240, 199, 97, 0.2); }
+.mark-flag {
+  color: var(--warning, #f0c761);
+  margin-right: 5px;
+  font-weight: 700;
+}
+
+/* Brief toast for renderer-side notifications (e.g. mark-for-edit) */
+.cap-toast {
+  position: fixed;
+  left: 50%;
+  bottom: 28px;
+  transform: translateX(-50%);
+  z-index: 300;
+  padding: 10px 18px;
+  border-radius: 10px;
+  background: rgba(16, 32, 50, 0.97);
+  border: 1px solid var(--border-strong, rgba(136, 176, 220, 0.34));
+  color: var(--text, #ecf4ff);
+  font-size: 13px;
+  font-weight: 600;
+  box-shadow: 0 12px 30px rgba(0, 0, 0, 0.4);
+}
+
+.f-check { width: 18px; height: 18px; accent-color: var(--warning, #f0c761); }
+
 .mid-right {
   display: grid;
   grid-template-columns: minmax(132px, 1fr) minmax(0, 2fr);

@@ -176,7 +176,7 @@ const state = {
 };
 
 function row(num, bowler, striker, nonstr, bowl, shot, runs, ext) {
-  return { num, bowler, striker, nonstr, bowl, shot, runs, ext };
+  return { num, bowler, striker, nonstr, bowl, shot, runs, ext, marked: false };
 }
 
 // ---- Grid rendering -------------------------------------------------------
@@ -688,8 +688,14 @@ function handleKeypad(k, btn) {
     return;
   }
   if (k.type === "mark") {
-    document.querySelectorAll("#keypad .keypad-btn").forEach((x) => x.classList.remove("marked"));
-    btn.classList.add("marked");
+    // Flag the most recently entered ball for later editing (toggles), and
+    // persist it on the ball entry so marked balls can be reviewed afterwards.
+    const last = state.log[state.log.length - 1];
+    if (!last) { toast("No ball to mark yet"); return; }
+    last.marked = !last.marked;
+    btn.classList.toggle("marked", last.marked);
+    toast(last.marked ? `Ball ${last.num} marked for edit` : `Ball ${last.num} unmarked`);
+    render();
     return;
   }
   if (k.type === "run") {
@@ -794,6 +800,7 @@ function logBall({ runs = 0, ext = 0, boundary = false, legal = true, bye = fals
   state.pendingRuns = 0;
   state.bowlType = null; state.shotType = null;
   document.querySelectorAll("#bowl-grid .selected, #bat-grid .selected").forEach((x) => x.classList.remove("selected"));
+  document.querySelector("#keypad .keypad-btn.marked")?.classList.remove("marked"); // new ball starts unmarked
   render();
 
   if (allOut) endInnings();
@@ -985,8 +992,9 @@ function renderLog() {
   if (!body) return;
   const start = Math.max(0, state.log.length - 30);
   body.innerHTML = state.log.slice(start).map((r, i) => `
-    <tr data-index="${start + i}" title="Double-click to edit this ball">
-      <td>${r.num}</td><td>${r.bowler}</td><td>${r.striker}</td><td>${r.nonstr}</td>
+    <tr data-index="${start + i}" class="${r.marked ? "marked-ball" : ""}" title="${r.marked ? "Marked for edit — " : ""}Double-click to edit this ball">
+      <td>${r.marked ? '<span class="mark-flag" title="Marked for edit">⚑</span>' : ""}${r.num}</td>
+      <td>${r.bowler}</td><td>${r.striker}</td><td>${r.nonstr}</td>
       <td>${r.bowl}</td><td>${r.shot}</td><td>${r.runs}</td><td>${r.ext}</td>
     </tr>`).join("");
   const wrap = body.closest(".table-wrap");
@@ -1081,6 +1089,16 @@ function flash(el) {
   if (!el) return;
   el.classList.add("flash");
   setTimeout(() => el.classList.remove("flash"), 160);
+}
+
+// Brief bottom-center notification (self-contained; no dependency on prototype.js)
+function toast(msg) {
+  document.querySelector(".cap-toast")?.remove();
+  const el = document.createElement("div");
+  el.className = "cap-toast";
+  el.textContent = msg;
+  document.body.appendChild(el);
+  setTimeout(() => el.remove(), 2200);
 }
 
 // ===========================================================================
@@ -1544,6 +1562,8 @@ function overlayEditBall(index) {
     ${sel("eb-shot", "Shot Type", shotOpts)}
     ${inp("eb-runs", "Runs", r.runs)}
     ${inp("eb-ext", "Extras", r.ext)}
+    <label class="f-row"><span class="f-label">Mark for Edit</span>
+      <input type="checkbox" id="eb-marked" class="f-check" ${r.marked ? "checked" : ""} /></label>
     <div class="btn-row-modal">
       <button class="m-btn m-green" id="eb-save">Save</button>
       <button class="m-btn m-red" id="eb-delete">Delete</button>
@@ -1559,6 +1579,7 @@ function overlayEditBall(index) {
     r.shot = fieldVal("eb-shot");
     r.runs = Number(fieldVal("eb-runs")) || 0;
     r.ext = fieldVal("eb-ext");
+    r.marked = !!document.getElementById("eb-marked")?.checked;
     const newVal = (Number(r.runs) || 0) + extNum(r.ext);
     state.runs = Math.max(0, state.runs + (newVal - oldVal)); // keep score in sync
     closeOverlay();
@@ -1718,9 +1739,10 @@ function wireCapture() {
         // Per-match folder + per-inning filename. With a recordings root set in
         // video settings this saves silently into <root>/<matchFolder>/.
         const folder = state.recordingFolder || "";
+        const prefix = state.recordingPrefix || "";
         const ts = new Date().toISOString().replace(/[:.]/g, "-").slice(0, 19);
-        const name = folder
-          ? `${folder}-${captureLabel}.webm`
+        const name = prefix
+          ? `${prefix}-${captureLabel}.webm`
           : `cricket-capture-${ts}.webm`;
         await window.cricketApp.saveRecording(buf, name, folder);
       };
@@ -1808,6 +1830,14 @@ function recordingFolderName(match) {
   return `${prefix}${home}VS${away}${date}`;
 }
 
+// Tournament (competition) folder name that the match folder lives under, so
+// recordings nest as <root>/<tournament>/<match>/. Falls back to UNGROUPED when
+// the match has no competition. Sanitised; the main process re-sanitises too.
+function tournamentFolderName(match) {
+  const clean = (s) => String(s || "").toUpperCase().replace(/[^A-Z0-9]/g, "");
+  return clean(match.competitionName) || "UNGROUPED";
+}
+
 // Create the match folder under the configured recordings root right away, so
 // captures land in it without prompting (when a root is set in video settings).
 function ensureRecordingFolder() {
@@ -1818,7 +1848,8 @@ function ensureRecordingFolder() {
 
 function applyMatch(match) {
   state.matchId = match.id;
-  state.recordingFolder = recordingFolderName(match);
+  state.recordingPrefix = recordingFolderName(match); // filename prefix (no slash)
+  state.recordingFolder = `${tournamentFolderName(match)}/${state.recordingPrefix}`; // <tournament>/<match>
   ensureRecordingFolder(); // create the match folder as soon as the match opens
   const A = match.teamA, B = match.teamB; // innings 1: A bats, B bowls
   state.battingTeam = A;
