@@ -2,7 +2,7 @@
   "name": "cricket-analysis-pro",
   "version": "1.0.0",
   "description": "Cricket scoring and analysis desktop UI",
-  "author": "Cricket Analysis Pro",
+  "author": "CRICPRO",
   "main": "main.js",
   "scripts": {
     "start": "electron .",
@@ -19,7 +19,7 @@
   },
   "build": {
     "appId": "com.cricketanalysis.pro",
-    "productName": "Cricket Analysis Pro",
+    "productName": "CRICPRO",
     "directories": {
       "output": "dist"
     },
@@ -54,7 +54,7 @@
       "allowToChangeInstallationDirectory": true,
       "createDesktopShortcut": true,
       "createStartMenuShortcut": true,
-      "shortcutName": "Cricket Analysis Pro"
+      "shortcutName": "CRICPRO"
     },
     "linux": {
       "target": [
@@ -62,7 +62,7 @@
         "tar.gz"
       ],
       "category": "Utility",
-      "maintainer": "Cricket Analysis Pro <noreply@local>"
+      "maintainer": "CRICPRO <noreply@local>"
     }
   },
   "dependencies": {

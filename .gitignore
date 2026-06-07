@@ -1,6 +1,8 @@
 node_modules/
 dist/
-data/
+# Keep data/cricket.sqlite tracked, but not the transient WAL sidecars
+data/*.sqlite-wal
+data/*.sqlite-shm
 *.log
 .DS_Store
 .env

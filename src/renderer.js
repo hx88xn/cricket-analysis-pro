@@ -1,64 +1,45 @@
 // ============================================================================
-// Cricket Analysis Pro — scoring engine + overlays
+// CRICPRO — scoring engine + overlays
 // Recreated to match the look, feel and functionality of the reference
 // recordings (Canada vs Oman live coding session).
 // ============================================================================
 
 // ---- Reference data -------------------------------------------------------
 
-// Bowl types swap with the Fast / Spin toggle (3 cols × 5 rows)
-const BOWL_TYPES = {
+// Bowl + shot type lists and the fielding-factor list are loaded from the
+// "Bowl Spec", "Shot Type" and "Fielding Factor" masters in the database at
+// boot (see loadMasters), and their order is whatever the Masters menu sets.
+// The hardcoded values below are only a fallback when the DB bridge is absent.
+// Each group is one ordered list; the coding screen shows the first 15 on the
+// default grid page and the remainder on the expand-arrow page.
+let BOWL_TYPES = {
   Fast: [
-    "Inswinger", "OutSwinger", "Straight Ball",
-    "Angled In", "Angled Across", "Bouncer",
-    "Nip Backer", "Nipped Away", "Slow Bouncer",
-    "Full Toss", "Slower Ball", "Yorker",
-    "Off Cutter", "Leg Cutter", "Cross Seam",
-  ],
-  // Extended Fast page (revealed by the panel's expand arrow)
-  FastMore: [
-    "Reverse Swing", "Reverse Swinging Yorker", "InSwinging Yorker",
-    "Slow Yorker", "Knuckle Ball", "Split Finger",
-    "Back Hand Slower Ball", "Wide Yorker",
+    "Inswinger", "OutSwinger", "Straight Ball", "Angled In", "Angled Across",
+    "Bouncer", "Nip Backer", "Nipped Away", "Slow Bouncer", "Full Toss", "Slower Ball",
+    "Yorker", "Off Cutter", "Leg Cutter", "Cross Seam", "Reverse Swing",
+    "Reverse Swinging Yorker", "InSwinging Yorker", "Slow Yorker", "Knuckle Ball",
+    "Split Finger", "Back Hand Slower Ball", "Wide Yorker",
   ],
   Spin: [
-    "Off Spin", "Doosra", "Faster One",
-    "Leg Spin", "Googly", "Flipper",
-    "Orthodox", "Chinaman", "Arm Ball",
-    "Straighter One", "Full Toss", "No turn",
-    "Wrong One", "Top Spin", "Carrom Ball",
-  ],
-  // Extended Spin page
-  SpinMore: [
-    "Drifter", "Under Spin", "Slider",
+    "Off Spin", "Doosra", "Faster One", "Leg Spin", "Googly", "Flipper",
+    "Orthodox", "Chinaman", "Arm Ball", "Straighter One", "Full Toss", "No turn",
+    "Wrong One", "Top Spin", "Carrom Ball", "Drifter", "Under Spin", "Slider",
     "Yorker", "Back Spin", "W Yorker",
   ],
 };
 
-// Shot types swap with the Aggressive / Defensive toggle
-const SHOT_TYPES = {
+let SHOT_TYPES = {
   Aggressive: [
-    "Cover Drive", "Square Drive", "Straight Drive",
-    "Off Drive", "On Drive", "Flick",
-    "Cut", "Pull", "Slash",
-    "Sweep Shot", "Slog Sweep", "Slog Shot",
-    "Lofted Off", "Lofted On", "Lofted Over Cover",
-  ],
-  // Extended Aggressive page (revealed by the panel's expand arrow)
-  AggressiveMore: [
-    "Hook", "Inside Out", "Lofted Straight",
-    "Chip Shot", "Upper Cut", "Punch",
-    "Scoop", "Paddle Sweep", "Reverse Sweep",
-    "Switch Hit", "Reverse Scoop", "Pick Up",
-    "Helicopter Shot", "Shot Arm Pull", "Slap",
-    "Lap Shot", "Ramp", "Reverse Lap",
-    "Lofted Square",
+    "Cover Drive", "Square Drive", "Straight Drive", "Off Drive", "On Drive",
+    "Flick", "Cut", "Pull", "Slash", "Sweep Shot", "Slog Sweep", "Slog Shot",
+    "Lofted Off", "Lofted On", "Lofted Over Cover", "Hook", "Inside Out",
+    "Lofted Straight", "Chip Shot", "Upper Cut", "Punch", "Scoop", "Paddle Sweep",
+    "Reverse Sweep", "Switch Hit", "Reverse Scoop", "Pick Up", "Helicopter Shot",
+    "Shot Arm Pull", "Slap", "Lap Shot", "Ramp", "Reverse Lap", "Lofted Square",
   ],
   Defensive: [
-    "Forward Defence", "Backfoot Defence", "Glide",
-    "Left Alone", "Push", "No Shot",
-    "Late Cut", "Ducked", "Leg Glance",
-    "Soft Hand Defence", "Steer", "Worked",
+    "Forward Defence", "Backfoot Defence", "Glide", "Left Alone", "Push", "No Shot",
+    "Late Cut", "Ducked", "Leg Glance", "Soft Hand Defence", "Steer", "Worked",
   ],
 };
 
@@ -127,7 +108,7 @@ let FIELDERS = [
   "WASIM ALI", "SUFYAN MEHMOOD", "VINAYAK SHUKLA",
 ];
 
-const FIELDING_EVENTS = [
+let FIELDING_EVENTS = [
   "Airborne Stop", "Airborne Catch", "Bad Throw", "Caught", "Catch Dropped",
   "Chase and Stop", "Chase and Miss", "Direct Hit", "Dive and Stop",
   "Dive and Miss", "Catch Taken", "Fumble", "Good Throw", "Missfield",
@@ -219,19 +200,25 @@ function fillGrid(containerId, labels, group) {
   });
 }
 
+// Each group is one ordered list; the first 15 fill the default grid page and
+// the rest appear on the expand-arrow page.
+const GRID_PAGE = 15;
+
 function renderBowlGrid() {
-  const more = BOWL_TYPES[`${state.pace}More`];
-  const list = state.bowlExpanded && more ? more : BOWL_TYPES[state.pace];
-  fillGrid("bowl-grid", list || [], "bowl");
+  const full = BOWL_TYPES[state.pace] || [];
+  const more = full.slice(GRID_PAGE);
+  const list = state.bowlExpanded && more.length ? more : full.slice(0, GRID_PAGE);
+  fillGrid("bowl-grid", list, "bowl");
   state.bowlType = null;
-  syncExpandArrow("bowl-expand", !!more, state.bowlExpanded);
+  syncExpandArrow("bowl-expand", more.length > 0, state.bowlExpanded);
 }
 function renderBatGrid() {
-  const more = SHOT_TYPES[`${state.style}More`];
-  const list = state.shotExpanded && more ? more : SHOT_TYPES[state.style];
-  fillGrid("bat-grid", list || [], "bat");
+  const full = SHOT_TYPES[state.style] || [];
+  const more = full.slice(GRID_PAGE);
+  const list = state.shotExpanded && more.length ? more : full.slice(0, GRID_PAGE);
+  fillGrid("bat-grid", list, "bat");
   state.shotType = null;
-  syncExpandArrow("bat-expand", !!more, state.shotExpanded);
+  syncExpandArrow("bat-expand", more.length > 0, state.shotExpanded);
 }
 
 // Show/point the panel expand arrow (hidden when the category has no extra page)
@@ -1706,6 +1693,7 @@ function wireCapture() {
     btn.classList.toggle("teal", !active);
     btn.classList.toggle("red", active);
   }
+  let captureLabel = "";
   async function start() {
     if (starting || (recorder && recorder.state === "recording")) return;
     starting = true;
@@ -1713,6 +1701,8 @@ function wireCapture() {
       stream = await getCaptureStream();
       videoEl.srcObject = stream;
       chunks.length = 0;
+      // label the clip by where it begins: innings / over / ball (next ball)
+      captureLabel = `INN${state.innings}-OVER${state.over}-BALL${state.ball + 1}`;
       const mime = pickRecorderMime();
       recorder = new MediaRecorder(stream, mime ? { mimeType: mime } : {});
       recorder.ondataavailable = (e) => { if (e.data && e.data.size > 0) chunks.push(e.data); };
@@ -1725,8 +1715,14 @@ function wireCapture() {
         const blob = new Blob(chunks, { type: r.mimeType || "video/webm" });
         chunks.length = 0;
         const buf = await blob.arrayBuffer();
+        // Per-match folder + per-inning filename. With a recordings root set in
+        // video settings this saves silently into <root>/<matchFolder>/.
+        const folder = state.recordingFolder || "";
         const ts = new Date().toISOString().replace(/[:.]/g, "-").slice(0, 19);
-        await window.cricketApp.saveRecording(buf, `cricket-capture-${ts}.webm`);
+        const name = folder
+          ? `${folder}-${captureLabel}.webm`
+          : `cricket-capture-${ts}.webm`;
+        await window.cricketApp.saveRecording(buf, name, folder);
       };
       recorder.start(1000);
       setUi(true);
@@ -1769,8 +1765,61 @@ async function loadMatchContext() {
   }
 }
 
+// Load the bowl-type / shot-type / fielding-factor option lists (and their
+// order) from the masters in the database. Falls back to the hardcoded defaults
+// when the DB bridge is unavailable or a category is empty.
+function groupMaster(rows) {
+  const out = {};
+  (rows || []).forEach((r) => { (out[r.grp || ""] ||= []).push(r.name); });
+  return out;
+}
+
+async function loadMasters() {
+  if (!window.cricketApp?.db?.masters) return;
+  try {
+    const [bowl, shot, field] = await Promise.all([
+      window.cricketApp.db.masters("Bowl Spec"),
+      window.cricketApp.db.masters("Shot Type"),
+      window.cricketApp.db.masters("Fielding Factor"),
+    ]);
+    const b = groupMaster(bowl);
+    if (b.Fast?.length || b.Spin?.length) BOWL_TYPES = { Fast: b.Fast || [], Spin: b.Spin || [] };
+    const s = groupMaster(shot);
+    if (s.Aggressive?.length || s.Defensive?.length) SHOT_TYPES = { Aggressive: s.Aggressive || [], Defensive: s.Defensive || [] };
+    if (field?.length) FIELDING_EVENTS = field.map((f) => f.name);
+  } catch (e) {
+    console.error("load masters failed", e);
+  }
+}
+
+// Build the per-match recordings folder name from home (teamA) vs away (teamB)
+// and the match date, e.g. "M1NAMIBIAVSOMAN040426" (date = DDMMYY). Sanitised to
+// safe filename characters; the main process also re-sanitises before use.
+function recordingFolderName(match) {
+  const A = match.teamA || {}, B = match.teamB || {};
+  const clean = (s) => String(s || "").toUpperCase().replace(/[^A-Z0-9]/g, "");
+  const home = clean(A.name || A.code) || "HOME";
+  const away = clean(B.name || B.code) || "AWAY";
+  const d = new Date(match.matchDate);
+  const date = isNaN(d) ? "" :
+    `${String(d.getDate()).padStart(2, "0")}${String(d.getMonth() + 1).padStart(2, "0")}${String(d.getFullYear()).slice(-2)}`;
+  const num = String(match.matchNo || (match.id || "").match(/\d+/)?.[0] || "").replace(/^0+/, "");
+  const prefix = num ? `M${num}` : "";
+  return `${prefix}${home}VS${away}${date}`;
+}
+
+// Create the match folder under the configured recordings root right away, so
+// captures land in it without prompting (when a root is set in video settings).
+function ensureRecordingFolder() {
+  if (!state.recordingFolder || !window.cricketApp?.ensureRecordingFolder) return;
+  window.cricketApp.ensureRecordingFolder(state.recordingFolder)
+    .catch((e) => console.error("ensure recording folder failed", e));
+}
+
 function applyMatch(match) {
   state.matchId = match.id;
+  state.recordingFolder = recordingFolderName(match);
+  ensureRecordingFolder(); // create the match folder as soon as the match opens
   const A = match.teamA, B = match.teamB; // innings 1: A bats, B bowls
   state.battingTeam = A;
   state.bowlingTeam = B;
@@ -1849,6 +1898,7 @@ function syncToggles() {
 }
 
 async function boot() {
+  await loadMasters();
   const match = await loadMatchContext();
   if (match) applyMatch(match);
 

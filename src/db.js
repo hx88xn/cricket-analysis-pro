@@ -1,5 +1,5 @@
 // ============================================================================
-// SQLite database for Cricket Analysis Pro (main process)
+// SQLite database for CRICPRO (main process)
 // ----------------------------------------------------------------------------
 // Single-machine desktop deployment: the whole dataset lives in an embedded
 // SQLite file under the Electron userData directory (single process, single
@@ -16,7 +16,7 @@
 const fs = require("fs");
 const path = require("path");
 const Database = require("better-sqlite3");
-const { buildSeed } = require("./seed/seed");
+const { buildSeed, buildMasters } = require("./seed/seed");
 
 let db = null; // better-sqlite3 instance
 
@@ -74,6 +74,10 @@ CREATE TABLE IF NOT EXISTS balls (
   bowl_type TEXT, shot_type TEXT, runs INTEGER, ext TEXT, created_at TEXT
 );
 CREATE INDEX IF NOT EXISTS idx_balls_match ON balls(match_id, seq);
+CREATE TABLE IF NOT EXISTS masters (
+  id TEXT PRIMARY KEY, category TEXT, grp TEXT, name TEXT, ord INTEGER
+);
+CREATE INDEX IF NOT EXISTS idx_masters_cat ON masters(category, grp, ord);
 `;
 
 // ---- init + seed ----------------------------------------------------------
@@ -88,7 +92,19 @@ function init(userDataDir) {
   if (db.prepare("SELECT COUNT(*) c FROM teams").get().c === 0) {
     seed(maybeImportJson(userDataDir) || buildSeed());
   }
+  ensureMasters(); // populate option masters (also back-fills existing DBs)
   return db;
+}
+
+// Seed the Bowl Spec / Shot Type / Fielding Factor option lists if absent. Run
+// every init so databases created before this feature get the defaults too.
+function ensureMasters() {
+  if (db.prepare("SELECT COUNT(*) c FROM masters").get().c > 0) return;
+  const ins = db.prepare("INSERT INTO masters (id,category,grp,name,ord) VALUES (?,?,?,?,?)");
+  const tx = db.transaction((items) => {
+    items.forEach((m, i) => ins.run(`mst${i + 1}`, m.category, m.grp || "", m.name, m.ord));
+  });
+  tx(buildMasters());
 }
 
 // If a legacy JSON store exists from the previous engine, import it once so the
@@ -207,6 +223,47 @@ function matchTypes() {
   return db.prepare("SELECT name FROM match_types ORDER BY ord").all().map((r) => r.name);
 }
 
+// ---- masters (Bowl Spec / Shot Type / Fielding Factor option lists) --------
+
+const mapMaster = (r) => r && { id: r.id, category: r.category, grp: r.grp, name: r.name, ord: r.ord };
+
+function masters(category) {
+  const rows = category
+    ? db.prepare("SELECT * FROM masters WHERE category = ? ORDER BY grp, ord, name").all(category)
+    : db.prepare("SELECT * FROM masters ORDER BY category, grp, ord").all();
+  return rows.map(mapMaster);
+}
+
+function saveMaster(item) {
+  const id = item.id || genId("mst", "masters");
+  const grp = item.grp || "";
+  let ord = item.ord;
+  if (ord == null) {
+    const r = db.prepare("SELECT MAX(ord) m FROM masters WHERE category = ? AND grp = ?").get(item.category, grp);
+    ord = (r.m == null ? -1 : r.m) + 1; // append to the end of its group
+  }
+  db.prepare(`INSERT INTO masters (id,category,grp,name,ord) VALUES (@id,@category,@grp,@name,@ord)
+    ON CONFLICT(id) DO UPDATE SET category=@category, grp=@grp, name=@name, ord=@ord`)
+    .run({ id, category: item.category, grp, name: item.name, ord });
+  return { id, category: item.category, grp, name: item.name, ord };
+}
+
+function deleteMaster(id) {
+  const r = db.prepare("DELETE FROM masters WHERE id = ?").run(id);
+  return { deleted: r.changes };
+}
+
+// Persist a new order for a category+group: ids[] in the desired order.
+function reorderMaster(category, grp, ids) {
+  const g = grp || "";
+  const tx = db.transaction((list) => {
+    const upd = db.prepare("UPDATE masters SET ord = ? WHERE id = ? AND category = ? AND grp = ?");
+    list.forEach((id, i) => upd.run(i, id, category, g));
+  });
+  tx(ids || []);
+  return masters(category);
+}
+
 // rebuild the nested teamA/teamB squad+playingXI for a match side
 function sideOf(matchId, side, m) {
   const rows = db.prepare(
@@ -291,6 +348,68 @@ function savePlayer(player) {
       bowling_type: player.bowlingType || "", bowling_spec: player.bowlingSpec || "", dob: player.dob || "",
     });
   return { ...player, id, teamName };
+}
+
+function deleteTeam(id) {
+  const tx = db.transaction(() => {
+    db.prepare("DELETE FROM players WHERE team_id = ?").run(id);
+    db.prepare("DELETE FROM competition_teams WHERE team_id = ?").run(id);
+    return db.prepare("DELETE FROM teams WHERE id = ?").run(id).changes;
+  });
+  return { deleted: tx() };
+}
+
+function deletePlayer(id) {
+  return { deleted: db.prepare("DELETE FROM players WHERE id = ?").run(id).changes };
+}
+
+function saveOfficial(o) {
+  const id = o.id || genId("o", "officials");
+  db.prepare(`INSERT INTO officials (id,name,role,country,category) VALUES (@id,@name,@role,@country,@category)
+    ON CONFLICT(id) DO UPDATE SET name=@name, role=@role, country=@country, category=@category`)
+    .run({ id, name: o.name, role: o.role || "", country: o.country || "", category: o.category || "" });
+  return { ...o, id };
+}
+
+function deleteOfficial(id) {
+  return { deleted: db.prepare("DELETE FROM officials WHERE id = ?").run(id).changes };
+}
+
+function saveGround(g) {
+  const id = g.id || genId("g", "grounds");
+  db.prepare(`INSERT INTO grounds (id,name,country,state,city) VALUES (@id,@name,@country,@state,@city)
+    ON CONFLICT(id) DO UPDATE SET name=@name, country=@country, state=@state, city=@city`)
+    .run({ id, name: g.name, country: g.country || "", state: g.state || "", city: g.city || "" });
+  return { ...g, id };
+}
+
+function deleteGround(id) {
+  return { deleted: db.prepare("DELETE FROM grounds WHERE id = ?").run(id).changes };
+}
+
+function saveCompetition(c) {
+  const id = c.id || genId("c", "competitions");
+  const tx = db.transaction(() => {
+    db.prepare(`INSERT INTO competitions (id,name,trophy,season,format,match_type,start_date,end_date)
+      VALUES (@id,@name,@trophy,@season,@format,@match_type,@start_date,@end_date)
+      ON CONFLICT(id) DO UPDATE SET name=@name, trophy=@trophy, season=@season, format=@format,
+        match_type=@match_type, start_date=@start_date, end_date=@end_date`)
+      .run({ id, name: c.name, trophy: c.trophy || "", season: c.season || "", format: c.format || "",
+        match_type: c.matchType || "", start_date: c.startDate || "", end_date: c.endDate || "" });
+    db.prepare("DELETE FROM competition_teams WHERE competition_id = ?").run(id);
+    const insCT = db.prepare("INSERT OR IGNORE INTO competition_teams (competition_id,team_id) VALUES (?,?)");
+    (c.teamIds || []).forEach((tid) => insCT.run(id, tid));
+  });
+  tx();
+  return { ...c, id };
+}
+
+function deleteCompetition(id) {
+  const tx = db.transaction(() => {
+    db.prepare("DELETE FROM competition_teams WHERE competition_id = ?").run(id);
+    return db.prepare("DELETE FROM competitions WHERE id = ?").run(id).changes;
+  });
+  return { deleted: tx() };
 }
 
 // low-level match writer (used by seed + saveMatch); assumes inside a tx
@@ -445,11 +564,23 @@ module.exports = {
   officials,
   grounds,
   matchTypes,
+  masters,
+  saveMaster,
+  deleteMaster,
+  reorderMaster,
   matches,
   getMatch,
   getMatchExpanded,
   saveTeam,
   savePlayer,
+  deleteTeam,
+  deletePlayer,
+  saveOfficial,
+  deleteOfficial,
+  saveGround,
+  deleteGround,
+  saveCompetition,
+  deleteCompetition,
   saveMatch,
   saveMatchState,
   deleteMatch,

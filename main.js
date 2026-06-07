@@ -67,16 +67,41 @@ ipcMain.handle("dialog:select-database-file", async (event, opts) => {
   return { canceled: false, path: filePaths[0] };
 });
 
-ipcMain.handle("save-recording", async (event, arrayBuffer, defaultName) => {
+// Sanitise an untrusted folder/file segment so it can't escape the root.
+function safeSegment(s) {
+  return String(s || "").replace(/[^A-Za-z0-9 _-]/g, "").replace(/\s+/g, " ").trim();
+}
+
+// Create the per-match subfolder under the configured recordings root. Called
+// as soon as a match opens so its folder exists before any recording. Returns
+// { ok, path } when a root is configured, otherwise { ok:false } so the renderer
+// knows it will have to fall back to the Save As dialog on capture.
+ipcMain.handle("recordings:ensure-folder", async (_event, folderName) => {
+  const cfg = loadConfig();
+  const root = (cfg.recordingsPath || "").trim();
+  const sub = safeSegment(folderName);
+  if (!root || !sub) return { ok: false };
+  try {
+    const dir = path.join(root, sub);
+    await fs.promises.mkdir(dir, { recursive: true });
+    return { ok: true, path: dir };
+  } catch (e) {
+    return { ok: false, error: String(e && e.message || e) };
+  }
+});
+
+ipcMain.handle("save-recording", async (event, arrayBuffer, defaultName, subfolder) => {
   const win = BrowserWindow.fromWebContents(event.sender);
   const cfg = loadConfig();
   const baseName = defaultName || "cricket-capture.webm";
-  const dir = (cfg.recordingsPath || "").trim();
+  const root = (cfg.recordingsPath || "").trim();
+  const sub = safeSegment(subfolder);
 
-  // If a recordings folder is configured, save straight into it without
-  // prompting (no Save As dialog). Fall back to the dialog only on failure.
-  if (dir) {
+  // If a recordings root is configured, save straight into it (inside the
+  // per-match subfolder when given) without prompting. Dialog only on failure.
+  if (root) {
     try {
+      const dir = sub ? path.join(root, sub) : root;
       await fs.promises.mkdir(dir, { recursive: true });
       const filePath = path.join(dir, path.basename(baseName));
       await fs.promises.writeFile(filePath, Buffer.from(arrayBuffer));
@@ -106,10 +131,22 @@ ipcMain.handle("db:competitions", () => db.competitions());
 ipcMain.handle("db:officials", (_e, role) => db.officials(role));
 ipcMain.handle("db:grounds", () => db.grounds());
 ipcMain.handle("db:matchTypes", () => db.matchTypes());
+ipcMain.handle("db:masters", (_e, category) => db.masters(category));
+ipcMain.handle("db:master:save", (_e, item) => db.saveMaster(item));
+ipcMain.handle("db:master:delete", (_e, id) => db.deleteMaster(id));
+ipcMain.handle("db:master:reorder", (_e, { category, grp, ids }) => db.reorderMaster(category, grp, ids));
 ipcMain.handle("db:matches", () => db.matches());
 ipcMain.handle("db:match:get", (_e, id) => db.getMatchExpanded(id));
 ipcMain.handle("db:team:save", (_e, team) => db.saveTeam(team));
+ipcMain.handle("db:team:delete", (_e, id) => db.deleteTeam(id));
 ipcMain.handle("db:player:save", (_e, player) => db.savePlayer(player));
+ipcMain.handle("db:player:delete", (_e, id) => db.deletePlayer(id));
+ipcMain.handle("db:official:save", (_e, o) => db.saveOfficial(o));
+ipcMain.handle("db:official:delete", (_e, id) => db.deleteOfficial(id));
+ipcMain.handle("db:ground:save", (_e, g) => db.saveGround(g));
+ipcMain.handle("db:ground:delete", (_e, id) => db.deleteGround(id));
+ipcMain.handle("db:competition:save", (_e, c) => db.saveCompetition(c));
+ipcMain.handle("db:competition:delete", (_e, id) => db.deleteCompetition(id));
 ipcMain.handle("db:match:save", (_e, match) => db.saveMatch(match));
 ipcMain.handle("db:match:saveState", (_e, { id, state, status }) => db.saveMatchState(id, state, status));
 ipcMain.handle("db:match:delete", (_e, id) => db.deleteMatch(id));
@@ -142,7 +179,9 @@ function createWindow() {
 }
 
 app.whenReady().then(() => {
-  db.init(app.getPath("userData"));
+  // Store the live database inside the repo (data/cricket.sqlite) so it is
+  // versioned alongside the code rather than in the per-user Electron dir.
+  db.init(path.join(__dirname, "data"));
   createWindow();
 });
 

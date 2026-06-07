@@ -311,4 +311,52 @@ function buildSeed() {
   };
 }
 
-module.exports = { buildSeed };
+// ---- Master option lists (Bowl Spec / Shot Type / Fielding Factor) --------
+// These drive the coding screen's Fast/Spin + Aggressive/Defensive grids and the
+// wagon-wheel right-click fielding menu. Order here is the default display order
+// (editable + reorderable from the Masters menu). The first 15 of each bowl/shot
+// group fill the default grid page; the rest appear on the expand-arrow page.
+const MASTER_LISTS = {
+  "Bowl Spec": {
+    Fast: ["Inswinger", "OutSwinger", "Straight Ball", "Angled In", "Angled Across",
+      "Bouncer", "Nip Backer", "Nipped Away", "Slow Bouncer", "Full Toss", "Slower Ball",
+      "Yorker", "Off Cutter", "Leg Cutter", "Cross Seam", "Reverse Swing",
+      "Reverse Swinging Yorker", "InSwinging Yorker", "Slow Yorker", "Knuckle Ball",
+      "Split Finger", "Back Hand Slower Ball", "Wide Yorker"],
+    Spin: ["Off Spin", "Doosra", "Faster One", "Leg Spin", "Googly", "Flipper",
+      "Orthodox", "Chinaman", "Arm Ball", "Straighter One", "Full Toss", "No turn",
+      "Wrong One", "Top Spin", "Carrom Ball", "Drifter", "Under Spin", "Slider",
+      "Yorker", "Back Spin", "W Yorker"],
+  },
+  "Shot Type": {
+    Aggressive: ["Cover Drive", "Square Drive", "Straight Drive", "Off Drive", "On Drive",
+      "Flick", "Cut", "Pull", "Slash", "Sweep Shot", "Slog Sweep", "Slog Shot",
+      "Lofted Off", "Lofted On", "Lofted Over Cover", "Hook", "Inside Out",
+      "Lofted Straight", "Chip Shot", "Upper Cut", "Punch", "Scoop", "Paddle Sweep",
+      "Reverse Sweep", "Switch Hit", "Reverse Scoop", "Pick Up", "Helicopter Shot",
+      "Shot Arm Pull", "Slap", "Lap Shot", "Ramp", "Reverse Lap", "Lofted Square"],
+    Defensive: ["Forward Defence", "Backfoot Defence", "Glide", "Left Alone", "Push",
+      "No Shot", "Late Cut", "Ducked", "Leg Glance", "Soft Hand Defence", "Steer", "Worked"],
+  },
+  "Fielding Factor": {
+    "": ["Airborne Stop", "Airborne Catch", "Bad Throw", "Caught", "Catch Dropped",
+      "Chase and Stop", "Chase and Miss", "Direct Hit", "Dive and Stop", "Dive and Miss",
+      "Catch Taken", "Fumble", "Good Throw", "Missfield", "One Hand Pick and Throw",
+      "Pick and Throw", "Run Out Made", "Run Out Missed", "Relay Throw", "Slide and Stop",
+      "Slide and Miss", "Stumping", "Stumping Made", "Stumping Missed", "Slow to the Ball",
+      "Thrown at Stumps", "Well Kept", "Well Fielded", "BACK UP", "GREAT EFFORT"],
+  },
+};
+
+// Flatten to seed rows: { category, grp, name, ord } (ord per category+group).
+function buildMasters() {
+  const out = [];
+  Object.entries(MASTER_LISTS).forEach(([category, groups]) => {
+    Object.entries(groups).forEach(([grp, names]) => {
+      names.forEach((name, ord) => out.push({ category, grp, name, ord }));
+    });
+  });
+  return out;
+}
+
+module.exports = { buildSeed, buildMasters };

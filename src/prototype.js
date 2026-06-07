@@ -91,7 +91,7 @@ const screenDefs = {
       <section class="mini-brand">
         <div class="hero-mark">
           <div class="bat-icon"></div>
-          <h2 class="cap-title"><strong>C</strong>ricket <span class="tag">a</span>nalysis <strong>P</strong>ro</h2>
+          <h2 class="cap-title"><strong>CRIC</strong><span class="tag">PRO</span></h2>
           <div class="cap-version">Version 4.0</div>
         </div>
       </section>`,
@@ -132,7 +132,6 @@ const screenDefs = {
         <a class="menu-card" href="prototype.html?screen=official-master"><div><div class="icon">☝️</div><div class="label">Officials</div><div class="line"></div></div></a>
         <a class="menu-card" href="prototype.html?screen=ground-master"><div><div class="icon">⭕</div><div class="label">Ground</div><div class="line"></div></div></a>
         <a class="menu-card" href="prototype.html?screen=shot-type"><div><div class="icon">🏏</div><div class="label">Shot Type</div><div class="line"></div></div></a>
-        <a class="menu-card" href="prototype.html?screen=ball-type"><div><div class="icon">⚾</div><div class="label">Ball Type</div><div class="line"></div></div></a>
         <a class="menu-card" href="prototype.html?screen=bowl-spec"><div><div class="icon">🥎</div><div class="label">Bowl Spec</div><div class="line"></div></div></a>
         <a class="menu-card" href="prototype.html?screen=fielding-factors"><div><div class="icon">🕓</div><div class="label">Fielding Factors</div><div class="line"></div></div></a>
         <a class="menu-card" href="prototype.html?screen=user-creation"><div><div class="icon">👤</div><div class="label">User Creation</div><div class="line"></div></div></a>
@@ -141,54 +140,20 @@ const screenDefs = {
   "shot-type": {
     title: "Shot Type",
     back: "prototype.html?screen=masters-menu",
-    body: `
-      <section class="form-screen" style="max-width: 980px;">
-        <div class="form-grid" style="grid-template-columns: 180px 1fr;">
-          <label class="field-label">Shot Name</label><input class="field-control" />
-          <label class="field-label">Shot Type</label><select class="field-select"><option>Aggressive</option><option>Defensive</option></select>
-        </div>
-        <div class="btn-row"><button class="btn-main btn-green">Save</button><button class="btn-main btn-yellow">Clear</button><button class="btn-main btn-red">Delete</button></div>
-        ${buildTable(["Order No", "Shot Name", "Shot Type"], [["1", "Cover Drive", "Aggressive"], ["2", "Square Drive", "Aggressive"], ["3", "Straight Drive", "Aggressive"], ["4", "Forward Defence", "Defensive"], ["5", "Leg Glance", "Defensive"]])}
-      </section>`,
-  },
-  "ball-type": {
-    title: "Ball Type",
-    back: "prototype.html?screen=masters-menu",
-    body: `
-      <section class="form-screen" style="max-width: 980px;">
-        <div class="form-grid" style="grid-template-columns: 180px 1fr;">
-          <label class="field-label">Ball Type</label><input class="field-control" />
-          <label class="field-label">Bowler Type</label><select class="field-select"><option>Fast</option><option>Spin</option></select>
-        </div>
-        <div class="btn-row"><button class="btn-main btn-green">Save</button><button class="btn-main btn-yellow">Clear</button><button class="btn-main btn-red">Delete</button></div>
-        ${buildTable(["Order No", "Ball Type", "Bowler Type"], [["1", "Inswinger", "Fast"], ["2", "OutSwinger", "Fast"], ["3", "Off Spin", "Spin"], ["4", "Doosra", "Spin"], ["5", "Yorker", "Fast"]])}
-      </section>`,
+    build: () => buildMasterEditor("Shot Type", ["Aggressive", "Defensive"], "Shot Name"),
+    init: (root) => initMasterEditor(root, "Shot Type", ["Aggressive", "Defensive"], "Shot Name"),
   },
   "bowl-spec": {
-    title: "Bowler Specialization",
+    title: "Bowl Spec",
     back: "prototype.html?screen=masters-menu",
-    body: `
-      <section class="form-screen" style="max-width: 1060px;">
-        <div class="form-grid" style="grid-template-columns: 260px 1fr;">
-          <label class="field-label">Bowler Specialization</label><input class="field-control" />
-          <label class="field-label">Bowling Type</label><select class="field-select"><option>Fast</option><option>Spin</option></select>
-          <label class="field-label">Bowling Style</label><select class="field-select"><option>Right Arm</option><option>Left Arm</option></select>
-        </div>
-        <div class="btn-row"><button class="btn-main btn-green">Save</button><button class="btn-main btn-yellow">Clear</button><button class="btn-main btn-red">Delete</button></div>
-        ${buildTable(["Bowler Specialization", "Bowling Style", "Bowling Type"], [["Chinaman", "Left Arm", "Spin"], ["Fast", "Both", "Fast"], ["Leg Spin", "Right Arm", "Spin"], ["Off Spin", "Right Arm", "Spin"], ["Orthodox", "Left Arm", "Spin"]])}
-      </section>`,
+    build: () => buildMasterEditor("Bowl Spec", ["Fast", "Spin"], "Bowl Spec"),
+    init: (root) => initMasterEditor(root, "Bowl Spec", ["Fast", "Spin"], "Bowl Spec"),
   },
   "fielding-factors": {
     title: "Fielding Factors",
     back: "prototype.html?screen=masters-menu",
-    body: `
-      <section class="form-screen" style="max-width: 1040px;">
-        <div class="form-grid" style="grid-template-columns: 210px 1fr;">
-          <label class="field-label">Fielding Factor</label><input class="field-control" />
-        </div>
-        <div class="btn-row"><button class="btn-main btn-green">Save</button><button class="btn-main btn-yellow">Clear</button><button class="btn-main btn-red">Delete</button></div>
-        ${buildTable(["Order No", "Fielding Factor"], [["1", "Airborne Stop"], ["2", "Airborne Catch"], ["3", "Bad Throw"], ["4", "Caught"], ["5", "Catch Dropped"], ["6", "Direct Hit"]])}
-      </section>`,
+    build: () => buildMasterEditor("Fielding Factor", [], "Fielding Factor"),
+    init: (root) => initMasterEditor(root, "Fielding Factor", [], "Fielding Factor"),
   },
   "user-creation": {
     title: "User Creation",
@@ -216,9 +181,15 @@ const screenDefs = {
   // ---- data-driven screens ----
   "team-master": { title: "Team Master", back: "prototype.html?screen=masters-menu", build: buildTeamMaster, init: initTeamMaster },
   "player-master": { title: "Player Master", back: "prototype.html?screen=masters-menu", build: buildPlayerMaster, init: initPlayerMaster },
-  "competition-master": { title: "Competition Master", back: "prototype.html?screen=masters-menu", build: buildCompetitionMaster },
-  "official-master": { title: "Officials Master", back: "prototype.html?screen=masters-menu", build: buildOfficialMaster },
-  "ground-master": { title: "Ground Master", back: "prototype.html?screen=masters-menu", build: buildGroundMaster },
+  "competition-master": { title: "Competition Master", back: "prototype.html?screen=masters-menu", build: buildCompetitionMaster, init: initCompetitionMaster },
+  "official-master": {
+    title: "Officials Master", back: "prototype.html?screen=masters-menu",
+    build: () => buildCrudMaster(OFFICIAL_CFG), init: (root) => initCrudMaster(root, OFFICIAL_CFG),
+  },
+  "ground-master": {
+    title: "Ground Master", back: "prototype.html?screen=masters-menu",
+    build: () => buildCrudMaster(GROUND_CFG), init: (root) => initCrudMaster(root, GROUND_CFG),
+  },
   "match-registration": { title: "Match Registration", back: "home.html", build: buildMatchRegistration, init: initMatchRegistration },
   "match-details": { title: "Match Details", back: "home.html", build: buildMatchDetails, init: initMatchDetails },
 };
@@ -227,9 +198,11 @@ const screenDefs = {
 // Masters — Team
 // ===========================================================================
 
+const TEAM_COLUMNS = [
+  { key: "name", label: "Team Name" }, { key: "code", label: "Team Code" }, { key: "type", label: "Team Type" },
+];
+
 async function buildTeamMaster() {
-  const teams = (await dbCall("teams")) || [];
-  const rows = teams.map((t) => [esc(t.name), esc(t.code), esc(t.type)]);
   return `
     <section class="form-screen">
       <div class="form-layout">
@@ -245,31 +218,56 @@ async function buildTeamMaster() {
         <div><div class="panel-header">Team Logo</div><div class="photo-box">📷</div></div>
       </div>
       <div class="btn-row">
-        <button class="btn-main btn-green" id="tm-save">Save</button>
+        <button class="btn-main btn-green" id="tm-save">Add</button>
         <button class="btn-main btn-yellow" id="tm-clear">Clear</button>
       </div>
-      <div id="tm-table">${buildTable(["Team Name", "Team Code", "Team Type"], rows)}</div>
+      <div id="tm-table"></div>
     </section>`;
 }
 
 function initTeamMaster(root) {
-  const clear = () => {
-    root.querySelector("#tm-name").value = "";
-    root.querySelector("#tm-code").value = "";
-  };
-  root.querySelector("#tm-clear").addEventListener("click", clear);
-  root.querySelector("#tm-save").addEventListener("click", async () => {
-    const name = root.querySelector("#tm-name").value.trim();
-    const code = root.querySelector("#tm-code").value.trim();
-    const type = root.querySelector("#tm-type").value;
-    if (!name || !code) return toast("Team name and code are required", true);
-    await dbCall("saveTeam", { name, code: code.toUpperCase(), type });
-    toast(`Saved team ${name}`);
-    clear();
+  const nameEl = root.querySelector("#tm-name");
+  const codeEl = root.querySelector("#tm-code");
+  const typeEl = root.querySelector("#tm-type");
+  const tableEl = root.querySelector("#tm-table");
+  const saveBtn = root.querySelector("#tm-save");
+  let editing = null;
+
+  const setEditing = (id) => { editing = id; saveBtn.textContent = id ? "Update" : "Add"; saveBtn.classList.toggle("btn-blue", !!id); };
+  const clear = () => { nameEl.value = ""; codeEl.value = ""; typeEl.selectedIndex = 0; setEditing(null); };
+
+  async function refresh() {
     const teams = (await dbCall("teams")) || [];
-    const rows = teams.map((t) => [esc(t.name), esc(t.code), esc(t.type)]);
-    root.querySelector("#tm-table").innerHTML = buildTable(["Team Name", "Team Code", "Team Type"], rows);
+    tableEl._items = teams;
+    tableEl.innerHTML = crudRows(teams, TEAM_COLUMNS);
+    tableEl.querySelectorAll(".mst-btn").forEach((b) => b.addEventListener("click", onRowAction));
+  }
+  async function onRowAction() {
+    const id = this.dataset.id;
+    if (this.dataset.act === "del") {
+      if (editing === id) clear();
+      await dbCall("deleteTeam", id);
+      return refresh();
+    }
+    const t = (tableEl._items || []).find((x) => x.id === id);
+    if (!t) return;
+    nameEl.value = t.name || ""; codeEl.value = t.code || ""; typeEl.value = t.type || typeEl.options[0].value;
+    setEditing(id); nameEl.focus();
+  }
+
+  root.querySelector("#tm-clear").addEventListener("click", clear);
+  saveBtn.addEventListener("click", async () => {
+    const name = nameEl.value.trim();
+    const code = codeEl.value.trim();
+    const type = typeEl.value;
+    if (!name || !code) return toast("Team name and code are required", true);
+    await dbCall("saveTeam", { id: editing || undefined, name, code: code.toUpperCase(), type });
+    toast(`${editing ? "Updated" : "Saved"} team ${name}`);
+    clear();
+    refresh();
   });
+  setEditing(null);
+  refresh();
 }
 
 // ===========================================================================
@@ -298,127 +296,503 @@ async function buildPlayerMaster() {
         <div><div class="panel-header">Player Portrait</div><div class="photo-box">📷</div></div>
       </div>
       <div class="btn-row">
-        <button class="btn-main btn-green" id="pm-save">Save</button>
+        <button class="btn-main btn-green" id="pm-save">Add</button>
         <button class="btn-main btn-yellow" id="pm-clear">Clear</button>
       </div>
       <div id="pm-table"></div>
     </section>`;
 }
 
-async function refreshPlayerTable(root) {
-  const teamId = root.querySelector("#pm-team").value;
-  const players = (await dbCall("players", teamId)) || [];
-  const rows = players.map((p, i) => [
-    String(i + 1),
-    esc(p.name),
-    esc(p.battingStyle),
-    esc([p.bowlingStyle, p.bowlingType].filter(Boolean).join(" ")),
-    esc(p.role),
-  ]);
-  root.querySelector("#pm-table").innerHTML = buildTable(
-    ["S.No", "Player Name", "Batting Style", "Bowling Style", "Role"], rows);
-}
+const PLAYER_COLUMNS = [
+  { key: "sno", label: "S.No" }, { key: "name", label: "Player Name" },
+  { key: "battingStyle", label: "Batting Style" }, { key: "bowling", label: "Bowling Style" },
+  { key: "role", label: "Role" },
+];
 
 function initPlayerMaster(root) {
-  refreshPlayerTable(root);
-  root.querySelector("#pm-team").addEventListener("change", () => refreshPlayerTable(root));
-  root.querySelector("#pm-clear").addEventListener("click", () => {
-    root.querySelector("#pm-name").value = "";
-    root.querySelector("#pm-short").value = "";
-  });
-  root.querySelector("#pm-save").addEventListener("click", async () => {
-    const name = root.querySelector("#pm-name").value.trim();
+  const q = (id) => root.querySelector(id);
+  const nameEl = q("#pm-name"), shortEl = q("#pm-short"), teamEl = q("#pm-team");
+  const roleEl = q("#pm-role"), batEl = q("#pm-bat"), bowlStyleEl = q("#pm-bowlstyle"), bowlTypeEl = q("#pm-bowltype");
+  const tableEl = q("#pm-table"), saveBtn = q("#pm-save");
+  let editing = null;
+
+  const setEditing = (id) => { editing = id; saveBtn.textContent = id ? "Update" : "Add"; saveBtn.classList.toggle("btn-blue", !!id); };
+  const clear = () => { nameEl.value = ""; shortEl.value = ""; setEditing(null); };
+
+  async function refresh() {
+    const players = (await dbCall("players", teamEl.value)) || [];
+    const rows = players.map((p, i) => ({
+      ...p, sno: i + 1, bowling: [p.bowlingStyle, p.bowlingType].filter(Boolean).join(" "),
+    }));
+    tableEl._items = rows;
+    tableEl.innerHTML = crudRows(rows, PLAYER_COLUMNS);
+    tableEl.querySelectorAll(".mst-btn").forEach((b) => b.addEventListener("click", onRowAction));
+  }
+  async function onRowAction() {
+    const id = this.dataset.id;
+    if (this.dataset.act === "del") {
+      if (editing === id) clear();
+      await dbCall("deletePlayer", id);
+      return refresh();
+    }
+    const p = (tableEl._items || []).find((x) => x.id === id);
+    if (!p) return;
+    nameEl.value = p.name || ""; shortEl.value = p.shortName || "";
+    if (p.teamId) teamEl.value = p.teamId;
+    roleEl.value = p.role || roleEl.options[0].value;
+    batEl.value = p.battingStyleCode || (p.battingStyle === "Left Hand Bat" ? "LHB" : "RHB");
+    bowlStyleEl.value = p.bowlingStyle || "";
+    bowlTypeEl.value = p.bowlingType || "";
+    setEditing(id); nameEl.focus();
+  }
+
+  teamEl.addEventListener("change", () => { if (!editing) refresh(); });
+  q("#pm-clear").addEventListener("click", clear);
+  saveBtn.addEventListener("click", async () => {
+    const name = nameEl.value.trim();
     if (!name) return toast("Player name is required", true);
-    const bat = root.querySelector("#pm-bat").value;
+    const bat = batEl.value;
     await dbCall("savePlayer", {
+      id: editing || undefined,
       name,
-      shortName: root.querySelector("#pm-short").value.trim() || name.split(" ").slice(-1)[0],
-      teamId: root.querySelector("#pm-team").value,
-      role: root.querySelector("#pm-role").value,
+      shortName: shortEl.value.trim() || name.split(" ").slice(-1)[0],
+      teamId: teamEl.value,
+      role: roleEl.value,
       battingStyleCode: bat,
       battingStyle: bat === "LHB" ? "Left Hand Bat" : "Right Hand Bat",
-      bowlingStyle: root.querySelector("#pm-bowlstyle").value,
-      bowlingType: root.querySelector("#pm-bowltype").value,
+      bowlingStyle: bowlStyleEl.value,
+      bowlingType: bowlTypeEl.value,
       bowlingSpec: "",
     });
-    toast(`Saved player ${name}`);
-    root.querySelector("#pm-name").value = "";
-    root.querySelector("#pm-short").value = "";
-    refreshPlayerTable(root);
+    toast(`${editing ? "Updated" : "Saved"} player ${name}`);
+    clear();
+    refresh();
   });
+  setEditing(null);
+  refresh();
 }
 
 // ===========================================================================
-// Masters — Competition / Officials / Ground (read views)
+// Masters — option lists (Bowl Spec / Shot Type / Fielding Factor)
+// Editable + reorderable; the order here drives the coding screen grids.
+// ===========================================================================
+
+function masterTableCols(hasGroups) {
+  return `70px 1fr ${hasGroups ? "150px " : ""}132px`;
+}
+
+function renderMasterRows(items, groups, nameLabel) {
+  const hasGroups = groups && groups.length;
+  const cols = masterTableCols(hasGroups);
+  const sections = (hasGroups ? groups : [""]).map((grp) => {
+    const list = items.filter((it) => (it.grp || "") === grp);
+    const head = `<div class="table-head" style="grid-template-columns:${cols};">
+      <span>Order</span><span>${esc(nameLabel)}</span>${hasGroups ? "<span>Group</span>" : ""}<span>Actions</span></div>`;
+    const rows = list.length ? list.map((it, i) => `
+      <div class="table-row mst-row" draggable="true" data-id="${esc(it.id)}" data-grp="${esc(grp)}" style="grid-template-columns:${cols};">
+        <span class="mst-order"><span class="mst-grip" title="Drag to reorder">⠿</span>${i + 1}</span>
+        <span>${esc(it.name)}</span>
+        ${hasGroups ? `<span>${esc(grp)}</span>` : ""}
+        <span class="mst-actions">
+          <button class="mst-btn" data-act="up" data-id="${esc(it.id)}" data-grp="${esc(grp)}" ${i === 0 ? "disabled" : ""}>▲</button>
+          <button class="mst-btn" data-act="down" data-id="${esc(it.id)}" data-grp="${esc(grp)}" ${i === list.length - 1 ? "disabled" : ""}>▼</button>
+          <button class="mst-btn" data-act="edit" data-id="${esc(it.id)}" data-name="${esc(it.name)}" data-grp="${esc(grp)}" title="Edit">✎</button>
+          <button class="mst-btn mst-del" data-act="del" data-id="${esc(it.id)}">✕</button>
+        </span>
+      </div>`).join("") : `<div class="table-empty-row">No records found.</div>`;
+    return `${hasGroups ? `<h4 class="mst-grp-title">${esc(grp)}</h4>` : ""}
+      <section class="table-shell">${head}<div class="table-rows" data-grp="${esc(grp)}">${rows}</div></section>`;
+  }).join("");
+  return sections;
+}
+
+async function buildMasterEditor(category, groups, nameLabel) {
+  const hasGroups = groups && groups.length;
+  const grpField = hasGroups
+    ? `<label class="field-label">Group</label><select class="field-select" id="mm-grp">${
+        groups.map((g) => `<option>${esc(g)}</option>`).join("")}</select>`
+    : "";
+  return `
+    <section class="form-screen" style="max-width: 1040px;">
+      <div class="form-grid" style="grid-template-columns: 200px 1fr;">
+        <label class="field-label">${esc(nameLabel)}</label><input class="field-control" id="mm-name" />
+        ${grpField}
+      </div>
+      <div class="btn-row">
+        <button class="btn-main btn-green" id="mm-save">Add</button>
+        <button class="btn-main btn-yellow" id="mm-clear">Clear</button>
+      </div>
+      <p class="mst-hint">Drag a row by its ⠿ handle, or use ▲ ▼, to set the display order — it replicates on the coding screen (top-left first).</p>
+      <div id="mm-table"></div>
+    </section>`;
+}
+
+function initMasterEditor(root, category, groups, nameLabel) {
+  const tableEl = root.querySelector("#mm-table");
+  const nameEl = root.querySelector("#mm-name");
+  const grpEl = root.querySelector("#mm-grp");
+  const saveBtn = root.querySelector("#mm-save");
+  let editing = null; // { id, grp, ord } when editing an existing row
+
+  const setEditing = (item) => {
+    editing = item;
+    saveBtn.textContent = item ? "Update" : "Add";
+    saveBtn.classList.toggle("btn-blue", !!item);
+  };
+
+  async function refresh() {
+    const items = (await dbCall("masters", category)) || [];
+    tableEl.innerHTML = renderMasterRows(items, groups, nameLabel);
+    tableEl.querySelectorAll(".mst-btn").forEach((btn) => btn.addEventListener("click", onRowAction));
+    wireDrag();
+  }
+
+  async function onRowAction() {
+    const act = this.dataset.act, id = this.dataset.id, grp = this.dataset.grp || "";
+    if (act === "del") {
+      if (editing && editing.id === id) clearForm();
+      await dbCall("deleteMaster", id);
+      return refresh();
+    }
+    if (act === "edit") {
+      nameEl.value = this.dataset.name || "";
+      if (grpEl) grpEl.value = grp;
+      const items = (await dbCall("masters", category)) || [];
+      const cur = items.find((it) => it.id === id) || {};
+      setEditing({ id, grp, ord: cur.ord });
+      nameEl.focus();
+      return;
+    }
+    const items = (await dbCall("masters", category)) || [];
+    const ids = items.filter((it) => (it.grp || "") === grp).map((it) => it.id);
+    const idx = ids.indexOf(id);
+    const swap = act === "up" ? idx - 1 : idx + 1;
+    if (idx < 0 || swap < 0 || swap >= ids.length) return;
+    [ids[idx], ids[swap]] = [ids[swap], ids[idx]];
+    await dbCall("reorderMaster", category, grp, ids);
+    refresh();
+  }
+
+  function clearForm() { nameEl.value = ""; setEditing(null); }
+
+  // Drag-and-drop reordering: rows can only be reordered within their own group
+  // (Fast/Spin, Aggressive/Defensive). On drop we read the new DOM order of ids
+  // and persist it. Dragging is suppressed when the press starts on a button.
+  function wireDrag() {
+    let dragEl = null;
+    let dragGrp = null;
+
+    const rowAfter = (container, y) => {
+      const rows = [...container.querySelectorAll(".mst-row:not(.dragging)")];
+      return rows.reduce((closest, row) => {
+        const box = row.getBoundingClientRect();
+        const offset = y - box.top - box.height / 2;
+        if (offset < 0 && offset > closest.offset) return { offset, el: row };
+        return closest;
+      }, { offset: -Infinity, el: null }).el;
+    };
+
+    tableEl.querySelectorAll(".mst-row").forEach((row) => {
+      // don't initiate a drag from the action buttons
+      row.querySelectorAll(".mst-btn").forEach((b) => {
+        b.addEventListener("mousedown", (e) => e.stopPropagation());
+        b.draggable = false;
+      });
+      row.addEventListener("dragstart", (e) => {
+        dragEl = row; dragGrp = row.dataset.grp || "";
+        row.classList.add("dragging");
+        e.dataTransfer.effectAllowed = "move";
+        try { e.dataTransfer.setData("text/plain", row.dataset.id); } catch { /* ignore */ }
+      });
+      row.addEventListener("dragend", () => {
+        row.classList.remove("dragging");
+        tableEl.querySelectorAll(".table-rows.drop-active").forEach((c) => c.classList.remove("drop-active"));
+        dragEl = null; dragGrp = null;
+      });
+    });
+
+    tableEl.querySelectorAll(".table-rows").forEach((container) => {
+      container.addEventListener("dragover", (e) => {
+        if (!dragEl || (container.dataset.grp || "") !== dragGrp) return; // same group only
+        e.preventDefault();
+        container.classList.add("drop-active");
+        const after = rowAfter(container, e.clientY);
+        if (after == null) container.appendChild(dragEl);
+        else container.insertBefore(dragEl, after);
+      });
+      container.addEventListener("dragleave", (e) => {
+        if (!container.contains(e.relatedTarget)) container.classList.remove("drop-active");
+      });
+      container.addEventListener("drop", async (e) => {
+        if (!dragEl || (container.dataset.grp || "") !== dragGrp) return;
+        e.preventDefault();
+        const grp = container.dataset.grp || "";
+        const ids = [...container.querySelectorAll(".mst-row")].map((r) => r.dataset.id);
+        await dbCall("reorderMaster", category, grp, ids);
+        refresh(); // re-render so the order numbers + arrow disabled-states update
+      });
+    });
+  }
+
+  saveBtn.addEventListener("click", async () => {
+    const name = nameEl.value.trim();
+    if (!name) return toast(`${nameLabel} is required`, true);
+    const grp = grpEl ? grpEl.value : "";
+    if (editing) {
+      // keep the row's position unless its group changed (then append to new group)
+      const payload = { id: editing.id, category, grp, name };
+      if (grp === editing.grp) payload.ord = editing.ord;
+      await dbCall("saveMaster", payload);
+      toast(`Updated ${name}`);
+    } else {
+      await dbCall("saveMaster", { category, grp, name });
+      toast(`Added ${name}`);
+    }
+    clearForm();
+    refresh();
+  });
+  root.querySelector("#mm-clear").addEventListener("click", clearForm);
+
+  setEditing(null);
+  refresh();
+}
+
+// ===========================================================================
+// Generic entity master (flat records) — Add / Edit / Delete from the DB.
+// Used by Officials and Ground; configured with fields + columns + db verbs.
+// ===========================================================================
+
+function crudFieldHtml(f) {
+  if (f.type === "select") {
+    return `<label class="field-label">${esc(f.label)}</label>
+      <select class="field-select" data-key="${esc(f.key)}">${
+        (f.options || []).map((o) => `<option>${esc(o)}</option>`).join("")}</select>`;
+  }
+  return `<label class="field-label">${esc(f.label)}</label>
+    <input class="field-control" data-key="${esc(f.key)}" ${f.placeholder ? `placeholder="${esc(f.placeholder)}"` : ""} />`;
+}
+
+function crudRows(items, columns) {
+  const cols = `${columns.map(() => "1fr").join(" ")} 120px`;
+  const head = `<div class="table-head" style="grid-template-columns:${cols};">${
+    columns.map((c) => `<span>${esc(c.label)}</span>`).join("")}<span>Actions</span></div>`;
+  const body = items.length ? items.map((it) => `
+    <div class="table-row" style="grid-template-columns:${cols};">
+      ${columns.map((c) => `<span>${esc(it[c.key] ?? "")}</span>`).join("")}
+      <span class="mst-actions">
+        <button class="mst-btn" data-act="edit" data-id="${esc(it.id)}" title="Edit">✎</button>
+        <button class="mst-btn mst-del" data-act="del" data-id="${esc(it.id)}" title="Delete">✕</button>
+      </span>
+    </div>`).join("") : `<div class="table-empty-row">No records found.</div>`;
+  return `<section class="table-shell">${head}<div class="table-rows">${body}</div></section>`;
+}
+
+async function buildCrudMaster(cfg) {
+  return `
+    <section class="form-screen" style="max-width: 1040px;">
+      <div class="form-grid" style="grid-template-columns: 200px 1fr;" id="cm-form">
+        ${cfg.fields.map(crudFieldHtml).join("")}
+      </div>
+      <div class="btn-row">
+        <button class="btn-main btn-green" id="cm-save">Add</button>
+        <button class="btn-main btn-yellow" id="cm-clear">Clear</button>
+      </div>
+      <div id="cm-table"></div>
+    </section>`;
+}
+
+function initCrudMaster(root, cfg) {
+  const tableEl = root.querySelector("#cm-table");
+  const saveBtn = root.querySelector("#cm-save");
+  const fieldEls = {};
+  cfg.fields.forEach((f) => { fieldEls[f.key] = root.querySelector(`[data-key="${f.key}"]`); });
+  let editing = null;
+
+  const setEditing = (id) => {
+    editing = id;
+    saveBtn.textContent = id ? "Update" : "Add";
+    saveBtn.classList.toggle("btn-blue", !!id);
+  };
+  const clearForm = () => {
+    cfg.fields.forEach((f) => {
+      const el = fieldEls[f.key];
+      if (el.tagName === "SELECT") el.selectedIndex = 0; else el.value = "";
+    });
+    setEditing(null);
+  };
+
+  async function refresh() {
+    const items = (await dbCall(cfg.listFn)) || [];
+    tableEl.innerHTML = crudRows(items, cfg.columns);
+    tableEl._items = items;
+    tableEl.querySelectorAll(".mst-btn").forEach((b) => b.addEventListener("click", onRowAction));
+  }
+
+  async function onRowAction() {
+    const id = this.dataset.id;
+    if (this.dataset.act === "del") {
+      if (editing === id) clearForm();
+      await dbCall(cfg.deleteFn, id);
+      return refresh();
+    }
+    // edit: load the record into the form
+    const item = (tableEl._items || []).find((it) => it.id === id);
+    if (!item) return;
+    cfg.fields.forEach((f) => {
+      const el = fieldEls[f.key];
+      if (el.tagName === "SELECT") el.value = item[f.key] || el.options[0].value;
+      else el.value = item[f.key] || "";
+    });
+    setEditing(id);
+    fieldEls[cfg.fields[0].key].focus();
+  }
+
+  saveBtn.addEventListener("click", async () => {
+    const rec = {};
+    cfg.fields.forEach((f) => { rec[f.key] = fieldEls[f.key].value.trim ? fieldEls[f.key].value.trim() : fieldEls[f.key].value; });
+    const req = cfg.required || [cfg.fields[0].key];
+    if (req.some((k) => !rec[k])) return toast(`${cfg.entity} needs ${req.join(", ")}`, true);
+    if (editing) rec.id = editing;
+    await dbCall(cfg.saveFn, rec);
+    toast(`${editing ? "Updated" : "Added"} ${rec[cfg.fields[0].key]}`);
+    clearForm();
+    refresh();
+  });
+  root.querySelector("#cm-clear").addEventListener("click", clearForm);
+
+  setEditing(null);
+  refresh();
+}
+
+// ===========================================================================
+// Masters — Competition / Officials / Ground
 // ===========================================================================
 
 async function buildCompetitionMaster() {
-  const comps = (await dbCall("competitions")) || [];
   const teams = (await dbCall("teams")) || [];
-  const teamName = (id) => (teams.find((t) => t.id === id) || {}).name || "";
-  const rows = comps.map((c) => [
-    esc(c.name), esc(c.trophy), esc(c.matchType), esc(c.startDate), esc(c.endDate),
-    esc((c.teamIds || []).map(teamName).join(", ")),
-  ]);
-  const teamListA = teams.map((t) => `<li>${esc(t.name)}</li>`).join("");
+  const teamChecks = teams.map((t) =>
+    `<label class="cm-team"><input type="checkbox" value="${esc(t.id)}" /> ${esc(t.name)}</label>`).join("");
   return `
-    <section class="form-screen">
-      <div class="form-layout" style="grid-template-columns: 1.2fr 1fr;">
-        <div class="form-grid" style="grid-template-columns: 240px 1fr;">
-          <label class="field-label">Competition Name *</label><input class="field-control" />
-          <label class="field-label">Season *</label><input class="field-control" value="2026" />
-          <label class="field-label">Trophy *</label><input class="field-control" />
-          <label class="field-label">Format *</label><select class="field-select"><option>League</option><option>Series</option><option>Knockout</option></select>
-          <label class="field-label">Match Type *</label><select class="field-select"><option>ODI</option><option>T20I</option><option>Test</option></select>
+    <section class="form-screen" style="max-width: 1280px;">
+      <div class="form-layout" style="grid-template-columns: 1.1fr 0.9fr;">
+        <div class="form-grid" style="grid-template-columns: 200px 1fr;">
+          <label class="field-label">Competition Name *</label><input class="field-control" id="cp-name" />
+          <label class="field-label">Season</label><input class="field-control" id="cp-season" value="2026" />
+          <label class="field-label">Trophy</label><input class="field-control" id="cp-trophy" />
+          <label class="field-label">Format</label><select class="field-select" id="cp-format"><option>League</option><option>Series</option><option>Knockout</option></select>
+          <label class="field-label">Match Type</label><select class="field-select" id="cp-type"><option>ODI</option><option>T20I</option><option>Test</option><option>T20D</option><option>First Class</option></select>
+          <label class="field-label">Start Date</label><input class="field-control" id="cp-start" placeholder="DD-MM-YYYY" />
+          <label class="field-label">End Date</label><input class="field-control" id="cp-end" placeholder="DD-MM-YYYY" />
         </div>
-        <div class="option-split" style="grid-template-columns:1fr 44px 1fr;">
-          <div class="list-box"><h4>List of Teams</h4><ul>${teamListA}</ul></div>
-          <div class="center-stack"><div class="swapper"><div class="swap-btn swap-green">→</div><div class="swap-btn swap-red">←</div></div></div>
-          <div class="list-box"><h4>Participating Teams</h4><ul></ul></div>
-        </div>
+        <div class="list-box"><h4>Participating Teams</h4><div class="cm-team-list" id="cp-teams">${teamChecks || "<p class='mst-hint'>No teams yet.</p>"}</div></div>
       </div>
-      <div class="btn-row"><button class="btn-main btn-green">Save</button><button class="btn-main btn-yellow">Clear</button><button class="btn-main btn-red">Delete</button></div>
-      ${buildTable(["Competition Name", "Trophy", "Match Type", "Start Date", "End Date", "Teams"], rows)}
+      <div class="btn-row">
+        <button class="btn-main btn-green" id="cp-save">Add</button>
+        <button class="btn-main btn-yellow" id="cp-clear">Clear</button>
+      </div>
+      <div id="cp-table"></div>
     </section>`;
 }
 
-async function buildOfficialMaster() {
-  const officials = (await dbCall("officials")) || [];
-  const rows = officials.map((o) => [esc(o.name), esc(o.country), esc(o.role)]);
-  return `
-    <section class="form-screen">
-      <div class="form-layout">
-        <div class="form-grid" style="grid-template-columns: 200px 1fr;">
-          <label class="field-label">Name</label><input class="field-control" />
-          <label class="field-label">Role</label><select class="field-select"><option>Umpire</option><option>Match Referee</option><option>Scorer</option></select>
-          <label class="field-label">Country</label><input class="field-control" />
-          <label class="field-label">Category</label><select class="field-select"><option>International</option><option>Domestic</option><option>Elite</option></select>
-        </div>
-        <div><div class="panel-header">Officials Portrait</div><div class="photo-box">📷</div></div>
-      </div>
-      <div class="btn-row"><button class="btn-main btn-green">Save</button><button class="btn-main btn-yellow">Clear</button><button class="btn-main btn-red">Delete</button></div>
-      ${buildTable(["Officials Name", "Country", "Role"], rows)}
-    </section>`;
+const COMPETITION_COLUMNS = [
+  { key: "name", label: "Competition Name" }, { key: "trophy", label: "Trophy" },
+  { key: "matchType", label: "Match Type" }, { key: "season", label: "Season" },
+  { key: "teamsLabel", label: "Teams" },
+];
+
+function initCompetitionMaster(root) {
+  const q = (id) => root.querySelector(id);
+  const f = {
+    name: q("#cp-name"), season: q("#cp-season"), trophy: q("#cp-trophy"),
+    format: q("#cp-format"), type: q("#cp-type"), start: q("#cp-start"), end: q("#cp-end"),
+  };
+  const teamsBox = q("#cp-teams"), tableEl = q("#cp-table"), saveBtn = q("#cp-save");
+  let editing = null;
+
+  const checkedTeamIds = () => [...teamsBox.querySelectorAll("input:checked")].map((c) => c.value);
+  const setTeams = (ids) => teamsBox.querySelectorAll("input").forEach((c) => { c.checked = (ids || []).includes(c.value); });
+  const setEditing = (id) => { editing = id; saveBtn.textContent = id ? "Update" : "Add"; saveBtn.classList.toggle("btn-blue", !!id); };
+  const clear = () => {
+    f.name.value = ""; f.trophy.value = ""; f.start.value = ""; f.end.value = "";
+    f.season.value = "2026"; f.format.selectedIndex = 0; f.type.selectedIndex = 0;
+    setTeams([]); setEditing(null);
+  };
+
+  async function refresh() {
+    const [comps, teams] = await Promise.all([dbCall("competitions"), dbCall("teams")]);
+    const nameOf = (id) => ((teams || []).find((t) => t.id === id) || {}).name || id;
+    const rows = (comps || []).map((c) => ({
+      ...c, teamsLabel: (c.teamIds || []).map(nameOf).join(", "),
+    }));
+    tableEl._items = rows;
+    tableEl.innerHTML = crudRows(rows, COMPETITION_COLUMNS);
+    tableEl.querySelectorAll(".mst-btn").forEach((b) => b.addEventListener("click", onRowAction));
+  }
+  async function onRowAction() {
+    const id = this.dataset.id;
+    if (this.dataset.act === "del") {
+      if (editing === id) clear();
+      await dbCall("deleteCompetition", id);
+      return refresh();
+    }
+    const c = (tableEl._items || []).find((x) => x.id === id);
+    if (!c) return;
+    f.name.value = c.name || ""; f.season.value = c.season || "";
+    f.trophy.value = c.trophy || ""; f.format.value = c.format || f.format.options[0].value;
+    f.type.value = c.matchType || f.type.options[0].value;
+    f.start.value = c.startDate || ""; f.end.value = c.endDate || "";
+    setTeams(c.teamIds || []);
+    setEditing(id); f.name.focus();
+  }
+
+  q("#cp-clear").addEventListener("click", clear);
+  saveBtn.addEventListener("click", async () => {
+    const name = f.name.value.trim();
+    if (!name) return toast("Competition name is required", true);
+    await dbCall("saveCompetition", {
+      id: editing || undefined, name, season: f.season.value.trim(), trophy: f.trophy.value.trim(),
+      format: f.format.value, matchType: f.type.value,
+      startDate: f.start.value.trim(), endDate: f.end.value.trim(), teamIds: checkedTeamIds(),
+    });
+    toast(`${editing ? "Updated" : "Saved"} ${name}`);
+    clear();
+    refresh();
+  });
+  setEditing(null);
+  refresh();
 }
 
-async function buildGroundMaster() {
-  const grounds = (await dbCall("grounds")) || [];
-  const rows = grounds.map((g) => [esc(g.name), esc(g.country), esc(g.state), esc(g.city)]);
-  return `
-    <section class="form-screen">
-      <div class="form-layout" style="grid-template-columns: 1fr 0.8fr;">
-        <div class="form-grid" style="grid-template-columns: 200px 1fr;">
-          <label class="field-label">Ground Name</label><input class="field-control" />
-          <label class="field-label">Country</label><input class="field-control" />
-          <label class="field-label">State</label><input class="field-control" />
-          <label class="field-label">City</label><input class="field-control" />
-        </div>
-        <div><div class="panel-header">Ground Image</div><div class="photo-box">📷</div></div>
-      </div>
-      <div class="btn-row"><button class="btn-main btn-green">Save</button><button class="btn-main btn-yellow">Clear</button><button class="btn-main btn-red">Delete</button></div>
-      ${buildTable(["Ground Name", "Country", "State", "City"], rows)}
-    </section>`;
-}
+const OFFICIAL_CFG = {
+  entity: "Official",
+  listFn: "officials", saveFn: "saveOfficial", deleteFn: "deleteOfficial",
+  fields: [
+    { key: "name", label: "Name", type: "text" },
+    { key: "role", label: "Role", type: "select", options: ["Umpire", "Match Referee", "Scorer"] },
+    { key: "country", label: "Country", type: "text" },
+    { key: "category", label: "Category", type: "select", options: ["International", "Domestic", "Elite"] },
+  ],
+  columns: [
+    { key: "name", label: "Officials Name" }, { key: "country", label: "Country" },
+    { key: "role", label: "Role" }, { key: "category", label: "Category" },
+  ],
+  required: ["name"],
+};
+
+const GROUND_CFG = {
+  entity: "Ground",
+  listFn: "grounds", saveFn: "saveGround", deleteFn: "deleteGround",
+  fields: [
+    { key: "name", label: "Ground Name", type: "text" },
+    { key: "country", label: "Country", type: "text" },
+    { key: "state", label: "State", type: "text" },
+    { key: "city", label: "City", type: "text" },
+  ],
+  columns: [
+    { key: "name", label: "Ground Name" }, { key: "country", label: "Country" },
+    { key: "state", label: "State" }, { key: "city", label: "City" },
+  ],
+  required: ["name"],
+};
 
 async function buildReports() {
   const comps = (await dbCall("competitions")) || [];
@@ -915,7 +1289,7 @@ function initMatchDetails(root) {
 
 function abbreviateLabel(text) {
   const words = (text || "").replace(/[^a-z0-9\s]/gi, " ").trim().split(/\s+/).filter(Boolean);
-  if (words.length === 0) return "CAP";
+  if (words.length === 0) return "CP";
   if (words.length === 1) return words[0].slice(0, 3).toUpperCase();
   return words.slice(0, 3).map((w) => w[0].toUpperCase()).join("");
 }

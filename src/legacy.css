@@ -158,16 +158,19 @@ textarea {
 }
 
 .hero-mark .bat-icon::before {
-  content: "CAP";
+  content: "CRIC\APRO";
+  white-space: pre;
+  text-align: center;
+  line-height: 1.04;
   position: absolute;
   inset: 0;
   display: grid;
   place-items: center;
   font-family: "Sora", "Manrope", sans-serif;
-  font-size: 34px;
+  font-size: 38px;
   font-weight: 700;
-  letter-spacing: 0.18em;
-  color: rgba(235, 243, 255, 0.9);
+  letter-spacing: 0.12em;
+  color: rgba(235, 243, 255, 0.92);
 }
 
 .hero-mark .bat-icon::after {
@@ -607,6 +610,7 @@ textarea {
 .table-head,
 .table-row {
   display: grid;
+  align-items: center;
 }
 
 .table-head {
@@ -774,7 +778,7 @@ textarea {
 }
 
 .table-empty::after {
-  content: "Cricket Analysis Pro";
+  content: "CRICPRO";
   position: absolute;
   inset: 0;
   display: grid;
@@ -1155,3 +1159,75 @@ textarea {
   outline: none;
   box-shadow: 0 0 0 3px rgba(77, 179, 255, 0.25);
 }
+
+/* ---- Masters option editors (Bowl Spec / Shot Type / Fielding Factor) ---- */
+.mst-grp-title {
+  margin: 16px 0 6px;
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  color: #cfe0f2;
+  text-transform: uppercase;
+}
+.mst-hint {
+  margin: 6px 0 2px;
+  font-size: 12px;
+  color: #8aa0ba;
+}
+.mst-actions {
+  display: inline-flex;
+  gap: 6px;
+  justify-content: flex-end;
+}
+.mst-btn {
+  appearance: none;
+  border: 1px solid rgba(124, 165, 209, 0.4);
+  background: rgba(17, 34, 54, 0.92);
+  color: #dfeaf6;
+  font-size: 12px;
+  line-height: 1;
+  padding: 4px 8px;
+  border-radius: 6px;
+  cursor: pointer;
+}
+.mst-btn:hover:not(:disabled) { background: rgba(47, 118, 183, 0.5); color: #fff; }
+.mst-btn:disabled { opacity: 0.35; cursor: default; }
+.mst-btn.mst-del { border-color: rgba(190, 90, 100, 0.5); color: #f1a0a8; }
+.mst-btn.mst-del:hover { background: rgba(163, 65, 79, 0.45); color: #fff; }
+
+/* ---- Masters drag-and-drop reordering ----------------------------------- */
+.mst-row { cursor: default; }
+.mst-row[draggable="true"] { cursor: grab; }
+.mst-row.dragging { opacity: 0.45; cursor: grabbing; }
+.mst-order { display: inline-flex; align-items: center; gap: 8px; }
+.mst-grip {
+  color: #6f86a0;
+  font-size: 14px;
+  line-height: 1;
+  cursor: grab;
+  user-select: none;
+}
+.mst-row:hover .mst-grip { color: #9fb6d0; }
+.table-rows.drop-active {
+  outline: 1px dashed rgba(77, 179, 255, 0.5);
+  outline-offset: -2px;
+  border-radius: 6px;
+}
+
+/* ---- Competition master: participating-team checkbox list --------------- */
+.cm-team-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  max-height: 300px;
+  overflow-y: auto;
+}
+.cm-team {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 13px;
+  color: var(--text-soft, #cfe0f2);
+  cursor: pointer;
+}
+.cm-team input { width: 15px; height: 15px; accent-color: #2f76b7; }
