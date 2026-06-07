@@ -1310,6 +1310,13 @@ a.home-main-btn {
   stroke-width: 0.25;
   filter: drop-shadow(0 0 2px rgba(224, 82, 74, 0.7));
 }
+/* Pitch (bounce) point — solid red; Height (stump-passing) point — cyan ring */
+.pitch-dot.pitch-height {
+  fill: #4db3ff;
+  stroke: #eaf6ff;
+  stroke-width: 0.4;
+  filter: drop-shadow(0 0 2px rgba(77, 179, 255, 0.85));
+}
 
 /* This-over chips */
 .this-over {

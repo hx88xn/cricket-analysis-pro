@@ -221,6 +221,59 @@ function renderBatGrid() {
   syncExpandArrow("bat-expand", more.length > 0, state.shotExpanded);
 }
 
+// Programmatically select a value in a bowl/shot grid: switch the Fast/Spin or
+// Aggressive/Defensive group, flip to the extended page if the value lives there,
+// re-render, then highlight the matching cell. Used by the LI "copy last" toggle.
+function selectGridButton(containerId, name) {
+  const el = document.getElementById(containerId);
+  if (!el) return;
+  el.querySelectorAll(".grid-btn").forEach((b) => b.classList.toggle("selected", b.textContent === name));
+}
+
+function applyBowlType(name) {
+  if (!name) return false;
+  for (const grp of Object.keys(BOWL_TYPES)) {
+    const idx = (BOWL_TYPES[grp] || []).indexOf(name);
+    if (idx < 0) continue;
+    state.pace = grp;
+    state.bowlExpanded = idx >= GRID_PAGE;
+    document.querySelectorAll('.toggle[data-group="pace"]').forEach((b) =>
+      b.classList.toggle("active", b.textContent.trim() === grp));
+    renderBowlGrid();
+    selectGridButton("bowl-grid", name);
+    state.bowlType = name;
+    return true;
+  }
+  return false;
+}
+
+function applyShotType(name) {
+  if (!name) return false;
+  for (const grp of Object.keys(SHOT_TYPES)) {
+    const idx = (SHOT_TYPES[grp] || []).indexOf(name);
+    if (idx < 0) continue;
+    state.style = grp;
+    state.shotExpanded = idx >= GRID_PAGE;
+    document.querySelectorAll('.toggle[data-group="style"]').forEach((b) =>
+      b.classList.toggle("active", b.textContent.trim() === grp));
+    renderBatGrid();
+    selectGridButton("bat-grid", name);
+    state.shotType = name;
+    return true;
+  }
+  return false;
+}
+
+// LI toggle: copy the previous ball's bowl type + shot type into the current
+// selection (handy when consecutive balls are the same delivery/shot).
+function copyLastBallTypes() {
+  const last = state.log[state.log.length - 1];
+  if (!last) { toast("No previous ball to copy from"); return; }
+  applyBowlType(last.bowl);
+  applyShotType(last.shot);
+  toast(`Copied last ball: ${last.bowl || "—"} / ${last.shot || "—"}`);
+}
+
 // Show/point the panel expand arrow (hidden when the category has no extra page)
 function syncExpandArrow(id, hasMore, expanded) {
   const btn = document.getElementById(id);
@@ -271,6 +324,9 @@ function wireToggles() {
     state.shotExpanded = !state.shotExpanded; renderBatGrid();
   });
 
+  // LI radio: copy the last ball's bowl + shot type into the current selection
+  document.getElementById("radio-li")?.addEventListener("click", copyLastBallTypes);
+
   document.querySelectorAll(".pitch-overlay-btn").forEach((btn) => {
     btn.addEventListener("click", () => {
       const g = btn.getAttribute("data-group");
@@ -284,6 +340,19 @@ function wireToggles() {
 
 const NS = "http://www.w3.org/2000/svg";
 
+// Draw one pitch-map marker. Each ball records TWO points: the "pitch" point
+// (where the ball bounced) and the "height" point (where it passes the stumps),
+// matching the reference's two red balls. `kind` selects the marker style.
+function addPitchDot(svg, x, y, kind, review = false) {
+  const d = document.createElementNS(NS, "circle");
+  d.setAttribute("cx", Number(x).toFixed(2));
+  d.setAttribute("cy", Number(y).toFixed(2));
+  d.setAttribute("r", kind === "height" ? "1.3" : "1.1");
+  d.setAttribute("class", `pitch-dot pitch-${kind}${review ? " review" : ""}`);
+  svg.appendChild(d);
+  return d;
+}
+
 function wirePitchMap() {
   const wrap = document.getElementById("pitch-wrap");
   const svg = document.getElementById("pitch-overlay-svg");
@@ -295,14 +364,14 @@ function wirePitchMap() {
     const y = ((e.clientY - r.top) / r.height) * 100;
     if (x < 0 || x > 100 || y < 0 || y > 100) return;
     clearReview();        // leave review mode when placing a live dot
-    const dot = document.createElementNS(NS, "circle");
-    dot.setAttribute("cx", x.toFixed(2));
-    dot.setAttribute("cy", y.toFixed(2));
-    dot.setAttribute("r", "1.1");
-    dot.setAttribute("class", "pitch-dot");
-    svg.appendChild(dot);
+    state.pitchInputs ||= [];
+    // First click = pitch (bounce) point; second = height (stump-passing) point;
+    // a third click starts a fresh pair.
+    if (state.pitchInputs.length >= 2) clearPitchDots();
+    const kind = state.pitchInputs.length === 0 ? "pitch" : "height";
+    addPitchDot(svg, x, y, kind);
+    state.pitchInputs.push({ x, y, kind });
     state.lastPitch = { x, y };
-    (state.pitchInputs ||= []).push({ x, y }); // saved with the ball, cleared on commit
   });
 }
 
@@ -435,12 +504,7 @@ function showBallInputs(index) {
     wsvg.append(line, dot);
   }
   const psvg = document.getElementById("pitch-overlay-svg");
-  if (psvg) (r.pitch || []).forEach((p) => {
-    const d = document.createElementNS(NS, "circle");
-    d.setAttribute("cx", p.x); d.setAttribute("cy", p.y);
-    d.setAttribute("r", "1.1"); d.setAttribute("class", "pitch-dot review");
-    psvg.appendChild(d);
-  });
+  if (psvg) (r.pitch || []).forEach((p) => addPitchDot(psvg, p.x, p.y, p.kind || "pitch", true));
 }
 
 function nearestWagonLine(x, y) {
@@ -910,14 +974,23 @@ function pushHistory() {
     striker: state.striker, nonStriker: state.nonStriker, bowler: state.bowler,
     bowlEnd: state.bowlEnd, bat: state.bat, bowl: state.bowl, log: state.log,
     overRunsThisOver: state.overRunsThisOver, thisOver: state.thisOver,
+    // capture the over/ball gate flags too, so undoing across an over boundary
+    // restores the button state instead of leaving it stale (see undo()).
+    overStarted: state.overStarted, ballStarted: state.ballStarted,
   }));
   if (state.history.length > 60) state.history.shift();
 }
 
 function undo() {
   const prev = state.history.pop();
-  if (!prev) return;
+  // Nothing to undo: flash the button so the click always gives feedback rather
+  // than silently doing nothing (which reads as "the button isn't working").
+  if (!prev) { flash(document.getElementById("btn-undo")); return; }
   Object.assign(state, JSON.parse(prev));
+  // Re-sync the Over/Ball buttons to the restored flags; undo can cross an over
+  // boundary (a completed 6th ball reset them) so the labels must follow.
+  setOverButton(state.overStarted ? "End Over" : "Start Over");
+  setBallButton(state.ballStarted ? "End Ball" : "Start Ball");
   render();
 }
 
@@ -1034,8 +1107,19 @@ function wireActionButtons() {
   const undoBtn = document.getElementById("btn-undo");
 
   over?.addEventListener("click", () => {
-    if (!state.overStarted) { state.overStarted = true; setOverButton("End Over"); }
-    else { completeOver(); render(); } // manual end-over
+    if (!state.overStarted) {
+      state.overStarted = true;
+      setOverButton("End Over");
+    } else {
+      // End Over is just a marker — it must NOT skip the over or reset the ball
+      // count. The over advances on its own when the 6th legal ball is bowled
+      // (see logBall). Toggling here simply closes the marker so the over can be
+      // continued from where the ball left off (re-click Start Over to resume).
+      state.overStarted = false;
+      state.ballStarted = false;
+      setOverButton("Start Over");
+      setBallButton("Start Ball");
+    }
   });
 
   ball?.addEventListener("click", () => {

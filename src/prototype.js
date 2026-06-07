@@ -173,9 +173,10 @@ const screenDefs = {
       </section>`,
   },
   reports: {
-    title: "CAP Reports",
+    title: "CRICPRO Reports",
     back: "home.html",
     build: buildReports,
+    init: initReports,
   },
 
   // ---- data-driven screens ----
@@ -795,33 +796,95 @@ const GROUND_CFG = {
   required: ["name"],
 };
 
+// The full report catalogue shown as a wrapping grid of tabs (matches the
+// reference CAP Reports screen). "Statistics" is the default active tab.
+const REPORT_TABS = [
+  "Bowler Vs Batsman", "Bowler Vs Batsman - Bowl & Shot", "Bulk Video Export",
+  "Bulk Video Export - RSA", "Commentary", "Day Fast VS Spin Report",
+  "Day Wise Bowler Session Report", "Extras", "Fielder Report", "KPI Report",
+  "Manhattan", "MatchOverSlab", "Over Comparison", "Partnership Chart",
+  "Pitch Map", "Pitch Map Impact", "Pitchmap Comparison", "PitchMap & ImpactPitch",
+  "Player Comparison Report", "Players Worm Chart", "Recent Performance",
+  "Scorecard", "Sector Wagon", "Session Report", "Shot Selection - Batsman",
+  "Shot Selection - Match", "Spell Report", "Spider&Sector Combined", "Spider Wagon",
+  "TenBall Summary", "Video Playlist", "Wickets", "Worm", "Wagon Wheel Comparison",
+  "Umpire Report", "Statistics", "Appeal Report", "Batsman KPI", "Batsman Vs Bowler",
+  "Batsman Vs Bowler - Bowl & Shot", "Boundary NextBall", "Bowler KPI",
+];
+
+// Column headers of the statistics grid (one row per ball when populated).
+const REPORT_COLUMNS = [
+  "Competition", "Match", "Venue", "Date", "InnsNo", "Team", "Striker", "Nonstriker",
+  "Bowler", "Actual Over", "Overs", "Run", "Extras", "Four", "Six", "Bowl", "BowlType",
+  "BowlingEnd", "OTWorRTW", "CD", "Line", "Length", "Shot", "ShotType", "Fielder", "IsWicket",
+];
+
 async function buildReports() {
-  const comps = (await dbCall("competitions")) || [];
-  const teams = (await dbCall("teams")) || [];
-  const compOpts = `<option>Select</option>` + optionList(comps, (c) => c.id, (c) => c.name);
-  const teamOpts = `<option>Select</option>` + optionList(teams, (t) => t.id, (t) => t.name);
+  const [comps, teams, matches, players] = await Promise.all([
+    dbCall("competitions"), dbCall("teams"), dbCall("matches"), dbCall("players"),
+  ]);
+  const sel = (label, items, getV, getL) =>
+    `<div class="report-field"><label>${esc(label)}</label>
+      <select><option>Select</option>${optionList(items || [], getV, getL)}</select></div>`;
+
+  const tabs = REPORT_TABS.map((t) =>
+    `<button class="report-tab ${t === "Statistics" ? "active" : ""}" data-report>${esc(t)}</button>`).join("");
+  const cols = REPORT_COLUMNS.map((c) => `<span>${esc(c)}</span>`).join("");
+
   return `
-    <section class="reports-screen">
-      <aside class="report-sidebar">
-        <div class="report-field"><label>Match Type</label><select><option>Select</option><option>ODI</option><option>T20I</option><option>Test</option></select></div>
-        <div class="report-field"><label>Competition</label><select>${compOpts}</select></div>
-        <div class="report-field"><label>Batting Team</label><select>${teamOpts}</select></div>
-        <div class="report-field"><label>Bowler</label><select><option>Select</option></select></div>
-        <div class="report-actions">
-          <button class="btn-main btn-green">Show Reports</button>
-          <button class="btn-main btn-yellow">Match Report</button>
-          <button class="btn-main btn-red">Export Video</button>
-          <button class="btn-main btn-red">Play Video</button>
+    <section class="reports-screen reports-full">
+      <div class="report-topbar">
+        <div class="report-brand">🏃 CAP REPORTS</div>
+        <div class="report-top-actions">
+          <label class="report-check"><input type="checkbox" checked /> Trimmed Video</label>
+          <button class="report-icon" title="Export">⤓</button>
+          <button class="report-icon" title="Close">✕</button>
         </div>
-      </aside>
-      <div class="report-pane">
-        <div class="tab-grid">
-          <span>Bowler Vs Batsman</span><span>Report</span><span>Sector Wagon</span><span>Session Report</span><span>Shot Selection</span><span>Wagon Wheel</span>
-          <span>Statistics</span><span>Appeal Report</span><span>Batsman KPI</span><span>Batsman Vs Bowler</span><span>Boundary NextBall</span><span>Bowler KPI</span>
+      </div>
+      <div class="reports-body">
+        <aside class="report-sidebar">
+          ${sel("Match Type", ["Test", "ODI", "T20I", "T20D", "First Class"].map((m) => ({ v: m })), (m) => m.v, (m) => m.v)}
+          ${sel("Competition", comps, (c) => c.id, (c) => c.name)}
+          ${sel("Match", matches, (m) => m.id, (m) => m.matchName || `${(m.teamA||{}).code}vs${(m.teamB||{}).code}`)}
+          ${sel("Batting Team", teams, (t) => t.id, (t) => t.name)}
+          ${sel("Striker", players, (p) => p.id, (p) => p.name)}
+          ${sel("Bowler", players, (p) => p.id, (p) => p.name)}
+          ${sel("Wicket Type", ["Bowled", "Caught", "LBW", "Run Out", "Stumped", "Hit Wicket"].map((w) => ({ v: w })), (w) => w.v, (w) => w.v)}
+          ${sel("Runs", ["0", "1", "2", "3", "4", "6"].map((r) => ({ v: r })), (r) => r.v, (r) => r.v)}
+          <div class="report-misc-label">Misc. Filters</div>
+          <div class="report-actions">
+            <button class="btn-main btn-green">Show Reports</button>
+            <button class="btn-main btn-yellow">Match Report</button>
+            <button class="btn-main btn-red">Export Video</button>
+            <button class="btn-main btn-pink">Play Video</button>
+            <button class="btn-main btn-orange wide">Player Performance</button>
+          </div>
+          <button class="btn-main btn-filter wide">⛃ Select Filter</button>
+        </aside>
+        <div class="report-pane">
+          <div class="report-tabs">${tabs}</div>
+          <div class="report-groupbar">Drag a column header and drop it here to group by that column</div>
+          <div class="report-table-wrap">
+            <div class="report-table-head">${cols}</div>
+            <div class="report-watermark"><strong>CRIC</strong><span>PRO</span></div>
+          </div>
+          <div class="report-pager">
+            <span class="pg-btn">⏮</span><span class="pg-btn">◀</span>
+            <span class="pg-num">1</span>
+            <span class="pg-btn">▶</span><span class="pg-btn">⏭</span>
+            <span class="pg-info">Page <input class="pg-input" value="1" /> of 1</span>
+          </div>
         </div>
-        <div class="table-empty"></div>
       </div>
     </section>`;
+}
+
+function initReports(root) {
+  // Tab selection (visual active state)
+  root.querySelectorAll("[data-report]").forEach((b) => b.addEventListener("click", () => {
+    root.querySelectorAll("[data-report]").forEach((x) => x.classList.remove("active"));
+    b.classList.add("active");
+  }));
 }
 
 // ===========================================================================
