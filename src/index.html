@@ -48,101 +48,59 @@
 
         <div class="header-center">
           <div class="stats-grid">
-            <!-- Labels column -->
-            <div class="stats-labels">
-              <div class="stat-row-label yellow">*STRIKER :</div>
-              <div class="stat-row-label yellow">NON-STR :</div>
-              <div class="stat-row-label yellow">BOWL END :</div>
-              <div class="stat-row-label yellow">BOWLER :</div>
-            </div>
-            <!-- Names column -->
-            <div class="stats-names">
-              <div class="stat-name-cell filled" id="name-striker">RAVINDERPAL SINGH</div>
-              <div class="stat-name-cell filled" id="name-nonstriker">SAAD BIN ZAFAR</div>
-              <div class="stat-name-cell filled" id="name-bowlend">FAR END</div>
-              <div class="stat-name-cell filled" id="name-bowler">JITEN RAMANANDI -L FAST</div>
-            </div>
-            <!-- Batting stats -->
-            <div class="stats-bat">
-              <div class="stat-col-head">Runs</div>
-              <div class="stat-col-head">Balls</div>
-              <div class="stat-col-head">4's</div>
-              <div class="stat-col-head">6's</div>
-              <div class="stat-col-head">SR</div>
-              <div class="stat-col-head">P'Ship</div>
-              <!-- Striker row -->
-              <div class="stat-cell" data-bat="striker" data-k="runs">31</div>
-              <div class="stat-cell" data-bat="striker" data-k="balls">14</div>
-              <div class="stat-cell" data-bat="striker" data-k="fours">3</div>
-              <div class="stat-cell" data-bat="striker" data-k="sixes">1</div>
-              <div class="stat-cell" data-bat="striker" data-k="sr">221.43</div>
-              <div class="stat-cell" data-bat="striker" data-k="ps">49</div>
-              <!-- Non-striker row -->
-              <div class="stat-cell" data-bat="nonstriker" data-k="runs">18</div>
-              <div class="stat-cell" data-bat="nonstriker" data-k="balls">10</div>
-              <div class="stat-cell" data-bat="nonstriker" data-k="fours">0</div>
-              <div class="stat-cell" data-bat="nonstriker" data-k="sixes">0</div>
-              <div class="stat-cell" data-bat="nonstriker" data-k="sr">180.00</div>
-              <div class="stat-cell yellow-parens" data-bat="nonstriker" data-k="ps">(24)</div>
-              <!-- Bowl end row - empty -->
-              <div class="stat-cell"></div>
-              <div class="stat-cell"></div>
-              <div class="stat-cell"></div>
-              <div class="stat-cell"></div>
-              <div class="stat-cell"></div>
-              <div class="stat-cell"></div>
-              <!-- Bowler row - empty -->
-              <div class="stat-cell"></div>
-              <div class="stat-cell"></div>
-              <div class="stat-cell"></div>
-              <div class="stat-cell"></div>
-              <div class="stat-cell"></div>
-              <div class="stat-cell"></div>
-            </div>
-            <!-- Bowling stats (arrows + headers) -->
-            <div class="stats-bowl-wrap">
-              <div class="stats-bowl-arrows">
-                <span class="arrow-icon" title="Swap striker / non-striker" id="swap-bat">&#8645;</span>
-                <span class="arrow-spacer"></span>
-                <span class="arrow-icon">&#8645;</span>
-              </div>
-              <div class="stats-bowl">
-                <div class="stat-col-head">Spell</div>
-                <div class="stat-col-head">Overs</div>
-                <div class="stat-col-head">Runs</div>
-                <div class="stat-col-head">Mdns</div>
-                <div class="stat-col-head">Wkts</div>
-                <div class="stat-col-head">Eco</div>
-                <!-- Striker empty -->
-                <div class="stat-cell"></div>
-                <div class="stat-cell"></div>
-                <div class="stat-cell"></div>
-                <div class="stat-cell"></div>
-                <div class="stat-cell"></div>
-                <div class="stat-cell"></div>
-                <!-- Non-striker empty -->
-                <div class="stat-cell"></div>
-                <div class="stat-cell"></div>
-                <div class="stat-cell"></div>
-                <div class="stat-cell"></div>
-                <div class="stat-cell"></div>
-                <div class="stat-cell"></div>
-                <!-- Bowl End empty -->
-                <div class="stat-cell"></div>
-                <div class="stat-cell"></div>
-                <div class="stat-cell"></div>
-                <div class="stat-cell"></div>
-                <div class="stat-cell"></div>
-                <div class="stat-cell"></div>
-                <!-- Bowler row -->
-                <div class="stat-cell" data-bowl="spell">1</div>
-                <div class="stat-cell" data-bowl="overs">0.3</div>
-                <div class="stat-cell" data-bowl="runs">5</div>
-                <div class="stat-cell" data-bowl="mdns">0</div>
-                <div class="stat-cell" data-bowl="wkts">0</div>
-                <div class="stat-cell" data-bowl="eco">10.00</div>
-              </div>
-            </div>
+            <!-- Row 0: batting column headers -->
+            <span class="sg-arrow-cell"></span>
+            <span class="sg-label"></span>
+            <span class="sg-name-head"></span>
+            <span class="sg-head">Runs</span>
+            <span class="sg-head">Balls</span>
+            <span class="sg-head">4's</span>
+            <span class="sg-head">6's</span>
+            <span class="sg-head">SR</span>
+            <span class="sg-head">P'Ship</span>
+
+            <!-- Row 1: striker (the swap arrow spans striker + non-striker rows) -->
+            <span class="sg-arrow" id="swap-bat" title="Swap striker / non-striker">&#8645;</span>
+            <span class="sg-label">*STRIKER :</span>
+            <span class="sg-name" id="name-striker">RAVINDERPAL SINGH</span>
+            <span class="sg-val bat" data-bat="striker" data-k="runs">31</span>
+            <span class="sg-val bat" data-bat="striker" data-k="balls">14</span>
+            <span class="sg-val bat" data-bat="striker" data-k="fours">3</span>
+            <span class="sg-val bat" data-bat="striker" data-k="sixes">1</span>
+            <span class="sg-val bat" data-bat="striker" data-k="sr">221.43</span>
+            <span class="sg-val bat" data-bat="striker" data-k="ps">49</span>
+
+            <!-- Row 2: non-striker (no col-1 cell — covered by the spanning arrow) -->
+            <span class="sg-label">NON-STR :</span>
+            <span class="sg-name" id="name-nonstriker">SAAD BIN ZAFAR</span>
+            <span class="sg-val bat ns" data-bat="nonstriker" data-k="runs">18</span>
+            <span class="sg-val bat ns" data-bat="nonstriker" data-k="balls">10</span>
+            <span class="sg-val bat ns" data-bat="nonstriker" data-k="fours">0</span>
+            <span class="sg-val bat ns" data-bat="nonstriker" data-k="sixes">0</span>
+            <span class="sg-val bat ns" data-bat="nonstriker" data-k="sr">180.00</span>
+            <span class="sg-val bat ns yellow-parens" data-bat="nonstriker" data-k="ps">(24)</span>
+
+            <!-- Row 3: bowling column headers (on the BOWL END row) -->
+            <span class="sg-arrow-cell"></span>
+            <span class="sg-label">BOWL END :</span>
+            <span class="sg-name" id="name-bowlend">FAR END</span>
+            <span class="sg-head">Spell</span>
+            <span class="sg-head">Overs</span>
+            <span class="sg-head">Runs</span>
+            <span class="sg-head">Mdns</span>
+            <span class="sg-head">Wkts</span>
+            <span class="sg-head">Eco</span>
+
+            <!-- Row 4: bowler -->
+            <span class="sg-arrow-cell"></span>
+            <span class="sg-label">BOWLER :</span>
+            <span class="sg-name" id="name-bowler">JITEN RAMANANDI -L FAST</span>
+            <span class="sg-val bowl" data-bowl="spell">1</span>
+            <span class="sg-val bowl" data-bowl="overs">0.3</span>
+            <span class="sg-val bowl" data-bowl="runs">5</span>
+            <span class="sg-val bowl" data-bowl="mdns">0</span>
+            <span class="sg-val bowl" data-bowl="wkts">0</span>
+            <span class="sg-val bowl" data-bowl="eco">10.00</span>
           </div>
         </div>
 
@@ -183,8 +141,6 @@
 
         <div class="mid-center">
           <div class="log-toolbar">
-            <span class="ball-badge blue-badge" id="over-runs-badge">0</span>
-            <span class="ball-badge red-badge">W</span>
             <span class="this-over" id="this-over"></span>
           </div>
           <div class="table-wrap">
@@ -227,7 +183,8 @@
               alt="Cricket field: THIRD MAN, POINT, COVERS, LONG OFF, FINE LEG, SQUARE LEG, MID WICKET, LONG ON; OFF SIDE and ON SIDE"
               draggable="false"
             />
-            <svg class="wagon-overlay" id="wagon-overlay" viewBox="0 0 100 100" preserveAspectRatio="none"></svg>
+            <svg class="wagon-overlay" id="wagon-overlay" viewBox="0 0 642 640" preserveAspectRatio="xMidYMid meet"></svg>
+            <div class="wagon-region" id="wagon-region" aria-live="polite"></div>
           </div>
         </div>
       </section>
@@ -283,7 +240,12 @@
                   <button type="button" class="plus-btn">+</button>
                   <button type="button" class="toggle active" data-group="pace">Fast</button>
                   <button type="button" class="toggle" data-group="pace">Spin</button>
-                  <label class="mph-label">KPH <input type="text" class="tiny-input" id="kph-input" value="" /></label>
+                  <span class="mph-label speed-units">
+                    <button type="button" class="unit-btn active" data-unit="KPH">KPH</button>
+                    <button type="button" class="unit-btn" data-unit="MPH" hidden>MPH</button>
+                    <input type="text" class="tiny-input" id="kph-input" value="" />
+                  </span>
+                  <button type="button" class="expand-arrow" id="bowl-expand" title="Show more">&#9656;</button>
                 </div>
                 <div class="btn-grid cols-3" id="bowl-grid"></div>
               </div>
@@ -294,6 +256,7 @@
                   <button type="button" class="toggle active" data-group="style">Aggressive</button>
                   <button type="button" class="toggle" data-group="style">Defensive</button>
                   <label class="mph-label distance-label">6's Distance <input type="text" class="tiny-input" value="" placeholder="—" /></label>
+                  <button type="button" class="expand-arrow" id="bat-expand" title="Show more">&#9656;</button>
                 </div>
                 <div class="btn-grid cols-3" id="bat-grid"></div>
               </div>

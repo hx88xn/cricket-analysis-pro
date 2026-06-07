@@ -327,104 +327,74 @@ a.home-main-btn {
   pointer-events: none;
 }
 
+/* Compact scoring stats: one stacked 6-column block (batting rows on top,
+   bowling header + bowler row below) of plain-text values — no boxed cells.
+   Columns: [swap-arrow][label][name][Runs/Spell … P'Ship/Eco × 6]. */
 .stats-grid {
   display: grid;
-  grid-template-columns: 90px minmax(160px, 1fr) minmax(220px, 1.35fr) minmax(220px, 1.35fr);
-  gap: 8px 10px;
+  grid-template-columns: 18px max-content minmax(150px, 1fr) repeat(6, minmax(0, 1fr));
+  align-items: center;
+  gap: 7px 10px;
   width: 100%;
 }
 
-.stats-labels,
-.stats-names {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
+.sg-arrow {
+  grid-column: 1;
+  grid-row: 2 / 4;           /* pinned across striker & non-striker rows */
+  align-self: center;
+  justify-self: center;
+  color: #46d39a;
+  font-size: 15px;
+  cursor: pointer;
+  user-select: none;
 }
+.sg-arrow:hover { color: #6fe7b6; }
 
-.stat-row-label,
-.stat-name-cell,
-.stat-cell,
-.stat-col-head {
-  min-height: 34px;
-}
-
-.stat-row-label {
-  display: flex;
-  align-items: center;
-  font-size: 10px;
-  font-weight: 800;
-  letter-spacing: 0.12em;
-  color: var(--muted);
-}
-
-.stat-name-cell,
-.stat-cell {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 0 10px;
-  background: rgba(17, 34, 54, 0.9);
-  border: 1px solid rgba(112, 150, 190, 0.18);
-  border-radius: 10px;
-  color: var(--text-soft);
-}
-
-.stat-name-cell {
-  justify-content: flex-start;
-  font-weight: 700;
-}
-
-.stat-col-head {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 9px;
-  text-transform: uppercase;
-  letter-spacing: 0.12em;
-  color: var(--muted);
-}
-
-.stats-bat,
-.stats-bowl {
-  display: grid;
-  gap: 8px 6px;
-  align-content: start;
-}
-
-.stats-bat,
-.stats-bowl {
-  grid-template-columns: repeat(6, minmax(0, 1fr));
-}
-
-.stat-cell {
+.sg-label {
+  text-align: right;
+  white-space: nowrap;
   font-size: 11px;
-  font-weight: 700;
+  font-weight: 800;
+  letter-spacing: 0.06em;
   color: var(--warning);
 }
 
-.stat-cell:empty,
-.stat-name-cell:empty {
-  color: transparent;
-}
-
-.stats-bowl-wrap {
+.sg-name {
   display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
-
-.stats-bowl-arrows {
-  display: flex;
-  justify-content: space-between;
   align-items: center;
-  min-height: 18px;
-  padding: 0 4px;
+  min-height: 30px;
+  padding: 4px 12px;
+  border-radius: 8px;
+  background: linear-gradient(180deg, #2f76b7, #1d537f);
+  border: 1px solid rgba(124, 165, 209, 0.4);
+  color: #fff;
+  font-size: 12px;
+  font-weight: 700;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
-.arrow-icon {
+.sg-head {
+  text-align: center;
+  white-space: nowrap;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
   color: var(--muted);
-  font-size: 14px;
 }
+
+.sg-val {
+  text-align: center;
+  font-size: 13px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  color: var(--text);
+}
+.sg-val.bat { color: var(--warning); }   /* striker row — yellow */
+.sg-val.bat.ns { color: var(--text); }   /* non-striker row — white */
+.sg-val.bowl { color: var(--warning); }  /* bowler row — yellow */
+.sg-val.bat.ns.yellow-parens { color: var(--warning); } /* partnership stays gold */
 
 .header-right {
   display: flex;
@@ -554,28 +524,6 @@ a.home-main-btn {
   align-items: center;
 }
 
-.ball-badge {
-  width: 36px;
-  height: 36px;
-  border-radius: 999px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-family: "Sora", "Manrope", sans-serif;
-  font-size: 14px;
-  font-weight: 700;
-  color: #fff;
-  border: 1px solid rgba(255, 255, 255, 0.16);
-}
-
-.blue-badge {
-  background: linear-gradient(180deg, #2f76b7, #1d537f);
-}
-
-.red-badge {
-  background: linear-gradient(180deg, #a3414f, #6d2732);
-}
-
 .table-wrap {
   flex: 1;
   min-height: 0;
@@ -621,6 +569,11 @@ a.home-main-btn {
 
 .ball-log tbody tr:hover {
   background: rgba(77, 179, 255, 0.08);
+}
+
+.ball-log tbody tr.selected {
+  background: rgba(77, 179, 255, 0.2);
+  box-shadow: inset 2px 0 0 var(--accent, #4db3ff);
 }
 
 .mid-right {
@@ -831,6 +784,42 @@ a.home-main-btn {
   margin-left: auto;
 }
 
+.speed-units {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.unit-btn {
+  appearance: none;
+  border: 1px solid rgba(124, 165, 209, 0.5);
+  background: linear-gradient(180deg, #2f76b7, #1d537f);
+  color: #fff;
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  padding: 4px 9px;
+  border-radius: 6px;
+  cursor: pointer;
+}
+.unit-btn[hidden] { display: none; }
+.unit-btn:hover { filter: brightness(1.12); }
+
+.expand-arrow {
+  appearance: none;
+  border: 1px solid rgba(124, 165, 209, 0.4);
+  background: rgba(17, 34, 54, 0.92);
+  color: var(--text-soft);
+  font-size: 12px;
+  line-height: 1;
+  padding: 5px 8px;
+  border-radius: 6px;
+  cursor: pointer;
+  margin-left: 6px;
+}
+.expand-arrow[hidden] { display: none; }
+.expand-arrow:hover { background: rgba(47, 118, 183, 0.45); color: #fff; }
+.expand-arrow.expanded { background: linear-gradient(180deg, #2f76b7, #1d537f); color: #fff; }
+
 .tiny-input {
   width: 52px;
   padding: 8px 10px;
@@ -848,7 +837,11 @@ a.home-main-btn {
 
 .btn-grid.cols-3 {
   grid-template-columns: repeat(3, minmax(0, 1fr));
-  grid-template-rows: repeat(5, minmax(0, 1fr));
+  /* rows stretch to fill when they fit (default 5-row pages) and the grid
+     scrolls when the extended page needs more rows than the panel can show */
+  grid-auto-rows: minmax(clamp(34px, 4.2vh, 54px), 1fr);
+  align-content: stretch;
+  overflow-y: auto;
 }
 
 .grid-btn {
@@ -1145,7 +1138,8 @@ a.home-main-btn {
   }
 
   .stats-grid {
-    grid-template-columns: 76px minmax(130px, 1fr) minmax(180px, 1.2fr) minmax(180px, 1.2fr);
+    grid-template-columns: 16px max-content minmax(120px, 1fr) repeat(6, minmax(0, 1fr));
+    gap: 6px 7px;
   }
 
   .mid {
@@ -1212,6 +1206,73 @@ a.home-main-btn {
 .wagon-line {
   stroke-width: 1.6px;
 }
+.wagon-line.preview {
+  stroke-dasharray: 9 8;
+  opacity: 0.85;
+}
+.wagon-dot.preview { opacity: 0.85; }
+
+/* Fielding-region label shown under the wagon wheel while drawing/hovering */
+.wagon-region {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 10px;
+  text-align: center;
+  font-family: "Sora", "Manrope", sans-serif;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  color: #eaf3ff;
+  text-shadow: 0 1px 4px rgba(0, 0, 0, 0.85);
+  pointer-events: none;
+  z-index: 6;
+  min-height: 16px;
+}
+
+/* Right-click context menu (wagon wheel → Fielding Events, cascading) */
+.context-menu {
+  position: fixed;
+  z-index: 200;
+  min-width: 184px;
+  padding: 4px;
+  border-radius: 8px;
+  border: 1px solid var(--border-strong);
+  background: linear-gradient(180deg, rgba(18, 34, 54, 0.99), rgba(10, 19, 32, 0.99));
+  box-shadow: var(--shadow-lg);
+}
+.context-menu.fielding-menu,
+.context-menu.submenu {
+  max-height: 74vh;
+  overflow-y: auto;
+}
+.context-menu.submenu { min-width: 168px; }
+.ctx-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  width: 100%;
+  text-align: left;
+  appearance: none;
+  border: none;
+  background: transparent;
+  color: var(--text);
+  font-size: 12px;
+  font-weight: 600;
+  padding: 6px 10px;
+  border-radius: 5px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.ctx-item:hover:not(:disabled),
+.ctx-item.active { background: rgba(77, 179, 255, 0.18); }
+.ctx-arrow { color: var(--muted); font-size: 13px; }
+.ctx-item.active .ctx-arrow { color: var(--text); }
+.ctx-item:disabled { color: var(--muted); cursor: default; }
+
+.ball-log tbody tr { cursor: pointer; }
+
 .pitch-dot {
   fill: #e0524a;
   stroke: #fff;
@@ -1227,22 +1288,24 @@ a.home-main-btn {
   margin-left: 6px;
 }
 .over-chip {
-  min-width: 22px;
-  height: 24px;
-  padding: 0 6px;
-  border-radius: 7px;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border-radius: 999px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  font-size: 11px;
+  font-family: "Sora", "Manrope", sans-serif;
+  font-size: 12px;
   font-weight: 800;
   color: var(--text);
   background: rgba(17, 34, 54, 0.92);
-  border: 1px solid rgba(112, 150, 190, 0.22);
+  border: 1px solid rgba(112, 150, 190, 0.28);
 }
-.over-chip.chip-4 { background: linear-gradient(180deg, #2f76b7, #1d537f); }
+.over-chip.chip-4 { background: linear-gradient(180deg, #2f76b7, #1d537f); color: #fff; }
 .over-chip.chip-6 { background: linear-gradient(180deg, #b8902f, #8a6a1f); color: #fff; }
 .over-chip.chip-w { background: linear-gradient(180deg, #a3414f, #6d2732); color: #fff; }
+.over-chip.current { box-shadow: 0 0 0 2px rgba(77, 179, 255, 0.55); }
 
 .keypad-btn.marked { outline: 2px solid var(--warning); outline-offset: -2px; }
 .keypad-btn.flash,

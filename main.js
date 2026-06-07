@@ -71,20 +71,23 @@ ipcMain.handle("save-recording", async (event, arrayBuffer, defaultName) => {
   const win = BrowserWindow.fromWebContents(event.sender);
   const cfg = loadConfig();
   const baseName = defaultName || "cricket-capture.webm";
-  let defaultPath = baseName;
-  if (cfg.recordingsPath) {
-    const dir = cfg.recordingsPath.trim();
-    if (dir) {
-      try {
-        await fs.promises.mkdir(dir, { recursive: true });
-      } catch {
-        /* ignore mkdir errors; save dialog still works */
-      }
-      defaultPath = path.join(dir, path.basename(baseName));
+  const dir = (cfg.recordingsPath || "").trim();
+
+  // If a recordings folder is configured, save straight into it without
+  // prompting (no Save As dialog). Fall back to the dialog only on failure.
+  if (dir) {
+    try {
+      await fs.promises.mkdir(dir, { recursive: true });
+      const filePath = path.join(dir, path.basename(baseName));
+      await fs.promises.writeFile(filePath, Buffer.from(arrayBuffer));
+      return { ok: true, filePath, auto: true };
+    } catch {
+      /* fall through to the save dialog */
     }
   }
+
   const { filePath, canceled } = await dialog.showSaveDialog(win, {
-    defaultPath,
+    defaultPath: baseName,
     filters: [{ name: "WebM video", extensions: ["webm"] }],
   });
   if (canceled || !filePath) {

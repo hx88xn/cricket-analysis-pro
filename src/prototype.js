@@ -808,8 +808,23 @@ async function initMatchRegistration(root) {
   wirePanel("A", root);
   wirePanel("B", root);
 
-  root.querySelector("#rg-home").addEventListener("change", (e) => loadSide("A", e.target.value, root, false));
-  root.querySelector("#rg-away").addEventListener("change", (e) => loadSide("B", e.target.value, root, false));
+  // Home and Away can never be the same team — reject the change immediately.
+  root.querySelector("#rg-home").addEventListener("change", (e) => {
+    if (e.target.value && e.target.value === root.querySelector("#rg-away").value) {
+      toast("Home and Away teams must be different", true);
+      e.target.value = "";
+      return loadSide("A", "", root, false);
+    }
+    loadSide("A", e.target.value, root, false);
+  });
+  root.querySelector("#rg-away").addEventListener("change", (e) => {
+    if (e.target.value && e.target.value === root.querySelector("#rg-home").value) {
+      toast("Home and Away teams must be different", true);
+      e.target.value = "";
+      return loadSide("B", "", root, false);
+    }
+    loadSide("B", e.target.value, root, false);
+  });
   root.querySelector("#rg-date").addEventListener("change", () => autoMatchName(root));
   root.querySelector("#rg-name").addEventListener("input", () => { reg.nameDirty = true; });
   root.querySelector("#rg-comp").addEventListener("change", (e) => {
