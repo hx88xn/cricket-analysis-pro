@@ -189,9 +189,11 @@ function createWindow() {
 }
 
 app.whenReady().then(() => {
-  // Store the live database inside the repo (data/cricket.sqlite) so it is
-  // versioned alongside the code rather than in the per-user Electron dir.
-  db.init(path.join(__dirname, "data"));
+  // Dev: keep the live DB inside the repo (data/cricket.sqlite) so it is
+  // versioned alongside the code. Packaged: __dirname lives inside the
+  // read-only app.asar, so write to the per-user userData dir instead.
+  const dbDir = app.isPackaged ? app.getPath("userData") : path.join(__dirname, "data");
+  db.init(dbDir);
   createWindow();
 });
 
