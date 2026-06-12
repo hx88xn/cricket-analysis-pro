@@ -177,6 +177,7 @@ ipcMain.handle("db:match:get", (_e, id) => db.getMatchExpanded(id));
 ipcMain.handle("db:team:save", (_e, team) => db.saveTeam(team));
 ipcMain.handle("db:team:delete", (_e, id) => db.deleteTeam(id));
 ipcMain.handle("db:player:save", (_e, player) => db.savePlayer(player));
+ipcMain.handle("db:player:reorder", (_e, { teamId, ids }) => db.reorderPlayers(teamId, ids));
 ipcMain.handle("db:player:delete", (_e, id) => db.deletePlayer(id));
 ipcMain.handle("db:official:save", (_e, o) => db.saveOfficial(o));
 ipcMain.handle("db:official:delete", (_e, id) => db.deleteOfficial(id));

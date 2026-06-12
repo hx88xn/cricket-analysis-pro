@@ -30,7 +30,7 @@ CREATE TABLE IF NOT EXISTS teams (
 CREATE TABLE IF NOT EXISTS players (
   id TEXT PRIMARY KEY, team_id TEXT, name TEXT, short_name TEXT, role TEXT,
   batting_style TEXT, batting_style_code TEXT, bowling_style TEXT,
-  bowling_type TEXT, bowling_spec TEXT, dob TEXT
+  bowling_type TEXT, bowling_spec TEXT, dob TEXT, sort_order INTEGER
 );
 CREATE INDEX IF NOT EXISTS idx_players_team ON players(team_id);
 CREATE TABLE IF NOT EXISTS competitions (
@@ -102,6 +102,7 @@ function init(filePath, { seed: doSeed = true } = {}) {
   if (doSeed && db.prepare("SELECT COUNT(*) c FROM teams").get().c === 0) {
     seed(maybeImportJson(dir) || buildSeed());
   }
+  ensureColumns(); // add/back-fill columns added after a DB was first created
   ensureMasters(); // option lists for the coding screen (also back-fills existing DBs)
   return db;
 }
@@ -126,6 +127,27 @@ function close() {
 // hand off even while the app keeps writing. Returns a promise.
 function backupTo(destPath) {
   return db.backup(destPath);
+}
+
+// Add columns introduced after a database was first created, and give existing
+// rows a sensible starting value. Runs every init so older DBs are upgraded in
+// place. Currently: players.sort_order (custom display order in Player Master).
+function ensureColumns() {
+  const cols = db.prepare("PRAGMA table_info(players)").all().map((c) => c.name);
+  if (!cols.includes("sort_order")) {
+    db.exec("ALTER TABLE players ADD COLUMN sort_order INTEGER");
+  }
+  // Back-fill any players without an order (legacy rows, freshly seeded data) so
+  // drag/▲▼ reordering has a stable, deterministic starting point: number them
+  // per team, alphabetically — matching the previous name-sorted display.
+  if (db.prepare("SELECT COUNT(*) c FROM players WHERE sort_order IS NULL").get().c > 0) {
+    const teamIds = db.prepare("SELECT DISTINCT team_id FROM players").all();
+    const sel = db.prepare("SELECT id FROM players WHERE team_id IS ? ORDER BY name");
+    const upd = db.prepare("UPDATE players SET sort_order = ? WHERE id = ?");
+    db.transaction(() => {
+      teamIds.forEach(({ team_id }) => sel.all(team_id).forEach((r, i) => upd.run(i, r.id)));
+    })();
+  }
 }
 
 // Seed the Bowl Spec / Shot Type / Fielding Factor option lists if absent. Run
@@ -220,14 +242,18 @@ function teams() {
   return db.prepare("SELECT * FROM teams ORDER BY name").all().map(mapTeam);
 }
 
+// Players are returned in their custom display order (sort_order, set in Player
+// Master); rows without one fall to the end, then alphabetical as a tiebreak.
+const PLAYER_ORDER = "ORDER BY p.sort_order IS NULL, p.sort_order, p.name";
+
 function playersByTeam(teamId) {
   return db.prepare(`SELECT p.*, t.name AS team_name FROM players p
-    LEFT JOIN teams t ON t.id = p.team_id WHERE p.team_id = ? ORDER BY p.name`).all(teamId).map(mapPlayer);
+    LEFT JOIN teams t ON t.id = p.team_id WHERE p.team_id = ? ${PLAYER_ORDER}`).all(teamId).map(mapPlayer);
 }
 
 function allPlayers() {
   return db.prepare(`SELECT p.*, t.name AS team_name FROM players p
-    LEFT JOIN teams t ON t.id = p.team_id ORDER BY p.name`).all().map(mapPlayer);
+    LEFT JOIN teams t ON t.id = p.team_id ${PLAYER_ORDER}`).all().map(mapPlayer);
 }
 
 function competitions() {
@@ -367,19 +393,37 @@ function savePlayer(player) {
     const t = db.prepare("SELECT name FROM teams WHERE id = ?").get(player.teamId);
     if (t) teamName = t.name;
   }
+  const teamId = player.teamId || "";
+  // New players append to the end of their team's order; existing players keep
+  // the order they already have (DO UPDATE deliberately omits sort_order).
+  const exists = db.prepare("SELECT 1 FROM players WHERE id = ?").get(id);
+  let sortOrder = null;
+  if (!exists) {
+    const max = db.prepare("SELECT MAX(sort_order) m FROM players WHERE team_id = ?").get(teamId).m;
+    sortOrder = (max == null ? -1 : max) + 1;
+  }
   db.prepare(`INSERT INTO players
-    (id,team_id,name,short_name,role,batting_style,batting_style_code,bowling_style,bowling_type,bowling_spec,dob)
-    VALUES (@id,@team_id,@name,@short_name,@role,@batting_style,@batting_style_code,@bowling_style,@bowling_type,@bowling_spec,@dob)
+    (id,team_id,name,short_name,role,batting_style,batting_style_code,bowling_style,bowling_type,bowling_spec,dob,sort_order)
+    VALUES (@id,@team_id,@name,@short_name,@role,@batting_style,@batting_style_code,@bowling_style,@bowling_type,@bowling_spec,@dob,@sort_order)
     ON CONFLICT(id) DO UPDATE SET team_id=@team_id, name=@name, short_name=@short_name, role=@role,
       batting_style=@batting_style, batting_style_code=@batting_style_code, bowling_style=@bowling_style,
       bowling_type=@bowling_type, bowling_spec=@bowling_spec, dob=@dob`)
     .run({
-      id, team_id: player.teamId || "", name: player.name, short_name: player.shortName || "",
+      id, team_id: teamId, name: player.name, short_name: player.shortName || "",
       role: player.role || "", batting_style: player.battingStyle || "",
       batting_style_code: player.battingStyleCode || "", bowling_style: player.bowlingStyle || "",
       bowling_type: player.bowlingType || "", bowling_spec: player.bowlingSpec || "", dob: player.dob || "",
+      sort_order: sortOrder,
     });
   return { ...player, id, teamName };
+}
+
+// Persist a new player display order within a team: ids[] in the desired order.
+function reorderPlayers(teamId, ids) {
+  const tid = teamId || "";
+  const upd = db.prepare("UPDATE players SET sort_order = ? WHERE id = ? AND team_id = ?");
+  db.transaction((list) => list.forEach((id, i) => upd.run(i, id, tid)))(ids || []);
+  return playersByTeam(tid);
 }
 
 function deleteTeam(id) {
@@ -620,6 +664,7 @@ module.exports = {
   getMatchExpanded,
   saveTeam,
   savePlayer,
+  reorderPlayers,
   deleteTeam,
   deletePlayer,
   saveOfficial,

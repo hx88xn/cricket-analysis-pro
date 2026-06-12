@@ -16,7 +16,13 @@ html {
   width: 100%;
   height: 100%;
   margin: 0;
-  overflow: hidden;
+  /* The scaled <body> fills the width exactly, so a horizontal bar is never
+     wanted. Vertically, allow scrolling so screens taller than the window (e.g.
+     Reports, Match Registration) can be reached instead of being clipped — the
+     old `overflow: hidden` cut off everything below the fold, which showed up on
+     Windows where DPI scaling + the taskbar/title bar shrink the usable height. */
+  overflow-x: hidden;
+  overflow-y: auto;
   background: #050b14;
   /* Hidden until stage.js applies the scale, so the unscaled (full-1920) frame
      never paints. stage.js reveals it on the first fit. */

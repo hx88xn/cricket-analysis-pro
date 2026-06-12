@@ -30,6 +30,7 @@ contextBridge.exposeInMainWorld("cricketApp", {
     saveTeam: (team) => ipcRenderer.invoke("db:team:save", team),
     deleteTeam: (id) => ipcRenderer.invoke("db:team:delete", id),
     savePlayer: (player) => ipcRenderer.invoke("db:player:save", player),
+    reorderPlayers: (teamId, ids) => ipcRenderer.invoke("db:player:reorder", { teamId, ids }),
     deletePlayer: (id) => ipcRenderer.invoke("db:player:delete", id),
     saveOfficial: (o) => ipcRenderer.invoke("db:official:save", o),
     deleteOfficial: (id) => ipcRenderer.invoke("db:official:delete", id),

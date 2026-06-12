@@ -300,15 +300,33 @@ async function buildPlayerMaster() {
         <button class="btn-main btn-green" id="pm-save">Add</button>
         <button class="btn-main btn-yellow" id="pm-clear">Clear</button>
       </div>
+      <p class="mst-hint">Drag a row by its ⠿ handle, or use ▲ ▼, to set the player order within the team — it drives the batting/squad order elsewhere.</p>
       <div id="pm-table"></div>
     </section>`;
 }
 
-const PLAYER_COLUMNS = [
-  { key: "sno", label: "S.No" }, { key: "name", label: "Player Name" },
-  { key: "battingStyle", label: "Batting Style" }, { key: "bowling", label: "Bowling Style" },
-  { key: "role", label: "Role" },
-];
+// Reorderable player table (mirrors the Masters editor): an order column with a
+// drag handle, ▲ ▼ nudge buttons, plus edit/delete. Order is per-team.
+function playerRows(players) {
+  const cols = "70px 1.4fr 1fr 1fr 1fr 132px";
+  const head = `<div class="table-head" style="grid-template-columns:${cols};">
+    <span>Order</span><span>Player Name</span><span>Batting Style</span><span>Bowling Style</span><span>Role</span><span>Actions</span></div>`;
+  const body = players.length ? players.map((p, i) => `
+    <div class="table-row mst-row" draggable="true" data-id="${esc(p.id)}" style="grid-template-columns:${cols};">
+      <span class="mst-order"><span class="mst-grip" title="Drag to reorder">⠿</span>${i + 1}</span>
+      <span>${esc(p.name)}</span>
+      <span>${esc(p.battingStyle || "")}</span>
+      <span>${esc([p.bowlingStyle, p.bowlingType].filter(Boolean).join(" "))}</span>
+      <span>${esc(p.role || "")}</span>
+      <span class="mst-actions">
+        <button class="mst-btn" data-act="up" data-id="${esc(p.id)}" ${i === 0 ? "disabled" : ""}>▲</button>
+        <button class="mst-btn" data-act="down" data-id="${esc(p.id)}" ${i === players.length - 1 ? "disabled" : ""}>▼</button>
+        <button class="mst-btn" data-act="edit" data-id="${esc(p.id)}" title="Edit">✎</button>
+        <button class="mst-btn mst-del" data-act="del" data-id="${esc(p.id)}" title="Delete">✕</button>
+      </span>
+    </div>`).join("") : `<div class="table-empty-row">No records found.</div>`;
+  return `<section class="table-shell">${head}<div class="table-rows">${body}</div></section>`;
+}
 
 function initPlayerMaster(root) {
   const q = (id) => root.querySelector(id);
@@ -322,18 +340,76 @@ function initPlayerMaster(root) {
 
   async function refresh() {
     const players = (await dbCall("players", teamEl.value)) || [];
-    const rows = players.map((p, i) => ({
-      ...p, sno: i + 1, bowling: [p.bowlingStyle, p.bowlingType].filter(Boolean).join(" "),
-    }));
-    tableEl._items = rows;
-    tableEl.innerHTML = crudRows(rows, PLAYER_COLUMNS);
+    tableEl._items = players;
+    tableEl.innerHTML = playerRows(players);
     tableEl.querySelectorAll(".mst-btn").forEach((b) => b.addEventListener("click", onRowAction));
+    wirePlayerDrag();
   }
+
+  // Drag-and-drop reordering within the selected team. On drop (or ▲ ▼) the new
+  // order of ids is read and persisted; dragging is suppressed when the press
+  // starts on an action button.
+  function wirePlayerDrag() {
+    let dragEl = null;
+    const container = tableEl.querySelector(".table-rows");
+    if (!container) return;
+    const rowAfter = (y) => [...container.querySelectorAll(".mst-row:not(.dragging)")].reduce((closest, row) => {
+      const box = row.getBoundingClientRect();
+      const offset = y - box.top - box.height / 2;
+      if (offset < 0 && offset > closest.offset) return { offset, el: row };
+      return closest;
+    }, { offset: -Infinity, el: null }).el;
+
+    tableEl.querySelectorAll(".mst-row").forEach((row) => {
+      row.querySelectorAll(".mst-btn").forEach((b) => {
+        b.addEventListener("mousedown", (e) => e.stopPropagation());
+        b.draggable = false;
+      });
+      row.addEventListener("dragstart", (e) => {
+        dragEl = row; row.classList.add("dragging");
+        e.dataTransfer.effectAllowed = "move";
+        try { e.dataTransfer.setData("text/plain", row.dataset.id); } catch { /* ignore */ }
+      });
+      row.addEventListener("dragend", () => {
+        row.classList.remove("dragging");
+        container.classList.remove("drop-active");
+        dragEl = null;
+      });
+    });
+    container.addEventListener("dragover", (e) => {
+      if (!dragEl) return;
+      e.preventDefault();
+      container.classList.add("drop-active");
+      const after = rowAfter(e.clientY);
+      if (after == null) container.appendChild(dragEl);
+      else container.insertBefore(dragEl, after);
+    });
+    container.addEventListener("dragleave", (e) => {
+      if (!container.contains(e.relatedTarget)) container.classList.remove("drop-active");
+    });
+    container.addEventListener("drop", async (e) => {
+      if (!dragEl) return;
+      e.preventDefault();
+      const ids = [...container.querySelectorAll(".mst-row")].map((r) => r.dataset.id);
+      await dbCall("reorderPlayers", teamEl.value, ids);
+      refresh(); // re-render so order numbers + arrow disabled-states update
+    });
+  }
+
   async function onRowAction() {
-    const id = this.dataset.id;
-    if (this.dataset.act === "del") {
+    const id = this.dataset.id, act = this.dataset.act;
+    if (act === "del") {
       if (editing === id) clear();
       await dbCall("deletePlayer", id);
+      return refresh();
+    }
+    if (act === "up" || act === "down") {
+      const ids = (tableEl._items || []).map((x) => x.id);
+      const idx = ids.indexOf(id);
+      const swap = act === "up" ? idx - 1 : idx + 1;
+      if (idx < 0 || swap < 0 || swap >= ids.length) return;
+      [ids[idx], ids[swap]] = [ids[swap], ids[idx]];
+      await dbCall("reorderPlayers", teamEl.value, ids);
       return refresh();
     }
     const p = (tableEl._items || []).find((x) => x.id === id);
