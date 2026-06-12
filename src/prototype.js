@@ -834,7 +834,7 @@ async function buildReports() {
   return `
     <section class="reports-screen reports-full">
       <div class="report-topbar">
-        <div class="report-brand">🏃 CAP REPORTS</div>
+        <div class="report-brand"><img class="report-brand-mark" src="assets/logo-mark.svg" alt="" />CRICPRO REPORTS</div>
         <div class="report-top-actions">
           <label class="report-check"><input type="checkbox" checked /> Trimmed Video</label>
           <button class="report-icon" title="Export">⤓</button>

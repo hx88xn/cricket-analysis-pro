@@ -34,6 +34,7 @@
       "**/node_modules/better-sqlite3/**"
     ],
     "mac": {
+      "icon": "build/icon.png",
       "target": [
         "dmg"
       ],
@@ -44,6 +45,7 @@
       }
     },
     "win": {
+      "icon": "build/icon.png",
       "target": [
         "nsis"
       ]
@@ -57,6 +59,7 @@
       "shortcutName": "CRICPRO"
     },
     "linux": {
+      "icon": "build/icon.png",
       "target": [
         "deb",
         "tar.gz"

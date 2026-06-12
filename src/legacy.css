@@ -110,13 +110,22 @@ textarea {
 
 .logo-badge {
   position: absolute;
-  top: 32px;
-  left: 84px;
+  top: 26px;
+  left: 80px;
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
   font-family: "Sora", "Manrope", sans-serif;
   font-size: 18px;
   letter-spacing: 0.08em;
   text-transform: uppercase;
   color: var(--muted);
+}
+
+.logo-badge .logo-badge-mark {
+  width: 30px;
+  height: 30px;
+  display: block;
 }
 
 .logo-badge span {
@@ -150,27 +159,12 @@ textarea {
   border-radius: 36px;
   border: 1px solid rgba(140, 178, 219, 0.18);
   background:
+    url("assets/logo-mark.svg") center / 76% no-repeat,
     radial-gradient(circle at top left, rgba(77, 179, 255, 0.18), transparent 42%),
     linear-gradient(180deg, rgba(15, 30, 48, 0.96), rgba(8, 15, 26, 0.96));
   box-shadow: var(--shadow-lg);
   position: relative;
   overflow: hidden;
-}
-
-.hero-mark .bat-icon::before {
-  content: "CRIC\APRO";
-  white-space: pre;
-  text-align: center;
-  line-height: 1.04;
-  position: absolute;
-  inset: 0;
-  display: grid;
-  place-items: center;
-  font-family: "Sora", "Manrope", sans-serif;
-  font-size: 38px;
-  font-weight: 700;
-  letter-spacing: 0.12em;
-  color: rgba(235, 243, 255, 0.92);
 }
 
 .hero-mark .bat-icon::after {
@@ -1254,12 +1248,16 @@ textarea {
   background: rgba(13, 27, 44, 0.9);
 }
 .report-brand {
+  display: inline-flex;
+  align-items: center;
+  gap: 9px;
   font-family: "Sora", "Manrope", sans-serif;
   font-size: 15px;
   font-weight: 700;
   letter-spacing: 0.14em;
   color: var(--text);
 }
+.report-brand-mark { width: 24px; height: 24px; display: block; }
 .report-top-actions { display: flex; align-items: center; gap: 14px; }
 .report-check { display: inline-flex; align-items: center; gap: 7px; font-size: 12px; color: var(--text-soft); }
 .report-check input { width: 15px; height: 15px; accent-color: var(--accent); }

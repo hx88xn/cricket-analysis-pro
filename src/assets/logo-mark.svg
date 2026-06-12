@@ -1,0 +1,43 @@
+<svg width="512" height="512" viewBox="0 0 512 512" fill="none" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="CRICPRO mark">
+  <defs>
+    <radialGradient id="cp-ball" cx="38%" cy="32%" r="78%">
+      <stop offset="0%" stop-color="#ffe9a8"/>
+      <stop offset="42%" stop-color="#f4c45a"/>
+      <stop offset="82%" stop-color="#d99327"/>
+      <stop offset="100%" stop-color="#a96a14"/>
+    </radialGradient>
+    <linearGradient id="cp-arc" x1="0" y1="1" x2="1" y2="0">
+      <stop offset="0%" stop-color="#4db3ff" stop-opacity="0"/>
+      <stop offset="55%" stop-color="#4db3ff" stop-opacity="0.85"/>
+      <stop offset="100%" stop-color="#9fd8ff" stop-opacity="1"/>
+    </linearGradient>
+    <filter id="cp-glow" x="-30%" y="-30%" width="160%" height="160%">
+      <feGaussianBlur stdDeviation="6" result="b"/>
+      <feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+  </defs>
+
+  <!-- delivery trajectory -->
+  <path d="M40 446 C 150 470 330 392 432 150" stroke="url(#cp-arc)" stroke-width="22"
+        stroke-linecap="round" fill="none" filter="url(#cp-glow)"/>
+  <circle cx="432" cy="150" r="13" fill="#cdebff"/>
+
+  <!-- cricket ball -->
+  <circle cx="248" cy="266" r="138" fill="url(#cp-ball)"/>
+  <circle cx="248" cy="266" r="138" fill="none" stroke="#7a4d12" stroke-opacity="0.45" stroke-width="3"/>
+  <!-- specular highlight -->
+  <ellipse cx="200" cy="212" rx="52" ry="34" fill="#fff6dd" opacity="0.45"/>
+
+  <!-- seam -->
+  <path d="M248 128 Q 372 266 248 404" stroke="#5c3a0e" stroke-width="9" fill="none" stroke-linecap="round"/>
+  <g stroke="#fff3d4" stroke-width="6" stroke-linecap="round">
+    <path d="M258 150 l 26 -8"/>
+    <path d="M286 178 l 27 -5"/>
+    <path d="M304 210 l 27 -2"/>
+    <path d="M312 246 l 27 1"/>
+    <path d="M312 286 l 27 -1"/>
+    <path d="M304 322 l 27 2"/>
+    <path d="M286 354 l 27 5"/>
+    <path d="M258 382 l 26 8"/>
+  </g>
+</svg>
