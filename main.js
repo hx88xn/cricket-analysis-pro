@@ -324,12 +324,56 @@ function createWindow() {
   }
 }
 
+// One-time cleanup for machines upgraded from an older build that auto-seeded
+// the demo dataset into the user's database. The current build never seeds when
+// packaged, but it also never wipes an existing file — so that leftover sample
+// data keeps showing up. If the DEFAULT database still holds ONLY the pristine
+// sample dataset (nothing the user added or scored), retire it to a .bak and
+// start fresh & empty. Conservative by design: it never touches a database the
+// user explicitly opened, or one that has any real work in it.
+//
+// Demo rows from buildSeed() use zero-padded ids (teams t01.., competition c01,
+// players p001..); user-created rows use non-padded ids via genId (t1, c1), so
+// the padding is a reliable "this is untouched sample data" signature.
+function healDefaultDemoDb() {
+  if (!app.isPackaged) return; // dev intentionally keeps its seeded data
+  if ((loadConfig().databasePath || "").trim()) return; // user chose a file — leave it
+  try {
+    const teams = db.teams();
+    const comps = db.competitions();
+    const pristineDemo =
+      teams.length > 0 && teams.every((t) => /^t\d\d$/.test(t.id)) && // only demo teams (t01..)
+      comps.length > 0 && comps.every((c) => /^c\d\d$/.test(c.id)) && // only demo comps (c01..)
+      db.matches().length <= 1 && // at most the single demo match (m0001)
+      db.ballCount() === 0; // no deliveries scored => no real work
+    if (!pristineDemo) return;
+
+    const file = db.currentFile();
+    db.close();
+    try {
+      fs.renameSync(file, `${file}.sample-${Date.now()}.bak`); // keep, don't destroy
+    } catch {
+      /* if rename fails, removeDbFiles below still clears it */
+    }
+    removeDbFiles(file); // drop the original (if still present) + WAL/SHM sidecars
+    db.init(file, { seed: false }); // schema + Masters only
+  } catch {
+    // Best effort: if anything looks off, leave the database exactly as it was.
+    try {
+      if (!db.currentFile()) db.init(resolveDbFile(), { seed: false });
+    } catch {
+      /* ignore */
+    }
+  }
+}
+
 app.whenReady().then(() => {
   // Only seed the demo dataset (sample teams, players, competitions) in dev so
   // those flows are easy to inspect. A packaged build starts empty — schema +
   // Masters option lists only — so a fresh install isn't pre-filled with sample
   // data (ensureMasters/ensureColumns still run regardless, inside init).
   db.init(resolveDbFile(), { seed: !app.isPackaged });
+  healDefaultDemoDb(); // clear sample data left by an older auto-seeding build
   createWindow();
 });
 

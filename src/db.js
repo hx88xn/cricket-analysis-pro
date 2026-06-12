@@ -256,6 +256,12 @@ function allPlayers() {
     LEFT JOIN teams t ON t.id = p.team_id ${PLAYER_ORDER}`).all().map(mapPlayer);
 }
 
+// Number of recorded deliveries across all matches — a reliable signal of real
+// scoring work (used to tell pristine demo data from a database in real use).
+function ballCount() {
+  return db.prepare("SELECT COUNT(*) c FROM balls").get().c;
+}
+
 function competitions() {
   const comps = db.prepare("SELECT * FROM competitions").all();
   const teamStmt = db.prepare("SELECT team_id FROM competition_teams WHERE competition_id = ?");
@@ -651,6 +657,7 @@ module.exports = {
   teams,
   playersByTeam,
   allPlayers,
+  ballCount,
   competitions,
   officials,
   grounds,
