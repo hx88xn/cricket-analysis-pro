@@ -9,6 +9,7 @@ contextBridge.exposeInMainWorld("cricketApp", {
   currentDatabase: () => ipcRenderer.invoke("db:current"),
   switchDatabase: (filePath) => ipcRenderer.invoke("db:switch", filePath),
   newDatabase: () => ipcRenderer.invoke("db:new"),
+  resetDatabase: () => ipcRenderer.invoke("db:reset"),
   exportDatabase: () => ipcRenderer.invoke("db:export"),
   saveRecording: (arrayBuffer, defaultName, subfolder) =>
     ipcRenderer.invoke("save-recording", arrayBuffer, defaultName, subfolder),

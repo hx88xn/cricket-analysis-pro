@@ -18,14 +18,15 @@ async function loadForm() {
   await refreshCameraList(cfg.cameraDeviceId || "");
 }
 
-// Show only an explicitly chosen-and-saved database path. Empty until the user
-// opens or creates one (the app falls back to the default file internally, but
-// that default is not surfaced here).
+// Show the database the app is ACTUALLY using right now — whether that's a file
+// the user explicitly opened/created, or the default file the app falls back to
+// on launch. Surfacing the real path avoids the confusing "No database open"
+// state while masters/teams clearly contain data.
 async function refreshDatabasePath() {
-  if (!window.cricketApp?.getConfig) return;
+  if (!window.cricketApp?.currentDatabase) return;
   try {
-    const cfg = await window.cricketApp.getConfig();
-    databaseInput.value = cfg.databasePath || "";
+    const { path } = await window.cricketApp.currentDatabase();
+    databaseInput.value = path || "";
   } catch {
     /* leave as-is */
   }
@@ -107,6 +108,28 @@ document.getElementById("btn-new-database").addEventListener("click", async () =
     window.location.reload();
   } else {
     setStatus(res.error ? `Could not create database: ${res.error}` : "Could not create database.", true);
+  }
+});
+
+// Empty the current database in place — wipes all teams/players/matches/etc.
+// (keeps the option lists) and reloads. Useful to clear data seeded by an older
+// build. Guarded by a confirm since it is destructive and irreversible.
+document.getElementById("btn-reset-database").addEventListener("click", async () => {
+  if (!window.cricketApp?.resetDatabase) return;
+  const ok = window.confirm(
+    "Clear ALL data from the current database?\n\n" +
+    "This permanently removes every team, player, match and report. " +
+    "The option lists (Bowl Spec, Shot Type, etc.) are kept. This cannot be undone.\n\n" +
+    "Tip: use “Export / Backup…” first if you want a copy."
+  );
+  if (!ok) return;
+  setStatus("Clearing database…");
+  const res = await window.cricketApp.resetDatabase();
+  if (res.ok) {
+    setStatus("Database cleared. Reloading…");
+    window.location.reload();
+  } else {
+    setStatus(res.error ? `Could not clear database: ${res.error}` : "Could not clear database.", true);
   }
 });
 

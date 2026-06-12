@@ -250,6 +250,28 @@ ipcMain.handle("db:new", async (event) => {
   }
 });
 
+// Empty the CURRENT database in place: delete the live file (+ WAL/SHM) and
+// recreate it blank (schema + Masters option lists, no demo records) at the same
+// path. Used by "Clear all data" to wipe a database that was seeded by an older
+// build, without making the user hunt down the file under userData.
+ipcMain.handle("db:reset", () => {
+  const file = db.currentFile();
+  if (!file) return { ok: false, error: "No database open." };
+  try {
+    db.close();
+    removeDbFiles(file); // guarantee a truly blank database
+    db.init(file, { seed: false });
+    return { ok: true, path: file };
+  } catch (err) {
+    try {
+      db.init(file);
+    } catch {
+      /* best effort */
+    }
+    return { ok: false, error: String((err && err.message) || err) };
+  }
+});
+
 // Export a consistent copy of the CURRENT database (does not switch to it).
 ipcMain.handle("db:export", async (event) => {
   const win = BrowserWindow.fromWebContents(event.sender);
