@@ -303,7 +303,11 @@ function createWindow() {
 }
 
 app.whenReady().then(() => {
-  db.init(resolveDbFile());
+  // Only seed the demo dataset (sample teams, players, competitions) in dev so
+  // those flows are easy to inspect. A packaged build starts empty — schema +
+  // Masters option lists only — so a fresh install isn't pre-filled with sample
+  // data (ensureMasters/ensureColumns still run regardless, inside init).
+  db.init(resolveDbFile(), { seed: !app.isPackaged });
   createWindow();
 });
 
