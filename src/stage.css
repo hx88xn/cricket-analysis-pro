@@ -1,0 +1,37 @@
+/*
+ * Scale-to-fit stage.
+ *
+ * The whole UI is authored against a fixed 1920x1080 design. To make it look
+ * identical on every machine regardless of OS display scaling (DPI) or window
+ * aspect ratio, we render <body> at exactly 1920x1080 and uniformly scale it to
+ * fit the window via a transform (set by stage.js). Scaling <body> itself —
+ * rather than an inner wrapper — means dynamically appended overlays (context
+ * menus, popups that append to document.body) scale along with everything else,
+ * and their position:fixed resolves against the transformed body.
+ *
+ * Loaded LAST so these html/body rules win over the base stylesheet.
+ */
+
+html {
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  overflow: hidden;
+  background: #050b14;
+  /* Hidden until stage.js applies the scale, so the unscaled (full-1920) frame
+     never paints. stage.js reveals it on the first fit. */
+  visibility: hidden;
+}
+
+body {
+  /* Fixed design canvas — every vh/vw in the app is authored against this via
+     container query units (cqh/cqw), which resolve to this box. height is grown
+     to fill the window by stage.js. */
+  width: 1920px;
+  height: 1080px;
+  margin: 0;
+  container-type: size;
+  transform-origin: top left;
+  /* stage.js sets: transform: scale(s); */
+  will-change: transform;
+}

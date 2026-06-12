@@ -655,8 +655,13 @@ function placeFlyout(sub, item) {
   let x = ir.right - 2;
   if (x + sr.width > window.innerWidth - 8) x = ir.left - sr.width + 2;
   const y = Math.min(ir.top, window.innerHeight - sr.height - 8);
-  sub.style.left = `${Math.max(8, x)}px`;
-  sub.style.top = `${Math.max(8, y)}px`;
+  // x/y are window-space; the menu lives inside the scaled <body>, so map them
+  // into design space (no-op when the scale-to-fit stage isn't active).
+  const d = window.stageFromWindow
+    ? window.stageFromWindow(Math.max(8, x), Math.max(8, y))
+    : { x: Math.max(8, x), y: Math.max(8, y) };
+  sub.style.left = `${d.x}px`;
+  sub.style.top = `${d.y}px`;
 }
 
 // Level 3: fielders for a chosen position + event.
@@ -725,8 +730,12 @@ function positionMenu(menu, clientX, clientY) {
   let x = clientX, y = clientY;
   if (x + r.width > window.innerWidth - 8) x = clientX - r.width;
   if (y + r.height > window.innerHeight - 8) y = window.innerHeight - r.height - 8;
-  menu.style.left = `${Math.max(8, x)}px`;
-  menu.style.top = `${Math.max(8, y)}px`;
+  // Map window-space coords into the scaled <body>'s design space.
+  const d = window.stageFromWindow
+    ? window.stageFromWindow(Math.max(8, x), Math.max(8, y))
+    : { x: Math.max(8, x), y: Math.max(8, y) };
+  menu.style.left = `${d.x}px`;
+  menu.style.top = `${d.y}px`;
 }
 
 // ---- Keypad / scoring -----------------------------------------------------

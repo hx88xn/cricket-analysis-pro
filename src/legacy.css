@@ -61,12 +61,12 @@ textarea {
 }
 
 .cap-bg {
-  min-height: 100vh;
+  min-height: 100cqh;
 }
 
 .cap-shell {
   position: relative;
-  min-height: 100vh;
+  min-height: 100cqh;
   padding: 28px;
   z-index: 1;
 }
@@ -185,7 +185,7 @@ textarea {
 }
 
 .cap-title {
-  font-size: clamp(44px, 6vw, 78px);
+  font-size: clamp(44px, 6cqw, 78px);
 }
 
 .cap-title strong,
@@ -195,7 +195,7 @@ textarea {
 
 .cap-version {
   margin-top: 14px;
-  font-size: clamp(14px, 1.5vw, 18px);
+  font-size: clamp(14px, 1.5cqw, 18px);
   color: var(--muted);
   letter-spacing: 0.16em;
   text-transform: uppercase;
@@ -269,7 +269,7 @@ textarea {
 .tile-label,
 .menu-card .label {
   font-family: "Sora", "Manrope", sans-serif;
-  font-size: clamp(22px, 2vw, 32px);
+  font-size: clamp(22px, 2cqw, 32px);
   line-height: 1.05;
   letter-spacing: -0.04em;
 }
@@ -290,7 +290,7 @@ textarea {
 }
 
 .proto-title {
-  font-size: clamp(34px, 4vw, 52px);
+  font-size: clamp(34px, 4cqw, 52px);
   text-align: center;
 }
 
@@ -419,7 +419,7 @@ textarea {
 }
 
 .mini-brand .cap-title {
-  font-size: clamp(34px, 4vw, 54px);
+  font-size: clamp(34px, 4cqw, 54px);
 }
 
 .form-screen {
@@ -778,7 +778,7 @@ textarea {
   display: grid;
   place-items: center;
   font-family: "Sora", "Manrope", sans-serif;
-  font-size: clamp(30px, 4vw, 46px);
+  font-size: clamp(30px, 4cqw, 46px);
   letter-spacing: -0.05em;
   color: rgba(167, 185, 205, 0.14);
 }
@@ -832,7 +832,7 @@ textarea {
   gap: 10px;
 }
 
-@media (max-width: 1220px) {
+@container (max-width: 1220px) {
   .main-tiles,
   .card-grid,
   .reports-screen,
@@ -854,7 +854,7 @@ textarea {
   }
 }
 
-@media (max-width: 720px) {
+@container (max-width: 720px) {
   .cap-shell {
     padding: 18px;
   }
@@ -1124,7 +1124,7 @@ textarea {
   color: var(--text);
 }
 
-@media (max-width: 1220px) {
+@container (max-width: 1220px) {
   .reg-layout {
     grid-template-columns: 1fr;
   }

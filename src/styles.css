@@ -165,7 +165,7 @@ a.home-main-btn {
   position: relative;
   display: grid;
   grid-template-rows: auto minmax(0, var(--layout-mid)) minmax(0, var(--layout-footer));
-  height: 100vh;
+  height: 100cqh;
   padding: 14px;
   gap: 12px;
   min-height: 0;
@@ -281,7 +281,7 @@ a.home-main-btn {
 
 .score-main {
   font-family: "Sora", "Manrope", sans-serif;
-  font-size: clamp(32px, 3.7vh, 44px);
+  font-size: clamp(32px, 3.7cqh, 44px);
   font-weight: 700;
   line-height: 1;
   color: var(--warning);
@@ -289,7 +289,7 @@ a.home-main-btn {
 
 .overs-value {
   font-family: "Sora", "Manrope", sans-serif;
-  font-size: clamp(24px, 2.8vh, 34px);
+  font-size: clamp(24px, 2.8cqh, 34px);
   font-weight: 700;
 }
 
@@ -870,19 +870,19 @@ a.home-main-btn {
   grid-template-columns: repeat(3, minmax(0, 1fr));
   /* rows stretch to fill when they fit (default 5-row pages) and the grid
      scrolls when the extended page needs more rows than the panel can show */
-  grid-auto-rows: minmax(clamp(34px, 4.2vh, 54px), 1fr);
+  grid-auto-rows: minmax(clamp(34px, 4.2cqh, 54px), 1fr);
   align-content: stretch;
   overflow-y: auto;
 }
 
 .grid-btn {
-  min-height: clamp(34px, 4.2vh, 54px);
+  min-height: clamp(34px, 4.2cqh, 54px);
   padding: 8px 6px;
   border-radius: 12px;
   border: 1px solid rgba(124, 157, 196, 0.16);
   background: linear-gradient(180deg, rgba(23, 81, 67, 0.94), rgba(16, 53, 46, 0.94));
   color: #f5fbff;
-  font-size: clamp(8px, 0.9vh, 10px);
+  font-size: clamp(8px, 0.9cqh, 10px);
   font-weight: 700;
   line-height: 1.15;
   text-align: center;
@@ -924,10 +924,10 @@ a.home-main-btn {
   display: flex;
   align-items: center;
   justify-content: center;
-  padding: clamp(10px, 1.5vh, 16px) 6px;
+  padding: clamp(10px, 1.5cqh, 16px) 6px;
   border-radius: 14px;
   font-family: "Sora", "Manrope", sans-serif;
-  font-size: clamp(11px, 1.4vh, 15px);
+  font-size: clamp(11px, 1.4cqh, 15px);
   text-align: center;
 }
 
@@ -992,7 +992,7 @@ a.home-main-btn {
   background: linear-gradient(180deg, #1f5e95 0%, #1a4f7e 100%);
   color: #fff;
   font-family: "Sora", "Manrope", sans-serif;
-  font-size: clamp(13px, 1.8vh, 18px);
+  font-size: clamp(13px, 1.8cqh, 18px);
   font-weight: 700;
   cursor: pointer;
   transition: background 0.16s ease, transform 0.12s ease, border-color 0.16s ease;
@@ -1011,14 +1011,14 @@ a.home-main-btn {
 
 .screen-body {
   margin: 0;
-  min-height: 100vh;
+  min-height: 100cqh;
   overflow: auto;
 }
 
 .screen-shell {
   max-width: 1180px;
   margin: 0 auto;
-  min-height: 100vh;
+  min-height: 100cqh;
   padding: 40px 24px 56px;
 }
 
@@ -1034,7 +1034,7 @@ a.home-main-btn {
 .screen-title {
   margin: 0;
   font-family: "Sora", "Manrope", sans-serif;
-  font-size: clamp(2rem, 4vw, 3rem);
+  font-size: clamp(2rem, 4cqw, 3rem);
   letter-spacing: -0.04em;
 }
 
@@ -1163,7 +1163,7 @@ a.home-main-btn {
   color: var(--danger);
 }
 
-@media (max-width: 1480px) {
+@container (max-width: 1480px) {
   .header {
     grid-template-columns: 1fr 1.9fr 0.8fr;
   }
@@ -1178,7 +1178,7 @@ a.home-main-btn {
   }
 }
 
-@media (max-width: 1180px) {
+@container (max-width: 1180px) {
   body,
   .screen-body {
     overflow: auto;
@@ -1186,7 +1186,7 @@ a.home-main-btn {
 
   .app {
     height: auto;
-    min-height: 100vh;
+    min-height: 100cqh;
     grid-template-rows: auto auto auto;
   }
 
@@ -1274,7 +1274,7 @@ a.home-main-btn {
 }
 .context-menu.fielding-menu,
 .context-menu.submenu {
-  max-height: 74vh;
+  max-height: 74cqh;
   overflow-y: auto;
 }
 .context-menu.submenu { min-width: 168px; }
@@ -1373,15 +1373,15 @@ body.edit-mode .app { outline: 2px solid rgba(240, 199, 97, 0.5); outline-offset
 
 /* ---- Popup (in-game dialogs) -------------------------------------------- */
 .popup {
-  width: min(560px, 92vw);
-  max-height: 88vh;
+  width: min(560px, 92cqw);
+  max-height: 88cqh;
   overflow: auto;
   border-radius: var(--radius-lg);
   border: 1px solid var(--border-strong);
   background: linear-gradient(180deg, rgba(14, 28, 46, 0.98), rgba(8, 16, 28, 0.98));
   box-shadow: var(--shadow-lg);
 }
-.popup-wide { width: min(1120px, 95vw); }
+.popup-wide { width: min(1120px, 95cqw); }
 .popup-head {
   display: flex;
   align-items: center;
@@ -1674,7 +1674,7 @@ body.edit-mode .app { outline: 2px solid rgba(240, 199, 97, 0.5); outline-offset
   border: 1px solid var(--border);
   border-radius: 10px;
   overflow: auto;
-  max-height: 50vh;
+  max-height: 50cqh;
   background: rgba(8, 16, 28, 0.6);
 }
 .menu-col-head {

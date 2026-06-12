@@ -18,13 +18,14 @@ async function loadForm() {
   await refreshCameraList(cfg.cameraDeviceId || "");
 }
 
-// Show the database the app currently has open (the live file, not just the
-// saved config value).
+// Show only an explicitly chosen-and-saved database path. Empty until the user
+// opens or creates one (the app falls back to the default file internally, but
+// that default is not surfaced here).
 async function refreshDatabasePath() {
-  if (!window.cricketApp?.currentDatabase) return;
+  if (!window.cricketApp?.getConfig) return;
   try {
-    const { path } = await window.cricketApp.currentDatabase();
-    databaseInput.value = path || "";
+    const cfg = await window.cricketApp.getConfig();
+    databaseInput.value = cfg.databasePath || "";
   } catch {
     /* leave as-is */
   }

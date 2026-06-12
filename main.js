@@ -1,4 +1,4 @@
-const { app, BrowserWindow, ipcMain, dialog } = require("electron");
+const { app, BrowserWindow, ipcMain, dialog, Menu, screen } = require("electron");
 const path = require("path");
 const fs = require("fs");
 const db = require("./src/db");
@@ -199,7 +199,13 @@ ipcMain.handle("db:current", () => ({ path: db.currentFile() }));
 // working, and report the error.
 ipcMain.handle("db:switch", (_e, filePath) => {
   const prev = db.currentFile();
-  if (!filePath || filePath === prev) return { ok: true, path: prev };
+  if (!filePath) return { ok: true, path: prev };
+  // Selecting the file that is already open: no reload needed, but still record
+  // it as the user's explicit, saved choice so the config screen reflects it.
+  if (filePath === prev) {
+    saveConfig({ ...loadConfig(), databasePath: filePath });
+    return { ok: true, path: filePath };
+  }
   try {
     db.close();
     db.init(filePath);
@@ -261,19 +267,28 @@ ipcMain.handle("db:export", async (event) => {
 });
 
 function createWindow() {
+  // Create the window already at the full work-area size so the renderer's first
+  // layout happens at the final dimensions — no open-then-maximize resize that
+  // would make the scaled UI visibly re-fit.
+  const { width, height } = screen.getPrimaryDisplay().workAreaSize;
   const win = new BrowserWindow({
-    width: 1920,
-    height: 1080,
+    width,
+    height,
     minWidth: 1360,
     minHeight: 820,
-    backgroundColor: "#141a24",
+    backgroundColor: "#050b14",
+    autoHideMenuBar: true, // hide the File/Edit/View strip on Windows/Linux
     icon: path.join(__dirname, "src", "assets", "app-icon.png"),
+    show: false,
     webPreferences: {
       preload: path.join(__dirname, "preload.js"),
       contextIsolation: true,
       nodeIntegration: false,
     },
   });
+
+  win.maximize();
+  win.once("ready-to-show", () => win.show());
 
   // Dev affordance: CAP_START="prototype.html?screen=match-registration" jumps
   // straight to a screen so individual flows can be inspected in isolation.
