@@ -1346,6 +1346,12 @@ a.home-main-btn {
 .over-chip.current { box-shadow: 0 0 0 2px rgba(77, 179, 255, 0.55); }
 
 .keypad-btn.marked { outline: 2px solid var(--warning); outline-offset: -2px; }
+/* RBW armed: external-parameter capture toggled on for the next ball */
+.keypad-btn.active-mode {
+  background: linear-gradient(180deg, #1f6f43, #14502f);
+  outline: 2px solid var(--success, #2ecc71);
+  outline-offset: -2px;
+}
 .keypad-btn.flash,
 .grid-btn.flash { filter: brightness(1.4); }
 .yellow-parens { color: var(--warning); }

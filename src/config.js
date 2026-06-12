@@ -14,8 +14,20 @@ async function loadForm() {
   if (!window.cricketApp?.getConfig) return;
   const cfg = await window.cricketApp.getConfig();
   recordingsInput.value = cfg.recordingsPath || "";
-  databaseInput.value = cfg.databasePath || "";
+  await refreshDatabasePath();
   await refreshCameraList(cfg.cameraDeviceId || "");
+}
+
+// Show the database the app currently has open (the live file, not just the
+// saved config value).
+async function refreshDatabasePath() {
+  if (!window.cricketApp?.currentDatabase) return;
+  try {
+    const { path } = await window.cricketApp.currentDatabase();
+    databaseInput.value = path || "";
+  } catch {
+    /* leave as-is */
+  }
 }
 
 async function refreshCameraList(selectedId) {
@@ -63,15 +75,50 @@ document.getElementById("btn-browse-recordings").addEventListener("click", async
   }
 });
 
+// Open an existing database file and switch the app to it (auto-reloads on
+// success so every screen reflects the new data).
 document.getElementById("btn-browse-database").addEventListener("click", async () => {
-  if (!window.cricketApp?.selectDatabaseFile) return;
-  const res = await window.cricketApp.selectDatabaseFile({
-    title: "Choose database file",
+  if (!window.cricketApp?.selectDatabaseFile || !window.cricketApp?.switchDatabase) return;
+  const picked = await window.cricketApp.selectDatabaseFile({
+    title: "Open database file",
     defaultPath: databaseInput.value || undefined,
   });
-  if (!res.canceled && res.path) {
-    databaseInput.value = res.path;
-    setStatus("");
+  if (picked.canceled || !picked.path) return;
+  setStatus("Opening database…");
+  const res = await window.cricketApp.switchDatabase(picked.path);
+  if (res.ok) {
+    setStatus("Database opened. Reloading…");
+    window.location.reload();
+  } else {
+    await refreshDatabasePath();
+    setStatus(res.error ? `Could not open database: ${res.error}` : "Could not open database.", true);
+  }
+});
+
+// Create a fresh, blank database and switch to it (auto-reloads on success).
+document.getElementById("btn-new-database").addEventListener("click", async () => {
+  if (!window.cricketApp?.newDatabase) return;
+  setStatus("");
+  const res = await window.cricketApp.newDatabase();
+  if (res.canceled) return;
+  if (res.ok) {
+    setStatus("New database created. Reloading…");
+    window.location.reload();
+  } else {
+    setStatus(res.error ? `Could not create database: ${res.error}` : "Could not create database.", true);
+  }
+});
+
+// Export a safe copy of the current database for hand-off (does not switch).
+document.getElementById("btn-export-database").addEventListener("click", async () => {
+  if (!window.cricketApp?.exportDatabase) return;
+  setStatus("");
+  const res = await window.cricketApp.exportDatabase();
+  if (res.canceled) return;
+  if (res.ok) {
+    setStatus(`Backed up to ${res.path}`);
+  } else {
+    setStatus(res.error ? `Could not export database: ${res.error}` : "Could not export database.", true);
   }
 });
 
@@ -85,9 +132,10 @@ form.addEventListener("submit", async (e) => {
   if (!window.cricketApp?.setConfig) return;
   setStatus("");
   try {
+    // Database changes are applied immediately via the Open/New buttons (which
+    // persist databasePath themselves), so they are intentionally not saved here.
     await window.cricketApp.setConfig({
       recordingsPath: recordingsInput.value.trim(),
-      databasePath: databaseInput.value.trim(),
       cameraDeviceId: cameraSelect.value || "",
     });
     setStatus("Settings saved.");

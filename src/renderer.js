@@ -48,27 +48,9 @@ let SHOT_TYPES = {
 // 4/5/6/7/8 (so big run totals can be entered without the boundary flag). The
 // ▲ cell highlights red while shifted.
 function getKeypadKeys() {
-  // RBW (run-out) page: record runs completed before the run out. The right
-  // column (NB/WD/LB/B) is shown but disabled — extras don't apply on a run out.
-  if (state.keypadMode === "rbw") {
-    const dis = (label, ext) => ({ label, type: "ext", ext, cls: "alt", disabled: true });
-    return [
-      { label: "-1", type: "runout", val: -1 },
-      { label: "1", type: "runout", val: 1 },
-      dis("NB", "NB"),
-      { label: "-2", type: "runout", val: -2 },
-      { label: "2", type: "runout", val: 2 },
-      dis("WD", "WD"),
-      { label: "-3", type: "runout", val: -3 },
-      { label: "3", type: "runout", val: 3 },
-      dis("LB", "LB"),
-      { label: "▲", type: "shift", cls: "icon-up" },
-      { label: "RBW", type: "rbw", cls: "alt active-mode" },
-      dis("B", "B"),
-    ];
-  }
-
-  // Normal page; ▲ toggles the 4-8 "shifted" run values in the first two cols.
+  // ▲ toggles the 4-8 "shifted" run values in the first two cols. RBW is an
+  // external-parameter toggle (no runs) — it highlights while armed and is
+  // recorded against the next ball logged.
   const s = state.keypadShifted;
   return [
     { label: s ? "4" : "1", type: "run", val: s ? 4 : 1 },
@@ -81,7 +63,7 @@ function getKeypadKeys() {
     { label: "MARK FOR EDIT", type: "mark", cls: "alt narrow" },
     { label: "LB", type: "ext", ext: "LB", cls: "alt" },
     { label: "▲", type: "shift", cls: `icon-up${s ? " shifted" : ""}` },
-    { label: "RBW", type: "rbw", cls: "alt" },
+    { label: "RBW", type: "rbw", cls: `alt${state.rbw ? " active-mode" : ""}` },
     { label: "B", type: "ext", ext: "B", cls: "alt" },
   ];
 }
@@ -143,9 +125,16 @@ const state = {
   pace: "Fast",
   style: "Aggressive",
   keypadShifted: false,
-  keypadMode: "normal", // "normal" | "rbw"
   bowlType: null,
   shotType: null,
+  // Per-ball coding tags. `tags` is a multi-select set (btn/unc/wtb/rs — any
+  // combination), `footwork` is a single-select group (ff/bf/sd/crm — at most
+  // one). Both are recorded onto the ball when it is logged, then reset.
+  tags: { btn: false, unc: false, wtb: false, rs: false },
+  footwork: null,
+  // RBW is an external parameter (generic flag, default 0). Like over-throw it
+  // is recorded against the ball but adds no runs to the score.
+  rbw: false,
   striker: "RAVINDERPAL SINGH",
   nonStriker: "SAAD BIN ZAFAR",
   bowler: "JITEN RAMANANDI -L FAST",
@@ -489,6 +478,17 @@ function showBallInputs(index) {
   clearReview();
   const r = state.log[index];
   if (!r) return;
+
+  // Restore the full coding context that was selected for this ball: bowl/shot
+  // type (which also restores pace/style and the correct grid page), and the
+  // BTN/UNC/WTB/RS + footwork tags. The wagon line and pitch dots are redrawn
+  // below as review elements.
+  if (r.bowl) applyBowlType(r.bowl); else { document.querySelectorAll("#bowl-grid .selected").forEach((x) => x.classList.remove("selected")); }
+  if (r.shot) applyShotType(r.shot); else { document.querySelectorAll("#bat-grid .selected").forEach((x) => x.classList.remove("selected")); }
+  state.tags = { btn: false, unc: false, wtb: false, rs: false, ...(r.tags || {}) };
+  state.footwork = r.footwork || null;
+  syncTagControls();
+
   const wsvg = document.getElementById("wagon-overlay");
   if (wsvg && r.wagon) {
     const color = runColor(Number(r.runs) || 0);
@@ -733,20 +733,15 @@ function positionMenu(menu, clientX, clientY) {
 
 function handleKeypad(k, btn) {
   if (k.type === "shift") {
-    // ▲ only shifts run values on the normal page
-    if (state.keypadMode !== "rbw") { state.keypadShifted = !state.keypadShifted; fillKeypad(); }
-    return;
-  }
-  if (k.type === "rbw") {
-    // toggle the run-out page on / off
-    state.keypadMode = state.keypadMode === "rbw" ? "normal" : "rbw";
+    // ▲ shifts the run values (4-8) in the first two columns
+    state.keypadShifted = !state.keypadShifted;
     fillKeypad();
     return;
   }
-  if (k.type === "runout") {
-    // runs completed before the run out, then a wicket; back to the normal page
-    logBall({ runs: k.val, ext: 0, legal: true, wicket: true });
-    state.keypadMode = "normal";
+  if (k.type === "rbw") {
+    // RBW is an external parameter: arm/disarm the flag for the next ball. It
+    // adds no runs — it is just recorded against the ball when logged.
+    state.rbw = !state.rbw;
     fillKeypad();
     flash(btn);
     return;
@@ -764,7 +759,9 @@ function handleKeypad(k, btn) {
   }
   if (k.type === "run") {
     state.pendingRuns = k.val;
-    logBall({ runs: k.val, ext: 0, boundary: k.boundary, legal: true });
+    // When RBW is armed, the dialpad number is captured as RBW external data
+    // (no wicket, no extra runs — the runs still score as a normal delivery).
+    logBall({ runs: k.val, ext: 0, boundary: k.boundary, legal: true, rbw: state.rbw ? k.val : 0 });
   } else if (k.type === "ext") {
     handleExtra(k.ext);
   }
@@ -772,15 +769,13 @@ function handleKeypad(k, btn) {
 }
 
 function handleExtra(ext) {
-  // NB / WD = 1 extra run, ball is NOT legal (re-bowled)
-  // LB / B  = bye runs, ball IS legal
-  // RBW     = run + wicket marker (simplified)
+  // NB / WD = 1 extra run (default, editable via the ball-edit overlay; a no-ball
+  //           may also go for a boundary), ball is NOT legal (re-bowled).
+  // LB / B  = bye runs (default 1, editable), ball IS legal and counts.
   if (ext === "NB" || ext === "WD") {
     logBall({ runs: 0, ext: 1, extLabel: ext, legal: false });
   } else if (ext === "LB" || ext === "B") {
     logBall({ runs: 0, ext: 1, extLabel: ext, legal: true, bye: true });
-  } else if (ext === "RBW") {
-    logBall({ runs: 0, ext: 0, legal: true, wicket: true });
   }
 }
 
@@ -788,12 +783,16 @@ function shortName(name) {
   return (name || "").split(" ").slice(0, 2).join(" ");
 }
 
-function logBall({ runs = 0, ext = 0, boundary = false, legal = true, bye = false, wicket = false, extLabel = "" }) {
+function logBall({ runs = 0, ext = 0, boundary = false, legal = true, bye = false, wicket = false, extLabel = "", overthrow = 0, rbw = 0 }) {
   if (!ballInputAllowed()) return; // over + ball must be started first
   pushHistory();
 
   const ballNum = legal ? `${state.over}.${state.ball + 1}` : `${state.over}.${state.ball + 1}+`;
-  const extCol = extLabel ? `${extLabel}${ext > 1 ? ext : ""}` : ext;
+  // Over-throw is an external parameter: it is recorded against the ball for
+  // analysis but does NOT add to the score (see below), so it only annotates
+  // the extras column.
+  const otLabel = overthrow ? `OT${overthrow}` : "";
+  const extCol = extLabel ? `${extLabel}${ext > 1 ? ext : ""}${otLabel}` : (otLabel || ext);
   state.log.push(row(
     ballNum,
     shortName(state.bowler),
@@ -810,6 +809,15 @@ function logBall({ runs = 0, ext = 0, boundary = false, legal = true, bye = fals
   const logged = state.log[state.log.length - 1];
   logged.wagon = state.lastWagon ? { ...state.lastWagon } : null;
   logged.pitch = (state.pitchInputs || []).slice();
+  // also persist the coding context so the ball can be fully reviewed later
+  logged.tags = { ...state.tags };
+  logged.footwork = state.footwork;
+  logged.overthrow = overthrow;
+  // RBW: external data only — no wicket, no added runs. Its value is the dialpad
+  // number entered for this ball (when armed), otherwise 0.
+  logged.rbw = rbw;
+  logged.pace = state.pace;
+  logged.style = state.style;
 
   // team score (never let a negative run-out adjustment push the total below 0)
   state.runs = Math.max(0, state.runs + runs + ext);
@@ -863,6 +871,11 @@ function logBall({ runs = 0, ext = 0, boundary = false, legal = true, bye = fals
 
   state.pendingRuns = 0;
   state.bowlType = null; state.shotType = null;
+  state.tags = { btn: false, unc: false, wtb: false, rs: false };
+  state.footwork = null;
+  state.rbw = false; // external param disarms after the ball
+  fillKeypad();      // refresh the RBW highlight
+  syncTagControls(); // clear the tag bar for the next ball
   document.querySelectorAll("#bowl-grid .selected, #bat-grid .selected").forEach((x) => x.classList.remove("selected"));
   document.querySelector("#keypad .keypad-btn.marked")?.classList.remove("marked"); // new ball starts unmarked
   render();
@@ -1161,8 +1174,11 @@ function wireOverthrow() {
 
   grid.querySelectorAll("[data-ot]").forEach((b) => {
     b.addEventListener("click", () => {
-      const runs = Number(b.getAttribute("data-ot")) || 0;
-      logBall({ runs, ext: 0, boundary: runs === 4 || runs === 6, legal: true });
+      // Over-throw is an external parameter — it is recorded against the ball
+      // but does NOT add runs to the score (the delivery's runs are entered on
+      // the keypad as usual).
+      const overthrow = Number(b.getAttribute("data-ot")) || 0;
+      logBall({ runs: 0, ext: 0, legal: true, overthrow });
       flash(b);
       setOpen(false);
     });
@@ -1718,6 +1734,88 @@ function wireBallLogEditing() {
   });
 }
 
+// ---- Coding tags (BTN/UNC/WTB/RS multi-select + FF/BF/SD/CRM footwork) -----
+
+// Wire the footer tag bar into state. BTN/UNC/WTB/RS are independent checkboxes
+// (any combination); FF/BF/SD/CRM are one radio group (at most one).
+function wireTags() {
+  document.querySelectorAll("input[data-tag]").forEach((el) => {
+    el.addEventListener("change", () => { state.tags[el.dataset.tag] = el.checked; });
+  });
+  document.querySelectorAll("input[data-footwork]").forEach((el) => {
+    el.addEventListener("change", () => { if (el.checked) state.footwork = el.dataset.footwork; });
+  });
+}
+
+// ---- Quick "+" spec adders ------------------------------------------------
+
+// The "+" on each panel is a fast inline way to add an option to that spec:
+// the bowl panel adds a Bowl Spec, the bat panel adds a Shot Type. The new
+// entry lands in the currently selected group (Fast/Spin or Aggressive/
+// Defensive), is persisted to the masters DB, then re-rendered + selected.
+function wireSpecAdders() {
+  document.querySelector(".bowl-panel .plus-btn")?.addEventListener("click", () => openAddSpec("bowl"));
+  document.querySelector(".bat-panel .plus-btn")?.addEventListener("click", () => openAddSpec("shot"));
+}
+
+function openAddSpec(kind) {
+  const isBowl = kind === "bowl";
+  const category = isBowl ? "Bowl Spec" : "Shot Type";
+  const grp = isBowl ? state.pace : state.style; // add to the active toggle group
+  const eg = isBowl ? "Slower Bouncer" : "Late Cut";
+  const body = `
+    <label class="f-row"><span class="f-label">Name</span>
+      <input class="f-input" id="as-name" placeholder="e.g. ${eg}" autocomplete="off" /></label>
+    <div class="btn-row-modal">
+      <button class="m-btn m-green" id="as-save">Add</button>
+      <button class="m-btn" data-close>Cancel</button>
+    </div>`;
+  openOverlay(popupShell(`ADD ${category.toUpperCase()} — ${grp}`, body));
+  const input = document.getElementById("as-name");
+  input?.focus();
+  const submit = async () => {
+    const name = (input?.value || "").trim();
+    if (!name) { input?.focus(); return; }
+    closeOverlay();
+    await addSpecEntry(category, grp, name, kind);
+  };
+  document.getElementById("as-save")?.addEventListener("click", submit);
+  input?.addEventListener("keydown", (e) => { if (e.key === "Enter") { e.preventDefault(); submit(); } });
+}
+
+async function addSpecEntry(category, grp, name, kind) {
+  const target = kind === "bowl" ? BOWL_TYPES : SHOT_TYPES;
+  if ((target[grp] || []).some((n) => n.toLowerCase() === name.toLowerCase())) {
+    toast(`"${name}" already in ${grp}`);
+  } else {
+    try {
+      if (window.cricketApp?.db?.saveMaster) {
+        await window.cricketApp.db.saveMaster({ category, grp, name });
+        await loadMasters(); // reload so order/ids match the DB
+      } else {
+        (target[grp] ||= []).push(name); // standalone (no DB bridge)
+      }
+    } catch (e) {
+      console.error("add spec failed", e);
+      if (!(target[grp] || []).some((n) => n.toLowerCase() === name.toLowerCase())) (target[grp] ||= []).push(name);
+    }
+    toast(`Added "${name}" to ${category} (${grp})`);
+  }
+  // re-render the grid (switching to the right page) and select the entry
+  if (kind === "bowl") applyBowlType(name); else applyShotType(name);
+}
+
+// Push state.tags / state.footwork back onto the controls (used to reset the
+// bar after a ball is logged, and to restore a reviewed ball's selections).
+function syncTagControls() {
+  document.querySelectorAll("input[data-tag]").forEach((el) => {
+    el.checked = !!state.tags[el.dataset.tag];
+  });
+  document.querySelectorAll("input[data-footwork]").forEach((el) => {
+    el.checked = state.footwork === el.dataset.footwork;
+  });
+}
+
 // ---- Overlay routing ------------------------------------------------------
 
 const OVERLAYS = {
@@ -2027,6 +2125,8 @@ async function boot() {
   wireOverlayButtons();
   wireBallLogEditing();
   wireSpeedUnit();
+  wireTags();
+  wireSpecAdders();
   syncToggles();
   render();
   wireCapture();

@@ -215,8 +215,9 @@
               <label class="radio-pill"><input type="radio" name="ds" /> DS</label>
               <label class="radio-pill"><input type="radio" name="ds" id="radio-li" checked /> LI</label>
               <span class="spacer"></span>
-              <label class="radio-pill"><input type="radio" name="btn" /> BTN</label>
-              <label class="radio-pill"><input type="radio" name="btn" checked /> UNC</label>
+              <!-- BTN/UNC/WTB/RS: multi-select tags (any combination) -->
+              <label class="radio-pill"><input type="checkbox" data-tag="btn" /> BTN</label>
+              <label class="radio-pill"><input type="checkbox" data-tag="unc" /> UNC</label>
               <div class="select-wrap">
                 <select class="dark-select">
                   <option>Select</option>
@@ -225,14 +226,15 @@
                 </select>
               </div>
               <span class="spacer"></span>
-              <label class="radio-pill"><input type="radio" name="wtb" /> WTB</label>
-              <label class="radio-pill"><input type="radio" name="wtb" checked /> RS</label>
+              <label class="radio-pill"><input type="checkbox" data-tag="wtb" /> WTB</label>
+              <label class="radio-pill"><input type="checkbox" data-tag="rs" /> RS</label>
               <span class="spacer"></span>
-              <label class="radio-pill"><input type="radio" name="ff" /> FF</label>
-              <label class="radio-pill"><input type="radio" name="ff" checked /> BF</label>
+              <!-- FF/BF/SD/CRM: footwork, single-select (at most one) -->
+              <label class="radio-pill"><input type="radio" name="footwork" data-footwork="ff" /> FF</label>
+              <label class="radio-pill"><input type="radio" name="footwork" data-footwork="bf" /> BF</label>
               <span class="spacer"></span>
-              <label class="radio-pill"><input type="radio" name="sd" /> SD</label>
-              <label class="radio-pill"><input type="radio" name="sd" checked /> CRM</label>
+              <label class="radio-pill"><input type="radio" name="footwork" data-footwork="sd" /> SD</label>
+              <label class="radio-pill"><input type="radio" name="footwork" data-footwork="crm" /> CRM</label>
             </div>
             <div class="footer-panels-row">
               <div class="bowl-panel panel">

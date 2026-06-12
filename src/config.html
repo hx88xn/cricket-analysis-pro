@@ -38,10 +38,14 @@
         <div class="config-field">
           <label class="config-label" for="database-path">Database file</label>
           <div class="config-row">
-            <input type="text" id="database-path" class="config-input" placeholder="e.g. /path/to/match.sqlite" />
-            <button type="button" class="btn blue" id="btn-browse-database">Browse…</button>
+            <input type="text" id="database-path" class="config-input" placeholder="No database open" readonly />
+            <button type="button" class="btn blue" id="btn-browse-database">Open…</button>
           </div>
-          <p class="config-hint">Path to your SQLite database for future data integration.</p>
+          <div class="config-row">
+            <button type="button" class="btn blue" id="btn-new-database">New blank database…</button>
+            <button type="button" class="btn blue" id="btn-export-database">Export / Backup…</button>
+          </div>
+          <p class="config-hint">Open an existing <code>.sqlite</code> file (e.g. one sent by a colleague), start a fresh blank database, or export a safe copy of the current one to hand off. Opening or creating a database reloads the app.</p>
         </div>
 
         <div class="config-field">

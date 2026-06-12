@@ -34,6 +34,33 @@ function saveConfig(next) {
   return merged;
 }
 
+// Default database location: keep the dev DB inside the repo (data/cricket.sqlite)
+// so it is versioned alongside the code; packaged, __dirname lives inside the
+// read-only app.asar, so fall back to the per-user userData dir instead.
+function defaultDbFile() {
+  const dir = app.isPackaged ? app.getPath("userData") : path.join(__dirname, "data");
+  return path.join(dir, "cricket.sqlite");
+}
+
+// The database the app should open: an explicit user-chosen file when set in
+// config, otherwise the default location.
+function resolveDbFile() {
+  const p = (loadConfig().databasePath || "").trim();
+  return p || defaultDbFile();
+}
+
+// Remove a SQLite file and its WAL/SHM sidecars so a fresh DB can be created
+// cleanly in its place.
+function removeDbFiles(filePath) {
+  for (const suffix of ["", "-wal", "-shm"]) {
+    try {
+      fs.rmSync(filePath + suffix, { force: true });
+    } catch {
+      /* ignore */
+    }
+  }
+}
+
 ipcMain.handle("config:get", () => loadConfig());
 
 ipcMain.handle("config:set", (_event, patch) => {
@@ -163,6 +190,76 @@ ipcMain.handle("db:match:delete", (_e, id) => db.deleteMatch(id));
 ipcMain.handle("db:report:bowling", (_e, matchId) => db.bowlingFigures(matchId));
 ipcMain.handle("db:report:batting", (_e, matchId) => db.battingCard(matchId));
 
+// ---- Database management (open / new / export for file hand-off) ----------
+
+ipcMain.handle("db:current", () => ({ path: db.currentFile() }));
+
+// Switch the live database to an existing file. On any failure (e.g. the file
+// is not a valid SQLite database) re-open the previous one so the app keeps
+// working, and report the error.
+ipcMain.handle("db:switch", (_e, filePath) => {
+  const prev = db.currentFile();
+  if (!filePath || filePath === prev) return { ok: true, path: prev };
+  try {
+    db.close();
+    db.init(filePath);
+    saveConfig({ ...loadConfig(), databasePath: filePath });
+    return { ok: true, path: filePath };
+  } catch (err) {
+    try {
+      db.close();
+      db.init(prev);
+    } catch {
+      /* best effort */
+    }
+    return { ok: false, error: String((err && err.message) || err) };
+  }
+});
+
+// Create a fresh, blank (seeded) database at a chosen path and switch to it.
+ipcMain.handle("db:new", async (event) => {
+  const win = BrowserWindow.fromWebContents(event.sender);
+  const { filePath, canceled } = await dialog.showSaveDialog(win, {
+    title: "Create new database",
+    defaultPath: "match.sqlite",
+    filters: [{ name: "SQLite", extensions: ["sqlite", "db"] }],
+  });
+  if (canceled || !filePath) return { ok: false, canceled: true };
+  const prev = db.currentFile();
+  try {
+    db.close();
+    removeDbFiles(filePath); // guarantee a truly blank database
+    db.init(filePath, { seed: false }); // schema + Masters only, no demo records
+    saveConfig({ ...loadConfig(), databasePath: filePath });
+    return { ok: true, path: filePath };
+  } catch (err) {
+    try {
+      db.close();
+      db.init(prev);
+    } catch {
+      /* best effort */
+    }
+    return { ok: false, error: String((err && err.message) || err) };
+  }
+});
+
+// Export a consistent copy of the CURRENT database (does not switch to it).
+ipcMain.handle("db:export", async (event) => {
+  const win = BrowserWindow.fromWebContents(event.sender);
+  const { filePath, canceled } = await dialog.showSaveDialog(win, {
+    title: "Export / back up database",
+    defaultPath: "cricket-export.sqlite",
+    filters: [{ name: "SQLite", extensions: ["sqlite", "db"] }],
+  });
+  if (canceled || !filePath) return { ok: false, canceled: true };
+  try {
+    await db.backupTo(filePath);
+    return { ok: true, path: filePath };
+  } catch (err) {
+    return { ok: false, error: String((err && err.message) || err) };
+  }
+});
+
 function createWindow() {
   const win = new BrowserWindow({
     width: 1920,
@@ -189,11 +286,7 @@ function createWindow() {
 }
 
 app.whenReady().then(() => {
-  // Dev: keep the live DB inside the repo (data/cricket.sqlite) so it is
-  // versioned alongside the code. Packaged: __dirname lives inside the
-  // read-only app.asar, so write to the per-user userData dir instead.
-  const dbDir = app.isPackaged ? app.getPath("userData") : path.join(__dirname, "data");
-  db.init(dbDir);
+  db.init(resolveDbFile());
   createWindow();
 });
 

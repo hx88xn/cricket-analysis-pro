@@ -6,6 +6,10 @@ contextBridge.exposeInMainWorld("cricketApp", {
   setConfig: (patch) => ipcRenderer.invoke("config:set", patch),
   selectDirectory: (opts) => ipcRenderer.invoke("dialog:select-directory", opts),
   selectDatabaseFile: (opts) => ipcRenderer.invoke("dialog:select-database-file", opts),
+  currentDatabase: () => ipcRenderer.invoke("db:current"),
+  switchDatabase: (filePath) => ipcRenderer.invoke("db:switch", filePath),
+  newDatabase: () => ipcRenderer.invoke("db:new"),
+  exportDatabase: () => ipcRenderer.invoke("db:export"),
   saveRecording: (arrayBuffer, defaultName, subfolder) =>
     ipcRenderer.invoke("save-recording", arrayBuffer, defaultName, subfolder),
   ensureRecordingFolder: (folderName) =>

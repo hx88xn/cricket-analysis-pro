@@ -1178,6 +1178,9 @@ async function loadMatchIntoForm(id, root, matches) {
   reg.nameDirty = true;
   const setVal = (sel, v) => { const el = root.querySelector(sel); if (el) el.value = v == null ? "" : v; };
   setVal("#rg-comp", m.competitionId);
+  // Constrain the team dropdowns to the match's competition before selecting teams.
+  const loadedComp = reg.competitions.find((c) => c.id === m.competitionId);
+  populateTeamSelects(root, loadedComp, m.teamA && m.teamA.id, m.teamB && m.teamB.id);
   setVal("#rg-name", m.matchName);
   setVal("#rg-type", m.matchType);
   setVal("#rg-overs", m.overs);
@@ -1242,6 +1245,32 @@ function clearRegForm(root) {
   repaintPanel("B", root);
 }
 
+// Participating-teams guard: a match may only use teams that participate in the
+// selected competition. Returns the allowed team list — falls back to all teams
+// when no competition is selected or it has no participating-teams list (e.g. an
+// ungrouped friendly).
+function teamsForCompetition(comp) {
+  if (comp && Array.isArray(comp.teamIds) && comp.teamIds.length) {
+    const allowed = new Set(comp.teamIds);
+    return reg.teams.filter((t) => allowed.has(t.id));
+  }
+  return reg.teams;
+}
+
+// Repopulate the Home/Away dropdowns with only the competition's participating
+// teams, preserving the current selections when they are still valid.
+function populateTeamSelects(root, comp, keepA, keepB) {
+  const list = teamsForCompetition(comp);
+  const validIds = new Set(list.map((t) => t.id));
+  const opts = `<option value="">Select</option>` + optionList(list, (t) => t.id, (t) => t.name);
+  const homeSel = root.querySelector("#rg-home");
+  const awaySel = root.querySelector("#rg-away");
+  homeSel.innerHTML = opts;
+  awaySel.innerHTML = opts;
+  homeSel.value = keepA && validIds.has(keepA) ? keepA : "";
+  awaySel.value = keepB && validIds.has(keepB) ? keepB : "";
+}
+
 async function initMatchRegistration(root) {
   wirePanel("A", root);
   wirePanel("B", root);
@@ -1268,6 +1297,16 @@ async function initMatchRegistration(root) {
   root.querySelector("#rg-comp").addEventListener("change", (e) => {
     const c = reg.competitions.find((x) => x.id === e.target.value);
     if (c && c.matchType) root.querySelector("#rg-type").value = c.matchType;
+    // Restrict Home/Away to this competition's participating teams.
+    const homeSel = root.querySelector("#rg-home");
+    const awaySel = root.querySelector("#rg-away");
+    const prevA = homeSel.value, prevB = awaySel.value;
+    populateTeamSelects(root, c, prevA, prevB);
+    if (homeSel.value !== prevA) loadSide("A", homeSel.value, root, false);
+    if (awaySel.value !== prevB) loadSide("B", awaySel.value, root, false);
+    if ((prevA && homeSel.value !== prevA) || (prevB && awaySel.value !== prevB)) {
+      toast("Cleared teams not participating in the selected competition", true);
+    }
   });
 
   root.querySelector("#rg-clear").addEventListener("click", () => clearRegForm(root));
@@ -1285,6 +1324,13 @@ async function initMatchRegistration(root) {
     const ground = reg.grounds.find((g) => g.id === root.querySelector("#rg-venue").value);
     if (!reg.A.teamId || !reg.B.teamId) return toast("Select both Home and Away teams", true);
     if (reg.A.teamId === reg.B.teamId) return toast("Home and Away teams must differ", true);
+    // A match may only be created for teams participating in the selected competition.
+    if (comp && Array.isArray(comp.teamIds) && comp.teamIds.length) {
+      const allowed = new Set(comp.teamIds);
+      if (!allowed.has(reg.A.teamId) || !allowed.has(reg.B.teamId)) {
+        return toast(`Both teams must be participating teams of ${comp.name}`, true);
+      }
+    }
     if (reg.A.xi.length < 2 || reg.B.xi.length < 2) return toast("Each team needs a Playing XI", true);
 
     const sideOut = (s) => ({
@@ -1314,13 +1360,17 @@ async function initMatchRegistration(root) {
       teamB: sideOut(reg.B),
       status: root.querySelector("#rg-status").value || "RESUME",
     };
-    const saved = await dbCall("saveMatch", match);
-    if (saved) {
-      reg.editingId = saved.id;
-      toast(`Saved ${saved.matchName}. Click RESUME to open the coding screen.`);
-      refreshMatchesTable(root);
-    } else {
-      toast("Could not save match", true);
+    try {
+      const saved = await dbCall("saveMatch", match);
+      if (saved) {
+        reg.editingId = saved.id;
+        toast(`Saved ${saved.matchName}. Click RESUME to open the coding screen.`);
+        refreshMatchesTable(root);
+      } else {
+        toast("Could not save match", true);
+      }
+    } catch (err) {
+      toast((err && err.message) || "Could not save match", true);
     }
   });
 

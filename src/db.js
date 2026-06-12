@@ -19,6 +19,7 @@ const Database = require("better-sqlite3");
 const { buildSeed, buildMasters } = require("./seed/seed");
 
 let db = null; // better-sqlite3 instance
+let dbFile = null; // absolute path of the currently open database file
 
 // ---- schema ---------------------------------------------------------------
 
@@ -82,18 +83,49 @@ CREATE INDEX IF NOT EXISTS idx_masters_cat ON masters(category, grp, ord);
 
 // ---- init + seed ----------------------------------------------------------
 
-function init(userDataDir) {
-  const file = path.join(userDataDir, "cricket.sqlite");
-  fs.mkdirSync(userDataDir, { recursive: true });
-  db = new Database(file);
+// Open (and if needed create + seed) the database at an absolute file path.
+// The directory holding the file doubles as the lookup root for the legacy
+// JSON import, so a fresh file in any folder still gets seeded correctly.
+//
+// Pass { seed: false } to create a genuinely empty database: schema + the
+// Masters option lists only, with NO sample teams/players/competitions. Used
+// by "New blank database" so a fresh hand-off file starts clean rather than
+// pre-filled with the demo dataset.
+function init(filePath, { seed: doSeed = true } = {}) {
+  const dir = path.dirname(filePath);
+  fs.mkdirSync(dir, { recursive: true });
+  db = new Database(filePath);
+  dbFile = filePath;
   db.pragma("journal_mode = WAL");
   db.pragma("foreign_keys = ON");
   db.exec(SCHEMA);
-  if (db.prepare("SELECT COUNT(*) c FROM teams").get().c === 0) {
-    seed(maybeImportJson(userDataDir) || buildSeed());
+  if (doSeed && db.prepare("SELECT COUNT(*) c FROM teams").get().c === 0) {
+    seed(maybeImportJson(dir) || buildSeed());
   }
-  ensureMasters(); // populate option masters (also back-fills existing DBs)
+  ensureMasters(); // option lists for the coding screen (also back-fills existing DBs)
   return db;
+}
+
+// Absolute path of the database currently open (null before init).
+function currentFile() {
+  return dbFile;
+}
+
+// Close the open database so a different file can be opened, or so a file can
+// be deleted/overwritten on disk. Safe to call when nothing is open.
+function close() {
+  if (db) {
+    db.close();
+    db = null;
+    dbFile = null;
+  }
+}
+
+// Produce a consistent single-file copy of the live database at destPath.
+// better-sqlite3's online backup folds in the WAL, so the result is safe to
+// hand off even while the app keeps writing. Returns a promise.
+function backupTo(destPath) {
+  return db.backup(destPath);
 }
 
 // Seed the Bowl Spec / Shot Type / Fielding Factor option lists if absent. Run
@@ -419,6 +451,18 @@ function writeMatch(match) {
   const existing = db.prepare("SELECT created_at FROM matches WHERE id = ?").get(id);
   const createdAt = match.createdAt || (existing && existing.created_at) || now;
   const A = match.teamA || {}, B = match.teamB || {};
+  // Guard: a match may only be created for teams participating in its competition.
+  if (match.competitionId) {
+    const partRows = db.prepare("SELECT team_id FROM competition_teams WHERE competition_id = ?").all(match.competitionId);
+    const allowed = new Set(partRows.map((r) => r.team_id));
+    if (allowed.size) {
+      [A, B].forEach((side) => {
+        if (side.id && !allowed.has(side.id)) {
+          throw new Error(`Team "${side.name || side.id}" is not a participating team of this competition`);
+        }
+      });
+    }
+  }
   db.prepare(`INSERT INTO matches
     (id,competition_id,competition_name,match_name,match_type,overs,match_date,ground_id,venue_name,
      neutral_venue,day_night,umpire1_id,umpire2_id,umpire3_id,referee_id,status,created_at,updated_at,
@@ -557,6 +601,9 @@ function battingCard(matchId) {
 
 module.exports = {
   init,
+  currentFile,
+  close,
+  backupTo,
   teams,
   playersByTeam,
   allPlayers,
