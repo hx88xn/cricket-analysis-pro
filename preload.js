@@ -11,6 +11,7 @@ contextBridge.exposeInMainWorld("cricketApp", {
   newDatabase: () => ipcRenderer.invoke("db:new"),
   resetDatabase: () => ipcRenderer.invoke("db:reset"),
   exportDatabase: () => ipcRenderer.invoke("db:export"),
+  importData: (mode) => ipcRenderer.invoke("db:import", { mode }),
   saveRecording: (arrayBuffer, defaultName, subfolder) =>
     ipcRenderer.invoke("save-recording", arrayBuffer, defaultName, subfolder),
   ensureRecordingFolder: (folderName) =>
@@ -37,6 +38,12 @@ contextBridge.exposeInMainWorld("cricketApp", {
     deleteOfficial: (id) => ipcRenderer.invoke("db:official:delete", id),
     saveGround: (g) => ipcRenderer.invoke("db:ground:save", g),
     deleteGround: (id) => ipcRenderer.invoke("db:ground:delete", id),
+    bowlerSpecs: () => ipcRenderer.invoke("db:bowlerSpecs"),
+    saveBowlerSpec: (s) => ipcRenderer.invoke("db:bowlerSpec:save", s),
+    deleteBowlerSpec: (id) => ipcRenderer.invoke("db:bowlerSpec:delete", id),
+    coaches: () => ipcRenderer.invoke("db:coaches"),
+    saveCoach: (c) => ipcRenderer.invoke("db:coach:save", c),
+    deleteCoach: (id) => ipcRenderer.invoke("db:coach:delete", id),
     saveCompetition: (c) => ipcRenderer.invoke("db:competition:save", c),
     deleteCompetition: (id) => ipcRenderer.invoke("db:competition:delete", id),
     saveMatch: (match) => ipcRenderer.invoke("db:match:save", match),

@@ -7,7 +7,7 @@
 // ---- Reference data -------------------------------------------------------
 
 // Bowl + shot type lists and the fielding-factor list are loaded from the
-// "Bowl Spec", "Shot Type" and "Fielding Factor" masters in the database at
+// "Ball Type", "Shot Type" and "Fielding Factor" masters in the database at
 // boot (see loadMasters), and their order is whatever the Masters menu sets.
 // The hardcoded values below are only a fallback when the DB bridge is absent.
 // Each group is one ordered list; the coding screen shows the first 15 on the
@@ -1759,7 +1759,7 @@ function wireTags() {
 // ---- Quick "+" spec adders ------------------------------------------------
 
 // The "+" on each panel is a fast inline way to add an option to that spec:
-// the bowl panel adds a Bowl Spec, the bat panel adds a Shot Type. The new
+// the bowl panel adds a Ball Type, the bat panel adds a Shot Type. The new
 // entry lands in the currently selected group (Fast/Spin or Aggressive/
 // Defensive), is persisted to the masters DB, then re-rendered + selected.
 function wireSpecAdders() {
@@ -1769,7 +1769,7 @@ function wireSpecAdders() {
 
 function openAddSpec(kind) {
   const isBowl = kind === "bowl";
-  const category = isBowl ? "Bowl Spec" : "Shot Type";
+  const category = isBowl ? "Ball Type" : "Shot Type";
   const grp = isBowl ? state.pace : state.style; // add to the active toggle group
   const eg = isBowl ? "Slower Bouncer" : "Late Cut";
   const body = `
@@ -1849,6 +1849,102 @@ function wireOverlayButtons() {
   document.addEventListener("keydown", (e) => { if (e.key === "Escape") { closeOverlay(); closeContextMenu(); } });
   document.getElementById("btn-editmode")?.addEventListener("click", () => {
     document.body.classList.toggle("edit-mode");
+  });
+}
+
+// ---- Configurable keyboard shortcuts --------------------------------------
+// Each shortcut name (set on the Configuration → Shortcut tab) resolves to the
+// on-screen control it should trigger; firing the key simply clicks that
+// control so the existing handlers run unchanged.
+const SHORTCUT_TARGETS = {
+  startOver: () => document.getElementById("btn-over"),
+  startBall: () => document.getElementById("btn-ball"),
+  startCapture: () => document.getElementById("btn-capture"),
+  bowlingCompute: () => document.querySelector('[data-overlay="bowlcompute"]'),
+  appeals: () => document.querySelector('[data-overlay="appeals"]'),
+  fieldingEvents: () => document.querySelector('[data-overlay="fielding"]'),
+  matchEvents: () => document.querySelector('[data-overlay="matchevents"]'),
+  remarks: () => document.querySelector('[data-overlay="remarks"]'),
+  wickets: () => document.querySelector('[data-overlay="wickets"]'),
+  editMode: () => document.getElementById("btn-editmode"),
+  // Browse Video only exists inside the capture overlay, so resolve it by label
+  // among the currently visible buttons.
+  browseVideo: () => findVisibleButtonByText("Browse Video"),
+};
+
+function findVisibleButtonByText(text) {
+  const target = text.toLowerCase();
+  return Array.from(document.querySelectorAll("button")).find(
+    (b) => b.offsetParent !== null && b.textContent.trim().toLowerCase() === target
+  ) || null;
+}
+
+function canonKeyName(k) {
+  if (k === " " || k === "space" || k === "spacebar") return "space";
+  if (k === "esc") return "escape";
+  if (k === "del") return "delete";
+  if (k === "ins") return "insert";
+  return k;
+}
+
+function comboString(mod, key) {
+  if (!key) return "";
+  const parts = [];
+  if (mod.ctrl) parts.push("ctrl");
+  if (mod.alt) parts.push("alt");
+  if (mod.shift) parts.push("shift");
+  if (mod.meta) parts.push("meta");
+  parts.push(key);
+  return parts.join("+");
+}
+
+// Parse a user-typed shortcut like "Ctrl+Shift+O" / "Space" / "A" into a
+// canonical form ("ctrl+shift+o") for matching against key events.
+function normalizeComboString(str) {
+  if (!str) return "";
+  const tokens = String(str).split("+").map((s) => s.trim().toLowerCase()).filter(Boolean);
+  const mod = { ctrl: false, shift: false, alt: false, meta: false };
+  let key = "";
+  for (const t of tokens) {
+    if (t === "ctrl" || t === "control") mod.ctrl = true;
+    else if (t === "shift") mod.shift = true;
+    else if (t === "alt" || t === "option") mod.alt = true;
+    else if (t === "meta" || t === "cmd" || t === "command" || t === "win") mod.meta = true;
+    else key = canonKeyName(t);
+  }
+  return comboString(mod, key);
+}
+
+function comboFromEvent(e) {
+  const key = e.key.toLowerCase();
+  if (["control", "shift", "alt", "meta"].includes(key)) return "";
+  return comboString(
+    { ctrl: e.ctrlKey, alt: e.altKey, shift: e.shiftKey, meta: e.metaKey },
+    canonKeyName(key)
+  );
+}
+
+async function wireShortcuts() {
+  let cfg = {};
+  try { cfg = (await window.cricketApp?.getConfig?.()) || {}; } catch { /* ignore */ }
+  const shortcuts = cfg.shortcuts || {};
+  const comboMap = {};
+  for (const [name, combo] of Object.entries(shortcuts)) {
+    const canon = normalizeComboString(combo);
+    if (canon && SHORTCUT_TARGETS[name]) comboMap[canon] = name;
+  }
+  if (!Object.keys(comboMap).length) return;
+
+  document.addEventListener("keydown", (e) => {
+    // Don't hijack typing in form fields or the ball-log editor.
+    const t = e.target;
+    if (t && (t.matches?.("input, textarea, select") || t.isContentEditable)) return;
+    const name = comboMap[comboFromEvent(e)];
+    if (!name) return;
+    const el = SHORTCUT_TARGETS[name]?.();
+    if (!el) return;
+    e.preventDefault();
+    el.click();
   });
 }
 
@@ -1991,7 +2087,7 @@ async function loadMasters() {
   if (!window.cricketApp?.db?.masters) return;
   try {
     const [bowl, shot, field] = await Promise.all([
-      window.cricketApp.db.masters("Bowl Spec"),
+      window.cricketApp.db.masters("Ball Type"),
       window.cricketApp.db.masters("Shot Type"),
       window.cricketApp.db.masters("Fielding Factor"),
     ]);
@@ -2139,6 +2235,7 @@ async function boot() {
   syncToggles();
   render();
   wireCapture();
+  wireShortcuts();
 
   // Optional deep-link: index.html?open=matchevents (or appeals, fielding, wickets,
   // remarks, scorecard, overcomp, bowlcompute) opens that overlay on load.

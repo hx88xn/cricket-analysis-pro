@@ -47,6 +47,12 @@ CREATE TABLE IF NOT EXISTS officials (
 CREATE TABLE IF NOT EXISTS grounds (
   id TEXT PRIMARY KEY, name TEXT, country TEXT, state TEXT, city TEXT
 );
+CREATE TABLE IF NOT EXISTS bowler_specs (
+  id TEXT PRIMARY KEY, name TEXT, bowling_type TEXT, bowling_style TEXT
+);
+CREATE TABLE IF NOT EXISTS coaches (
+  id TEXT PRIMARY KEY, name TEXT, teams TEXT, specializations TEXT, image TEXT
+);
 CREATE TABLE IF NOT EXISTS match_types (
   name TEXT PRIMARY KEY, ord INTEGER
 );
@@ -79,6 +85,7 @@ CREATE TABLE IF NOT EXISTS masters (
   id TEXT PRIMARY KEY, category TEXT, grp TEXT, name TEXT, ord INTEGER
 );
 CREATE INDEX IF NOT EXISTS idx_masters_cat ON masters(category, grp, ord);
+CREATE TABLE IF NOT EXISTS app_meta (key TEXT PRIMARY KEY, value TEXT);
 `;
 
 // ---- init + seed ----------------------------------------------------------
@@ -103,7 +110,10 @@ function init(filePath, { seed: doSeed = true } = {}) {
     seed(maybeImportJson(dir) || buildSeed());
   }
   ensureColumns(); // add/back-fill columns added after a DB was first created
+  migrateMasterCategories(); // rename legacy master categories in place
   ensureMasters(); // option lists for the coding screen (also back-fills existing DBs)
+  ensureBowlerSpecs(); // bowler specialization master defaults (back-fills existing DBs)
+  migrateUppercaseData(); // one-time: upper-case existing free-text fields
   return db;
 }
 
@@ -133,6 +143,20 @@ function backupTo(destPath) {
 // rows a sensible starting value. Runs every init so older DBs are upgraded in
 // place. Currently: players.sort_order (custom display order in Player Master).
 function ensureColumns() {
+  // Generic "add column if missing" so older DBs gain fields added later.
+  const addCol = (table, col, type) => {
+    const have = db.prepare(`PRAGMA table_info(${table})`).all().map((c) => c.name);
+    if (!have.includes(col)) db.exec(`ALTER TABLE ${table} ADD COLUMN ${col} ${type}`);
+  };
+  // Officials portrait + state; Ground profile/image/size diagram.
+  addCol("officials", "state", "TEXT");
+  addCol("officials", "image", "TEXT");
+  addCol("grounds", "profile", "TEXT");
+  addCol("grounds", "image", "TEXT");
+  addCol("grounds", "size_json", "TEXT");
+  addCol("players", "image", "TEXT"); // player portrait (data URL)
+  addCol("teams", "image", "TEXT"); // team logo (data URL)
+
   const cols = db.prepare("PRAGMA table_info(players)").all().map((c) => c.name);
   if (!cols.includes("sort_order")) {
     db.exec("ALTER TABLE players ADD COLUMN sort_order INTEGER");
@@ -150,7 +174,38 @@ function ensureColumns() {
   }
 }
 
-// Seed the Bowl Spec / Shot Type / Fielding Factor option lists if absent. Run
+// Rename master categories that were relabeled after a database was created, so
+// existing rows keep showing under the new name (and the coding screen still
+// finds them). "Bowl Spec" was renamed to "Ball Type".
+function migrateMasterCategories() {
+  db.prepare("UPDATE masters SET category = 'Ball Type' WHERE category = 'Bowl Spec'").run();
+}
+
+// One-time pass that upper-cases existing free-text data so older records match
+// the app's "all inputs in capital letters" behaviour. Only name/place/profile
+// style columns are touched — never enum/select columns (role, match type,
+// bowling type/style, etc.), ids, dates or JSON. Guarded by an app_meta marker
+// so it runs exactly once per database.
+function migrateUppercaseData() {
+  const done = db.prepare("SELECT value FROM app_meta WHERE key = 'uppercased_v1'").get();
+  if (done) return;
+  const up = (table, cols) => db.exec(`UPDATE ${table} SET ${cols.map((c) => `${c} = UPPER(${c})`).join(", ")}`);
+  db.transaction(() => {
+    up("teams", ["name", "code"]);
+    up("players", ["name", "short_name"]);
+    up("competitions", ["name", "trophy"]);
+    up("officials", ["name", "country", "state"]);
+    up("grounds", ["name", "country", "state", "city", "profile"]);
+    up("coaches", ["name"]);
+    up("bowler_specs", ["name"]);
+    up("masters", ["name"]);
+    up("matches", ["match_name", "competition_name", "team_a_name", "team_b_name",
+      "team_a_code", "team_b_code", "venue_name"]);
+    db.prepare("INSERT INTO app_meta (key, value) VALUES ('uppercased_v1', ?)").run(new Date().toISOString());
+  })();
+}
+
+// Seed the Ball Type / Shot Type / Fielding Factor option lists if absent. Run
 // every init so databases created before this feature get the defaults too.
 function ensureMasters() {
   if (db.prepare("SELECT COUNT(*) c FROM masters").get().c > 0) return;
@@ -159,6 +214,24 @@ function ensureMasters() {
     items.forEach((m, i) => ins.run(`mst${i + 1}`, m.category, m.grp || "", m.name, m.ord));
   });
   tx(buildMasters());
+}
+
+// Seed the Bowler Specialization master with sensible defaults if empty. Runs
+// every init so databases created before this feature get the defaults too.
+function ensureBowlerSpecs() {
+  if (db.prepare("SELECT COUNT(*) c FROM bowler_specs").get().c > 0) return;
+  const rows = [
+    { name: "CHINAMAN", bowlingType: "Spin", bowlingStyle: "Left Arm" },
+    { name: "FAST", bowlingType: "Fast", bowlingStyle: "Both" },
+    { name: "FAST MEDIUM", bowlingType: "Fast", bowlingStyle: "Both" },
+    { name: "LEG SPIN", bowlingType: "Spin", bowlingStyle: "Right Arm" },
+    { name: "MEDIUM", bowlingType: "Fast", bowlingStyle: "Both" },
+    { name: "MEDIUM FAST", bowlingType: "Fast", bowlingStyle: "Both" },
+    { name: "OFF SPIN", bowlingType: "Spin", bowlingStyle: "Right Arm" },
+    { name: "ORTHODOX", bowlingType: "Spin", bowlingStyle: "Left Arm" },
+  ];
+  const ins = db.prepare("INSERT INTO bowler_specs (id,name,bowling_type,bowling_style) VALUES (?,?,?,?)");
+  db.transaction(() => rows.forEach((r, i) => ins.run(`bspec${i + 1}`, r.name, r.bowlingType, r.bowlingStyle)))();
 }
 
 // If a legacy JSON store exists from the previous engine, import it once so the
@@ -216,15 +289,38 @@ function seed(data) {
 
 // ---- mappers (snake_case row -> camelCase object the UI expects) ----------
 
-const mapTeam = (r) => r && { id: r.id, name: r.name, code: r.code, type: r.type };
+const mapTeam = (r) => r && { id: r.id, name: r.name, code: r.code, type: r.type, image: r.image || "" };
 const mapPlayer = (r) => r && {
   id: r.id, teamId: r.team_id, teamName: r.team_name || "", name: r.name,
   shortName: r.short_name, role: r.role, battingStyle: r.batting_style,
   battingStyleCode: r.batting_style_code, bowlingStyle: r.bowling_style,
   bowlingType: r.bowling_type, bowlingSpec: r.bowling_spec, dob: r.dob,
+  image: r.image || "",
 };
-const mapOfficial = (r) => r && { id: r.id, name: r.name, role: r.role, country: r.country, category: r.category };
-const mapGround = (r) => r && { id: r.id, name: r.name, country: r.country, state: r.state, city: r.city };
+// Parse a stored value that may be JSON (array/object) or a legacy plain string.
+function parseJsonArray(v) {
+  if (v == null || v === "") return [];
+  try { const x = JSON.parse(v); return Array.isArray(x) ? x : (x ? [x] : []); }
+  catch { return [v]; } // legacy single value stored as a bare string
+}
+function parseJson(v, fallback) {
+  if (v == null || v === "") return fallback;
+  try { return JSON.parse(v); } catch { return fallback; }
+}
+
+const mapOfficial = (r) => r && {
+  id: r.id, name: r.name, role: r.role, country: r.country,
+  state: r.state || "", image: r.image || "", category: parseJsonArray(r.category),
+};
+const mapCoach = (r) => r && {
+  id: r.id, name: r.name, image: r.image || "",
+  teams: parseJsonArray(r.teams), specializations: parseJsonArray(r.specializations),
+};
+const mapGround = (r) => r && {
+  id: r.id, name: r.name, country: r.country, state: r.state, city: r.city,
+  profile: r.profile || "", image: r.image || "", size: parseJson(r.size_json, []),
+};
+const mapBowlerSpec = (r) => r && { id: r.id, name: r.name, bowlingType: r.bowling_type, bowlingStyle: r.bowling_style };
 
 // ---- id generation (keeps prefixes compatible with seed ids) --------------
 
@@ -281,6 +377,10 @@ function officials(role) {
 
 function grounds() {
   return db.prepare("SELECT * FROM grounds ORDER BY name").all().map(mapGround);
+}
+
+function bowlerSpecs() {
+  return db.prepare("SELECT * FROM bowler_specs ORDER BY name").all().map(mapBowlerSpec);
 }
 
 function matchTypes() {
@@ -386,9 +486,9 @@ function getMatchExpanded(id) {
 
 function saveTeam(team) {
   const id = team.id || genId("t", "teams");
-  db.prepare(`INSERT INTO teams (id,name,code,type) VALUES (@id,@name,@code,@type)
-    ON CONFLICT(id) DO UPDATE SET name=@name, code=@code, type=@type`)
-    .run({ id, name: team.name, code: team.code, type: team.type || "" });
+  db.prepare(`INSERT INTO teams (id,name,code,type,image) VALUES (@id,@name,@code,@type,@image)
+    ON CONFLICT(id) DO UPDATE SET name=@name, code=@code, type=@type, image=@image`)
+    .run({ id, name: team.name, code: team.code, type: team.type || "", image: team.image || "" });
   return { ...team, id };
 }
 
@@ -409,16 +509,17 @@ function savePlayer(player) {
     sortOrder = (max == null ? -1 : max) + 1;
   }
   db.prepare(`INSERT INTO players
-    (id,team_id,name,short_name,role,batting_style,batting_style_code,bowling_style,bowling_type,bowling_spec,dob,sort_order)
-    VALUES (@id,@team_id,@name,@short_name,@role,@batting_style,@batting_style_code,@bowling_style,@bowling_type,@bowling_spec,@dob,@sort_order)
+    (id,team_id,name,short_name,role,batting_style,batting_style_code,bowling_style,bowling_type,bowling_spec,dob,image,sort_order)
+    VALUES (@id,@team_id,@name,@short_name,@role,@batting_style,@batting_style_code,@bowling_style,@bowling_type,@bowling_spec,@dob,@image,@sort_order)
     ON CONFLICT(id) DO UPDATE SET team_id=@team_id, name=@name, short_name=@short_name, role=@role,
       batting_style=@batting_style, batting_style_code=@batting_style_code, bowling_style=@bowling_style,
-      bowling_type=@bowling_type, bowling_spec=@bowling_spec, dob=@dob`)
+      bowling_type=@bowling_type, bowling_spec=@bowling_spec, dob=@dob, image=@image`)
     .run({
       id, team_id: teamId, name: player.name, short_name: player.shortName || "",
       role: player.role || "", batting_style: player.battingStyle || "",
       batting_style_code: player.battingStyleCode || "", bowling_style: player.bowlingStyle || "",
       bowling_type: player.bowlingType || "", bowling_spec: player.bowlingSpec || "", dob: player.dob || "",
+      image: player.image || "",
       sort_order: sortOrder,
     });
   return { ...player, id, teamName };
@@ -447,9 +548,11 @@ function deletePlayer(id) {
 
 function saveOfficial(o) {
   const id = o.id || genId("o", "officials");
-  db.prepare(`INSERT INTO officials (id,name,role,country,category) VALUES (@id,@name,@role,@country,@category)
-    ON CONFLICT(id) DO UPDATE SET name=@name, role=@role, country=@country, category=@category`)
-    .run({ id, name: o.name, role: o.role || "", country: o.country || "", category: o.category || "" });
+  const category = JSON.stringify(Array.isArray(o.category) ? o.category : (o.category ? [o.category] : []));
+  db.prepare(`INSERT INTO officials (id,name,role,country,state,category,image)
+    VALUES (@id,@name,@role,@country,@state,@category,@image)
+    ON CONFLICT(id) DO UPDATE SET name=@name, role=@role, country=@country, state=@state, category=@category, image=@image`)
+    .run({ id, name: o.name, role: o.role || "", country: o.country || "", state: o.state || "", category, image: o.image || "" });
   return { ...o, id };
 }
 
@@ -459,14 +562,94 @@ function deleteOfficial(id) {
 
 function saveGround(g) {
   const id = g.id || genId("g", "grounds");
-  db.prepare(`INSERT INTO grounds (id,name,country,state,city) VALUES (@id,@name,@country,@state,@city)
-    ON CONFLICT(id) DO UPDATE SET name=@name, country=@country, state=@state, city=@city`)
-    .run({ id, name: g.name, country: g.country || "", state: g.state || "", city: g.city || "" });
+  db.prepare(`INSERT INTO grounds (id,name,country,state,city,profile,image,size_json)
+    VALUES (@id,@name,@country,@state,@city,@profile,@image,@size_json)
+    ON CONFLICT(id) DO UPDATE SET name=@name, country=@country, state=@state, city=@city,
+      profile=@profile, image=@image, size_json=@size_json`)
+    .run({
+      id, name: g.name, country: g.country || "", state: g.state || "", city: g.city || "",
+      profile: g.profile || "", image: g.image || "", size_json: JSON.stringify(g.size || []),
+    });
   return { ...g, id };
 }
 
 function deleteGround(id) {
   return { deleted: db.prepare("DELETE FROM grounds WHERE id = ?").run(id).changes };
+}
+
+function coaches() {
+  return db.prepare("SELECT * FROM coaches ORDER BY name").all().map(mapCoach);
+}
+
+// Import rows from another CAP database file into the current one. "master"
+// copies the reference/master tables; "reconciled" copies match data. Columns
+// are intersected with the source so version differences are tolerated; rows
+// are INSERT OR REPLACE'd by primary key. Returns a per-table added/updated count.
+const IMPORT_SETS = {
+  master: ["teams", "players", "competitions", "competition_teams", "officials",
+    "grounds", "coaches", "bowler_specs", "masters", "match_types"],
+  reconciled: ["matches", "match_squad", "match_state", "balls"],
+};
+
+function importFromFile(srcPath, mode) {
+  const tables = IMPORT_SETS[mode];
+  if (!tables) return { ok: false, error: "Unknown import type" };
+  let attached = false;
+  try {
+    db.prepare("ATTACH DATABASE ? AS src").run(srcPath);
+    attached = true;
+    const summary = {};
+    db.transaction(() => {
+      for (const t of tables) {
+        let srcCols;
+        try { srcCols = db.prepare(`SELECT * FROM src.${t} LIMIT 0`).columns().map((c) => c.name); }
+        catch { continue; } // table missing in the source file — skip it
+        const curCols = db.prepare(`SELECT * FROM ${t} LIMIT 0`).columns().map((c) => c.name);
+        const common = curCols.filter((c) => srcCols.includes(c));
+        if (!common.length) continue;
+        const list = common.map((c) => `"${c}"`).join(",");
+        const before = db.prepare(`SELECT COUNT(*) c FROM ${t}`).get().c;
+        db.exec(`INSERT OR REPLACE INTO ${t} (${list}) SELECT ${list} FROM src.${t}`);
+        summary[t] = db.prepare(`SELECT COUNT(*) c FROM ${t}`).get().c - before;
+      }
+    })();
+    return { ok: true, summary };
+  } catch (e) {
+    return { ok: false, error: String((e && e.message) || e) };
+  } finally {
+    if (attached) { try { db.prepare("DETACH DATABASE src").run(); } catch { /* ignore */ } }
+  }
+}
+
+function saveCoach(c) {
+  const id = c.id || genId("coach", "coaches");
+  db.prepare(`INSERT INTO coaches (id,name,teams,specializations,image)
+    VALUES (@id,@name,@teams,@specializations,@image)
+    ON CONFLICT(id) DO UPDATE SET name=@name, teams=@teams, specializations=@specializations, image=@image`)
+    .run({
+      id, name: c.name,
+      teams: JSON.stringify(c.teams || []),
+      specializations: JSON.stringify(c.specializations || []),
+      image: c.image || "",
+    });
+  return { ...c, id };
+}
+
+function deleteCoach(id) {
+  return { deleted: db.prepare("DELETE FROM coaches WHERE id = ?").run(id).changes };
+}
+
+function saveBowlerSpec(s) {
+  const id = s.id || genId("bspec", "bowler_specs");
+  db.prepare(`INSERT INTO bowler_specs (id,name,bowling_type,bowling_style)
+    VALUES (@id,@name,@bowling_type,@bowling_style)
+    ON CONFLICT(id) DO UPDATE SET name=@name, bowling_type=@bowling_type, bowling_style=@bowling_style`)
+    .run({ id, name: s.name, bowling_type: s.bowlingType || "", bowling_style: s.bowlingStyle || "" });
+  return { ...s, id };
+}
+
+function deleteBowlerSpec(id) {
+  return { deleted: db.prepare("DELETE FROM bowler_specs WHERE id = ?").run(id).changes };
 }
 
 function saveCompetition(c) {
@@ -678,6 +861,13 @@ module.exports = {
   deleteOfficial,
   saveGround,
   deleteGround,
+  bowlerSpecs,
+  saveBowlerSpec,
+  deleteBowlerSpec,
+  coaches,
+  saveCoach,
+  deleteCoach,
+  importFromFile,
   saveCompetition,
   deleteCompetition,
   saveMatch,

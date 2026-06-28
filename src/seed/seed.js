@@ -317,7 +317,7 @@ function buildSeed() {
 // (editable + reorderable from the Masters menu). The first 15 of each bowl/shot
 // group fill the default grid page; the rest appear on the expand-arrow page.
 const MASTER_LISTS = {
-  "Bowl Spec": {
+  "Ball Type": {
     Fast: ["Inswinger", "OutSwinger", "Straight Ball", "Angled In", "Angled Across",
       "Bouncer", "Nip Backer", "Nipped Away", "Slow Bouncer", "Full Toss", "Slower Ball",
       "Yorker", "Off Cutter", "Leg Cutter", "Cross Seam", "Reverse Swing",

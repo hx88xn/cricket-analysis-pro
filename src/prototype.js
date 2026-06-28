@@ -22,6 +22,17 @@ function esc(s) {
     ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 }
 
+// Date helpers: <input type="date"> uses ISO (YYYY-MM-DD); we store/display the
+// app's DD-MM-YYYY format. Convert at the boundary.
+function isoToDMY(iso) {
+  const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(iso || "");
+  return m ? `${m[3]}-${m[2]}-${m[1]}` : (iso || "");
+}
+function dmyToIso(dmy) {
+  const m = /^(\d{2})-(\d{2})-(\d{4})/.exec(dmy || "");
+  return m ? `${m[3]}-${m[2]}-${m[1]}` : "";
+}
+
 function toast(msg, isErr) {
   const old = document.querySelector(".toast");
   if (old) old.remove();
@@ -31,6 +42,36 @@ function toast(msg, isErr) {
   document.body.appendChild(el);
   setTimeout(() => el.remove(), 2400);
 }
+
+// Enforce capital letters on all text entry (matches the CAP reference). CSS
+// shows caps live as you type; this commits the upper-cased value when a field
+// loses focus so the stored data is upper-case too. Skips selects, file inputs,
+// and non-text inputs (dates, numbers). Idempotent with per-field handling.
+document.addEventListener("change", (e) => {
+  const el = e.target;
+  if (!el || el.tagName === "SELECT") return;
+  const isText = el.tagName === "TEXTAREA" ||
+    (el.tagName === "INPUT" && /^(text|search|)$/i.test(el.type || "text"));
+  if (!isText || typeof el.value !== "string") return;
+  const up = el.value.toUpperCase();
+  if (up !== el.value) el.value = up;
+});
+
+// Attach a live "filter rows by text" search box to a rendered table: hides any
+// .table-row whose text doesn't contain the term (header/empty rows untouched).
+// Rows stay in the DOM (just display:none) so reordering still sees every row.
+function wireTableSearch(searchEl, tableEl) {
+  if (!searchEl || !tableEl) return;
+  searchEl.addEventListener("input", () => {
+    const term = searchEl.value.trim().toLowerCase();
+    tableEl.querySelectorAll(".table-row").forEach((row) => {
+      row.style.display = (!term || row.textContent.toLowerCase().includes(term)) ? "" : "none";
+    });
+  });
+}
+
+const tableSearchHtml = (id) =>
+  `<input type="text" class="field-control mst-search" id="${id}" placeholder="Search…" />`;
 
 // ---- generic table renderer (static + interactive) ------------------------
 
@@ -130,10 +171,12 @@ const screenDefs = {
         <a class="menu-card" href="prototype.html?screen=team-master"><div><div class="icon">👥</div><div class="label">Team</div><div class="line"></div></div></a>
         <a class="menu-card" href="prototype.html?screen=player-master"><div><div class="icon">🧢</div><div class="label">Players</div><div class="line"></div></div></a>
         <a class="menu-card" href="prototype.html?screen=official-master"><div><div class="icon">☝️</div><div class="label">Officials</div><div class="line"></div></div></a>
+        <a class="menu-card" href="prototype.html?screen=coach-master"><div><div class="icon">🎽</div><div class="label">Coach</div><div class="line"></div></div></a>
         <a class="menu-card" href="prototype.html?screen=ground-master"><div><div class="icon">⭕</div><div class="label">Ground</div><div class="line"></div></div></a>
         <a class="menu-card" href="prototype.html?screen=shot-type"><div><div class="icon">🏏</div><div class="label">Shot Type</div><div class="line"></div></div></a>
-        <a class="menu-card" href="prototype.html?screen=bowl-spec"><div><div class="icon">🥎</div><div class="label">Bowl Spec</div><div class="line"></div></div></a>
+        <a class="menu-card" href="prototype.html?screen=bowl-spec"><div><div class="icon">🥎</div><div class="label">Ball Type</div><div class="line"></div></div></a>
         <a class="menu-card" href="prototype.html?screen=fielding-factors"><div><div class="icon">🕓</div><div class="label">Fielding Factors</div><div class="line"></div></div></a>
+        <a class="menu-card" href="prototype.html?screen=bowler-spec"><div><div class="icon">🎯</div><div class="label">Bowler Spec</div><div class="line"></div></div></a>
         <a class="menu-card" href="prototype.html?screen=user-creation"><div><div class="icon">👤</div><div class="label">User Creation</div><div class="line"></div></div></a>
       </section>`,
   },
@@ -144,16 +187,22 @@ const screenDefs = {
     init: (root) => initMasterEditor(root, "Shot Type", ["Aggressive", "Defensive"], "Shot Name"),
   },
   "bowl-spec": {
-    title: "Bowl Spec",
+    title: "Ball Type",
     back: "prototype.html?screen=masters-menu",
-    build: () => buildMasterEditor("Bowl Spec", ["Fast", "Spin"], "Bowl Spec"),
-    init: (root) => initMasterEditor(root, "Bowl Spec", ["Fast", "Spin"], "Bowl Spec"),
+    build: () => buildMasterEditor("Ball Type", ["Fast", "Spin"], "Ball Type", "Bowler Type"),
+    init: (root) => initMasterEditor(root, "Ball Type", ["Fast", "Spin"], "Ball Type", "Bowler Type"),
   },
   "fielding-factors": {
     title: "Fielding Factors",
     back: "prototype.html?screen=masters-menu",
     build: () => buildMasterEditor("Fielding Factor", [], "Fielding Factor"),
     init: (root) => initMasterEditor(root, "Fielding Factor", [], "Fielding Factor"),
+  },
+  "bowler-spec": {
+    title: "Bowler Specialization",
+    back: "prototype.html?screen=masters-menu",
+    build: () => buildCrudMaster(BOWLER_SPEC_CFG),
+    init: (root) => initCrudMaster(root, BOWLER_SPEC_CFG),
   },
   "user-creation": {
     title: "User Creation",
@@ -191,7 +240,11 @@ const screenDefs = {
     title: "Ground Master", back: "prototype.html?screen=masters-menu",
     build: () => buildCrudMaster(GROUND_CFG), init: (root) => initCrudMaster(root, GROUND_CFG),
   },
-  "match-registration": { title: "Match Registration", back: "home.html", build: buildMatchRegistration, init: initMatchRegistration },
+  "coach-master": {
+    title: "Coach Master", back: "prototype.html?screen=masters-menu",
+    build: () => buildCrudMaster(COACH_CFG), init: (root) => initCrudMaster(root, COACH_CFG),
+  },
+  "match-registration": { title: "Match Registration", back: "prototype.html?screen=match-details", build: buildMatchRegistration, init: initMatchRegistration },
   "match-details": { title: "Match Details", back: "home.html", build: buildMatchDetails, init: initMatchDetails },
 };
 
@@ -216,12 +269,13 @@ async function buildTeamMaster() {
             <option>District</option><option>City</option><option>School</option><option>Club</option>
           </select>
         </div>
-        <div><div class="panel-header">Team Logo</div><div class="photo-box">📷</div></div>
+        <div><div class="panel-header">Team Logo</div>${imageBoxHtml("tm-image")}</div>
       </div>
       <div class="btn-row">
         <button class="btn-main btn-green" id="tm-save">Add</button>
         <button class="btn-main btn-yellow" id="tm-clear">Clear</button>
       </div>
+      ${tableSearchHtml("tm-search")}
       <div id="tm-table"></div>
     </section>`;
 }
@@ -232,10 +286,12 @@ function initTeamMaster(root) {
   const typeEl = root.querySelector("#tm-type");
   const tableEl = root.querySelector("#tm-table");
   const saveBtn = root.querySelector("#tm-save");
+  const logo = wireImageBox(root.querySelector('[data-key="tm-image"]'));
+  wireTableSearch(root.querySelector("#tm-search"), tableEl);
   let editing = null;
 
   const setEditing = (id) => { editing = id; saveBtn.textContent = id ? "Update" : "Add"; saveBtn.classList.toggle("btn-blue", !!id); };
-  const clear = () => { nameEl.value = ""; codeEl.value = ""; typeEl.selectedIndex = 0; setEditing(null); };
+  const clear = () => { nameEl.value = ""; codeEl.value = ""; typeEl.selectedIndex = 0; logo.set(""); setEditing(null); };
 
   async function refresh() {
     const teams = (await dbCall("teams")) || [];
@@ -253,6 +309,7 @@ function initTeamMaster(root) {
     const t = (tableEl._items || []).find((x) => x.id === id);
     if (!t) return;
     nameEl.value = t.name || ""; codeEl.value = t.code || ""; typeEl.value = t.type || typeEl.options[0].value;
+    logo.set(t.image || "");
     setEditing(id); nameEl.focus();
   }
 
@@ -262,7 +319,7 @@ function initTeamMaster(root) {
     const code = codeEl.value.trim();
     const type = typeEl.value;
     if (!name || !code) return toast("Team name and code are required", true);
-    await dbCall("saveTeam", { id: editing || undefined, name, code: code.toUpperCase(), type });
+    await dbCall("saveTeam", { id: editing || undefined, name, code: code.toUpperCase(), type, image: logo.get() });
     toast(`${editing ? "Updated" : "Saved"} team ${name}`);
     clear();
     refresh();
@@ -294,13 +351,14 @@ async function buildPlayerMaster() {
           <label class="field-label">Bowling Type</label>
           <select class="field-select" id="pm-bowltype"><option value="">None</option><option>Fast</option><option>Spin</option></select>
         </div>
-        <div><div class="panel-header">Player Portrait</div><div class="photo-box">📷</div></div>
+        <div><div class="panel-header">Player Portrait</div>${imageBoxHtml("pm-image")}</div>
       </div>
       <div class="btn-row">
         <button class="btn-main btn-green" id="pm-save">Add</button>
         <button class="btn-main btn-yellow" id="pm-clear">Clear</button>
       </div>
       <p class="mst-hint">Drag a row by its ⠿ handle, or use ▲ ▼, to set the player order within the team — it drives the batting/squad order elsewhere.</p>
+      ${tableSearchHtml("pm-search")}
       <div id="pm-table"></div>
     </section>`;
 }
@@ -333,10 +391,12 @@ function initPlayerMaster(root) {
   const nameEl = q("#pm-name"), shortEl = q("#pm-short"), teamEl = q("#pm-team");
   const roleEl = q("#pm-role"), batEl = q("#pm-bat"), bowlStyleEl = q("#pm-bowlstyle"), bowlTypeEl = q("#pm-bowltype");
   const tableEl = q("#pm-table"), saveBtn = q("#pm-save");
+  const portrait = wireImageBox(q('[data-key="pm-image"]'));
+  wireTableSearch(q("#pm-search"), tableEl);
   let editing = null;
 
   const setEditing = (id) => { editing = id; saveBtn.textContent = id ? "Update" : "Add"; saveBtn.classList.toggle("btn-blue", !!id); };
-  const clear = () => { nameEl.value = ""; shortEl.value = ""; setEditing(null); };
+  const clear = () => { nameEl.value = ""; shortEl.value = ""; portrait.set(""); setEditing(null); };
 
   async function refresh() {
     const players = (await dbCall("players", teamEl.value)) || [];
@@ -420,6 +480,7 @@ function initPlayerMaster(root) {
     batEl.value = p.battingStyleCode || (p.battingStyle === "Left Hand Bat" ? "LHB" : "RHB");
     bowlStyleEl.value = p.bowlingStyle || "";
     bowlTypeEl.value = p.bowlingType || "";
+    portrait.set(p.image || "");
     setEditing(id); nameEl.focus();
   }
 
@@ -440,6 +501,7 @@ function initPlayerMaster(root) {
       bowlingStyle: bowlStyleEl.value,
       bowlingType: bowlTypeEl.value,
       bowlingSpec: "",
+      image: portrait.get(),
     });
     toast(`${editing ? "Updated" : "Saved"} player ${name}`);
     clear();
@@ -458,13 +520,13 @@ function masterTableCols(hasGroups) {
   return `70px 1fr ${hasGroups ? "150px " : ""}132px`;
 }
 
-function renderMasterRows(items, groups, nameLabel) {
+function renderMasterRows(items, groups, nameLabel, groupLabel = "Group") {
   const hasGroups = groups && groups.length;
   const cols = masterTableCols(hasGroups);
   const sections = (hasGroups ? groups : [""]).map((grp) => {
     const list = items.filter((it) => (it.grp || "") === grp);
     const head = `<div class="table-head" style="grid-template-columns:${cols};">
-      <span>Order</span><span>${esc(nameLabel)}</span>${hasGroups ? "<span>Group</span>" : ""}<span>Actions</span></div>`;
+      <span>Order</span><span>${esc(nameLabel)}</span>${hasGroups ? `<span>${esc(groupLabel)}</span>` : ""}<span>Actions</span></div>`;
     const rows = list.length ? list.map((it, i) => `
       <div class="table-row mst-row" draggable="true" data-id="${esc(it.id)}" data-grp="${esc(grp)}" style="grid-template-columns:${cols};">
         <span class="mst-order"><span class="mst-grip" title="Drag to reorder">⠿</span>${i + 1}</span>
@@ -483,10 +545,10 @@ function renderMasterRows(items, groups, nameLabel) {
   return sections;
 }
 
-async function buildMasterEditor(category, groups, nameLabel) {
+async function buildMasterEditor(category, groups, nameLabel, groupLabel = "Group") {
   const hasGroups = groups && groups.length;
   const grpField = hasGroups
-    ? `<label class="field-label">Group</label><select class="field-select" id="mm-grp">${
+    ? `<label class="field-label">${esc(groupLabel)}</label><select class="field-select" id="mm-grp">${
         groups.map((g) => `<option>${esc(g)}</option>`).join("")}</select>`
     : "";
   return `
@@ -500,15 +562,17 @@ async function buildMasterEditor(category, groups, nameLabel) {
         <button class="btn-main btn-yellow" id="mm-clear">Clear</button>
       </div>
       <p class="mst-hint">Drag a row by its ⠿ handle, or use ▲ ▼, to set the display order — it replicates on the coding screen (top-left first).</p>
+      ${tableSearchHtml("mm-search")}
       <div id="mm-table"></div>
     </section>`;
 }
 
-function initMasterEditor(root, category, groups, nameLabel) {
+function initMasterEditor(root, category, groups, nameLabel, groupLabel = "Group") {
   const tableEl = root.querySelector("#mm-table");
   const nameEl = root.querySelector("#mm-name");
   const grpEl = root.querySelector("#mm-grp");
   const saveBtn = root.querySelector("#mm-save");
+  wireTableSearch(root.querySelector("#mm-search"), tableEl);
   let editing = null; // { id, grp, ord } when editing an existing row
 
   const setEditing = (item) => {
@@ -519,7 +583,7 @@ function initMasterEditor(root, category, groups, nameLabel) {
 
   async function refresh() {
     const items = (await dbCall("masters", category)) || [];
-    tableEl.innerHTML = renderMasterRows(items, groups, nameLabel);
+    tableEl.innerHTML = renderMasterRows(items, groups, nameLabel, groupLabel);
     tableEl.querySelectorAll(".mst-btn").forEach((btn) => btn.addEventListener("click", onRowAction));
     wireDrag();
   }
@@ -612,7 +676,7 @@ function initMasterEditor(root, category, groups, nameLabel) {
   }
 
   saveBtn.addEventListener("click", async () => {
-    const name = nameEl.value.trim();
+    const name = nameEl.value.trim().toUpperCase();
     if (!name) return toast(`${nameLabel} is required`, true);
     const grp = grpEl ? grpEl.value : "";
     if (editing) {
@@ -635,27 +699,110 @@ function initMasterEditor(root, category, groups, nameLabel) {
 }
 
 // ===========================================================================
-// Generic entity master (flat records) — Add / Edit / Delete from the DB.
-// Used by Officials and Ground; configured with fields + columns + db verbs.
+// Generic entity master (flat records) — Save / Edit / Delete from the DB.
+// Used by Officials, Ground, Coach and Bowler Spec. Field types: text,
+// textarea, select, checks (multi-checkbox, static or DB-sourced), image
+// (upload → data URL), ground (ground-size diagram). image/ground render in a
+// right-hand column; everything else in the left field grid.
 // ===========================================================================
 
-function crudFieldHtml(f) {
-  if (f.type === "select") {
-    return `<label class="field-label">${esc(f.label)}</label>
-      <select class="field-select" data-key="${esc(f.key)}">${
-        (f.options || []).map((o) => `<option>${esc(o)}</option>`).join("")}</select>`;
+const isSideField = (f) => f.type === "image" || f.type === "ground";
+
+// Turn each field's option source into a uniform [{value,label}] list. A field
+// with `optionsFn` pulls its options from the DB (e.g. teams); `options` may be
+// plain strings or {value,label} objects.
+async function resolveCrudOptions(cfg) {
+  for (const f of cfg.fields) {
+    if (f.optionsFn) {
+      const list = (await dbCall(f.optionsFn)) || [];
+      f._options = list.map((o) => ({ value: o[f.valueKey || "id"], label: o[f.labelKey || "name"] }));
+    } else if (f.options) {
+      f._options = f.options.map((o) => (typeof o === "string" ? { value: o, label: o } : o));
+    } else {
+      f._options = [];
+    }
   }
-  return `<label class="field-label">${esc(f.label)}</label>
-    <input class="field-control" data-key="${esc(f.key)}" ${f.placeholder ? `placeholder="${esc(f.placeholder)}"` : ""} />`;
+}
+
+// ---- reusable image upload box -------------------------------------------
+function imageBoxHtml(key) {
+  return `<div class="cm-image" data-key="${esc(key)}">
+      <input type="file" accept="image/*" class="cm-image-input" hidden />
+      <div class="cm-image-drop">
+        <img class="cm-image-preview" alt="" hidden />
+        <div class="cm-image-ph"><span class="cm-image-icon">📷</span><span>Add image</span></div>
+      </div>
+    </div>`;
+}
+
+function setImageBox(box, dataUrl) {
+  if (!box) return;
+  box._dataUrl = dataUrl || "";
+  const img = box.querySelector(".cm-image-preview");
+  const ph = box.querySelector(".cm-image-ph");
+  if (dataUrl) { img.src = dataUrl; img.hidden = false; ph.hidden = true; }
+  else { img.removeAttribute("src"); img.hidden = true; ph.hidden = false; }
+}
+
+// Click opens the picker; choosing a file stores it as a data URL on the box
+// (box._dataUrl) and shows the preview. Returns getter/setter helpers.
+function wireImageBox(box) {
+  if (!box) return { get: () => "", set: () => {} };
+  const input = box.querySelector(".cm-image-input");
+  box.querySelector(".cm-image-drop").addEventListener("click", () => input.click());
+  input.addEventListener("change", () => {
+    const file = input.files && input.files[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = () => setImageBox(box, reader.result);
+    reader.readAsDataURL(file);
+  });
+  return { get: () => box._dataUrl || "", set: (v) => setImageBox(box, v) };
+}
+
+function groundWidgetHtml(f) {
+  // 3x3 grid of boundary-distance inputs around a centre field graphic.
+  // data-pos runs clockwise from top (0=N,1=NE,2=E,3=SE,4=S,5=SW,6=W,7=NW).
+  const cell = (pos) => `<input type="number" min="0" class="cm-ground-input" data-pos="${pos}" placeholder="m" />`;
+  return `<div class="cm-ground" data-key="${esc(f.key)}">
+      <div class="cm-ground-sides"><span>OFF SIDE</span><span>ON SIDE</span></div>
+      <div class="cm-ground-grid">
+        ${cell(7)}${cell(0)}${cell(1)}
+        ${cell(6)}<div class="cm-ground-center"></div>${cell(2)}
+        ${cell(5)}${cell(4)}${cell(3)}
+      </div>
+    </div>`;
+}
+
+function crudControlHtml(f) {
+  const opts = f._options || [];
+  switch (f.type) {
+    case "textarea":
+      return `<textarea class="field-control cm-textarea" data-key="${esc(f.key)}" rows="5"></textarea>`;
+    case "select":
+      return `<select class="field-select" data-key="${esc(f.key)}">${
+        opts.map((o) => `<option value="${esc(o.value)}">${esc(o.label)}</option>`).join("")}</select>`;
+    case "checks":
+      return `<div class="list-box cm-checks" data-key="${esc(f.key)}"><div class="cm-team-list">${
+        opts.map((o) => `<label class="cm-team"><input type="checkbox" value="${esc(o.value)}" /> ${esc(o.label)}</label>`).join("")
+        || "<p class='mst-hint'>No options.</p>"}</div></div>`;
+    case "image":
+      return imageBoxHtml(f.key);
+    case "ground":
+      return groundWidgetHtml(f);
+    default:
+      return `<input class="field-control" data-key="${esc(f.key)}" ${f.placeholder ? `placeholder="${esc(f.placeholder)}"` : ""} />`;
+  }
 }
 
 function crudRows(items, columns) {
   const cols = `${columns.map(() => "1fr").join(" ")} 120px`;
   const head = `<div class="table-head" style="grid-template-columns:${cols};">${
     columns.map((c) => `<span>${esc(c.label)}</span>`).join("")}<span>Actions</span></div>`;
+  const fmt = (v) => (Array.isArray(v) ? v.join(", ") : (v ?? ""));
   const body = items.length ? items.map((it) => `
     <div class="table-row" style="grid-template-columns:${cols};">
-      ${columns.map((c) => `<span>${esc(it[c.key] ?? "")}</span>`).join("")}
+      ${columns.map((c) => `<span>${esc(fmt(it[c.key]))}</span>`).join("")}
       <span class="mst-actions">
         <button class="mst-btn" data-act="edit" data-id="${esc(it.id)}" title="Edit">✎</button>
         <button class="mst-btn mst-del" data-act="del" data-id="${esc(it.id)}" title="Delete">✕</button>
@@ -665,15 +812,28 @@ function crudRows(items, columns) {
 }
 
 async function buildCrudMaster(cfg) {
+  await resolveCrudOptions(cfg);
+  const main = cfg.fields.filter((f) => !isSideField(f));
+  const side = cfg.fields.filter(isSideField);
+  const mainHtml = main.map((f) =>
+    `<label class="field-label">${esc(f.label)}</label>${crudControlHtml(f)}`).join("");
+  const sideHtml = side.map((f) =>
+    `<div class="cm-side-field"><div class="cm-side-head">${esc(f.label)}</div>${crudControlHtml(f)}</div>`).join("");
+  const layout = side.length
+    ? `<div class="cm-layout">
+         <div class="form-grid cm-main" style="grid-template-columns: 170px 1fr;">${mainHtml}</div>
+         <div class="cm-side">${sideHtml}</div>
+       </div>`
+    : `<div class="form-grid" style="grid-template-columns: 200px 1fr;">${mainHtml}</div>`;
   return `
-    <section class="form-screen" style="max-width: 1040px;">
-      <div class="form-grid" style="grid-template-columns: 200px 1fr;" id="cm-form">
-        ${cfg.fields.map(crudFieldHtml).join("")}
-      </div>
+    <section class="form-screen" style="max-width: 1280px;">
+      ${layout}
       <div class="btn-row">
-        <button class="btn-main btn-green" id="cm-save">Add</button>
+        <button class="btn-main btn-green" id="cm-save">Save</button>
         <button class="btn-main btn-yellow" id="cm-clear">Clear</button>
+        <button class="btn-main btn-red" id="cm-delete" disabled>Delete</button>
       </div>
+      ${tableSearchHtml("cm-search")}
       <div id="cm-table"></div>
     </section>`;
 }
@@ -681,27 +841,81 @@ async function buildCrudMaster(cfg) {
 function initCrudMaster(root, cfg) {
   const tableEl = root.querySelector("#cm-table");
   const saveBtn = root.querySelector("#cm-save");
-  const fieldEls = {};
-  cfg.fields.forEach((f) => { fieldEls[f.key] = root.querySelector(`[data-key="${f.key}"]`); });
+  const delBtn = root.querySelector("#cm-delete");
+  wireTableSearch(root.querySelector("#cm-search"), tableEl);
+  const ctrl = {};
+  cfg.fields.forEach((f) => { ctrl[f.key] = root.querySelector(`[data-key="${f.key}"]`); });
   let editing = null;
 
-  const setEditing = (id) => {
-    editing = id;
-    saveBtn.textContent = id ? "Update" : "Add";
-    saveBtn.classList.toggle("btn-blue", !!id);
-  };
-  const clearForm = () => {
-    cfg.fields.forEach((f) => {
-      const el = fieldEls[f.key];
-      if (el.tagName === "SELECT") el.selectedIndex = 0; else el.value = "";
-    });
-    setEditing(null);
-  };
+  function readField(f) {
+    const el = ctrl[f.key];
+    if (!el) return "";
+    switch (f.type) {
+      case "checks":
+        return [...el.querySelectorAll("input:checked")].map((c) => c.value);
+      case "image":
+        return el._dataUrl || "";
+      case "ground":
+        return [...el.querySelectorAll(".cm-ground-input")]
+          .sort((a, b) => a.dataset.pos - b.dataset.pos)
+          .map((i) => (i.value === "" ? null : Number(i.value)));
+      default: {
+        // Only text/textarea reach here (checks/image/ground/select handled
+        // above) — store them upper-cased to match the CAP reference data.
+        const v = typeof el.value === "string" ? el.value.trim() : el.value;
+        return typeof v === "string" ? v.toUpperCase() : v;
+      }
+    }
+  }
+
+  function writeField(f, val) {
+    const el = ctrl[f.key];
+    if (!el) return;
+    switch (f.type) {
+      case "checks": {
+        const set = new Set((val || []).map(String));
+        el.querySelectorAll("input").forEach((c) => { c.checked = set.has(String(c.value)); });
+        break;
+      }
+      case "image":
+        setImageBox(el, val || "");
+        break;
+      case "ground": {
+        const arr = val || [];
+        el.querySelectorAll(".cm-ground-input").forEach((i) => {
+          const v = arr[Number(i.dataset.pos)];
+          i.value = (v == null ? "" : v);
+        });
+        break;
+      }
+      case "select":
+        el.value = val || (el.options[0] && el.options[0].value) || "";
+        break;
+      default:
+        el.value = val == null ? "" : val;
+    }
+  }
+
+  function clearField(f) {
+    switch (f.type) {
+      case "checks": writeField(f, []); break;
+      case "image": setImageBox(ctrl[f.key], ""); break;
+      case "ground": writeField(f, []); break;
+      case "select": if (ctrl[f.key]) ctrl[f.key].selectedIndex = 0; break;
+      default: if (ctrl[f.key]) ctrl[f.key].value = "";
+    }
+  }
+
+  const setEditing = (id) => { editing = id; if (delBtn) delBtn.disabled = !id; };
+  const clearForm = () => { cfg.fields.forEach(clearField); setEditing(null); };
+
+  // Wire image upload boxes (click → picker → data-URL preview).
+  cfg.fields.filter((f) => f.type === "image").forEach((f) => wireImageBox(ctrl[f.key]));
 
   async function refresh() {
     const items = (await dbCall(cfg.listFn)) || [];
-    tableEl.innerHTML = crudRows(items, cfg.columns);
     tableEl._items = items;
+    tableEl.innerHTML = crudRows(items, cfg.columns);
     tableEl.querySelectorAll(".mst-btn").forEach((b) => b.addEventListener("click", onRowAction));
   }
 
@@ -712,30 +926,37 @@ function initCrudMaster(root, cfg) {
       await dbCall(cfg.deleteFn, id);
       return refresh();
     }
-    // edit: load the record into the form
     const item = (tableEl._items || []).find((it) => it.id === id);
     if (!item) return;
-    cfg.fields.forEach((f) => {
-      const el = fieldEls[f.key];
-      if (el.tagName === "SELECT") el.value = item[f.key] || el.options[0].value;
-      else el.value = item[f.key] || "";
-    });
+    cfg.fields.forEach((f) => writeField(f, item[f.key]));
     setEditing(id);
-    fieldEls[cfg.fields[0].key].focus();
+    const first = ctrl[cfg.fields[0].key];
+    if (first && first.focus) first.focus();
+    window.scrollTo({ top: 0, behavior: "smooth" });
   }
 
   saveBtn.addEventListener("click", async () => {
     const rec = {};
-    cfg.fields.forEach((f) => { rec[f.key] = fieldEls[f.key].value.trim ? fieldEls[f.key].value.trim() : fieldEls[f.key].value; });
+    cfg.fields.forEach((f) => { rec[f.key] = readField(f); });
     const req = cfg.required || [cfg.fields[0].key];
-    if (req.some((k) => !rec[k])) return toast(`${cfg.entity} needs ${req.join(", ")}`, true);
+    const missing = req.some((k) => !rec[k] || (Array.isArray(rec[k]) && !rec[k].length));
+    if (missing) return toast(`${cfg.entity} needs ${req.join(", ")}`, true);
     if (editing) rec.id = editing;
     await dbCall(cfg.saveFn, rec);
-    toast(`${editing ? "Updated" : "Added"} ${rec[cfg.fields[0].key]}`);
+    toast(`${editing ? "Updated" : "Saved"} ${rec[cfg.fields[0].key]}`);
     clearForm();
     refresh();
   });
   root.querySelector("#cm-clear").addEventListener("click", clearForm);
+  if (delBtn) delBtn.addEventListener("click", async () => {
+    if (!editing) return;
+    const item = (tableEl._items || []).find((it) => it.id === editing);
+    const label = item ? item[cfg.fields[0].key] : "this record";
+    if (!window.confirm(`Delete ${label}? This cannot be undone.`)) return;
+    await dbCall(cfg.deleteFn, editing);
+    clearForm();
+    refresh();
+  });
 
   setEditing(null);
   refresh();
@@ -758,15 +979,20 @@ async function buildCompetitionMaster() {
           <label class="field-label">Trophy</label><input class="field-control" id="cp-trophy" />
           <label class="field-label">Format</label><select class="field-select" id="cp-format"><option>League</option><option>Series</option><option>Knockout</option></select>
           <label class="field-label">Match Type</label><select class="field-select" id="cp-type"><option>ODI</option><option>T20I</option><option>Test</option><option>T20D</option><option>First Class</option></select>
-          <label class="field-label">Start Date</label><input class="field-control" id="cp-start" placeholder="DD-MM-YYYY" />
-          <label class="field-label">End Date</label><input class="field-control" id="cp-end" placeholder="DD-MM-YYYY" />
+          <label class="field-label">Start Date</label><input type="date" class="field-control" id="cp-start" />
+          <label class="field-label">End Date</label><input type="date" class="field-control" id="cp-end" />
         </div>
-        <div class="list-box"><h4>Participating Teams</h4><div class="cm-team-list" id="cp-teams">${teamChecks || "<p class='mst-hint'>No teams yet.</p>"}</div></div>
+        <div class="list-box">
+          <h4>Participating Teams</h4>
+          <input type="text" class="field-control cp-list-search" id="cp-team-search" placeholder="Search teams…" />
+          <div class="cm-team-list" id="cp-teams">${teamChecks || "<p class='mst-hint'>No teams yet.</p>"}</div>
+        </div>
       </div>
       <div class="btn-row">
         <button class="btn-main btn-green" id="cp-save">Add</button>
         <button class="btn-main btn-yellow" id="cp-clear">Clear</button>
       </div>
+      <input type="text" class="field-control cp-list-search" id="cp-name-search" placeholder="Search competition name…" />
       <div id="cp-table"></div>
     </section>`;
 }
@@ -785,6 +1011,7 @@ function initCompetitionMaster(root) {
     format: q("#cp-format"), type: q("#cp-type"), start: q("#cp-start"), end: q("#cp-end"),
   };
   const teamsBox = q("#cp-teams"), tableEl = q("#cp-table"), saveBtn = q("#cp-save");
+  const teamSearch = q("#cp-team-search"), nameSearch = q("#cp-name-search");
   let editing = null;
 
   const checkedTeamIds = () => [...teamsBox.querySelectorAll("input:checked")].map((c) => c.value);
@@ -796,15 +1023,31 @@ function initCompetitionMaster(root) {
     setTeams([]); setEditing(null);
   };
 
-  async function refresh() {
-    const [comps, teams] = await Promise.all([dbCall("competitions"), dbCall("teams")]);
-    const nameOf = (id) => ((teams || []).find((t) => t.id === id) || {}).name || id;
-    const rows = (comps || []).map((c) => ({
-      ...c, teamsLabel: (c.teamIds || []).map(nameOf).join(", "),
-    }));
+  // Live filter for the participating-team checkbox list.
+  teamSearch.addEventListener("input", () => {
+    const term = teamSearch.value.trim().toLowerCase();
+    teamsBox.querySelectorAll(".cm-team").forEach((lbl) => {
+      lbl.style.display = lbl.textContent.toLowerCase().includes(term) ? "" : "none";
+    });
+  });
+
+  // Render the competitions table, filtered by the name search box.
+  function renderTable() {
+    const term = (nameSearch.value || "").trim().toLowerCase();
+    const rows = (tableEl._all || []).filter((r) => !term || (r.name || "").toLowerCase().includes(term));
     tableEl._items = rows;
     tableEl.innerHTML = crudRows(rows, COMPETITION_COLUMNS);
     tableEl.querySelectorAll(".mst-btn").forEach((b) => b.addEventListener("click", onRowAction));
+  }
+  nameSearch.addEventListener("input", renderTable);
+
+  async function refresh() {
+    const [comps, teams] = await Promise.all([dbCall("competitions"), dbCall("teams")]);
+    const nameOf = (id) => ((teams || []).find((t) => t.id === id) || {}).name || id;
+    tableEl._all = (comps || []).map((c) => ({
+      ...c, teamsLabel: (c.teamIds || []).map(nameOf).join(", "),
+    }));
+    renderTable();
   }
   async function onRowAction() {
     const id = this.dataset.id;
@@ -818,7 +1061,7 @@ function initCompetitionMaster(root) {
     f.name.value = c.name || ""; f.season.value = c.season || "";
     f.trophy.value = c.trophy || ""; f.format.value = c.format || f.format.options[0].value;
     f.type.value = c.matchType || f.type.options[0].value;
-    f.start.value = c.startDate || ""; f.end.value = c.endDate || "";
+    f.start.value = dmyToIso(c.startDate); f.end.value = dmyToIso(c.endDate);
     setTeams(c.teamIds || []);
     setEditing(id); f.name.focus();
   }
@@ -830,7 +1073,7 @@ function initCompetitionMaster(root) {
     await dbCall("saveCompetition", {
       id: editing || undefined, name, season: f.season.value.trim(), trophy: f.trophy.value.trim(),
       format: f.format.value, matchType: f.type.value,
-      startDate: f.start.value.trim(), endDate: f.end.value.trim(), teamIds: checkedTeamIds(),
+      startDate: isoToDMY(f.start.value), endDate: isoToDMY(f.end.value), teamIds: checkedTeamIds(),
     });
     toast(`${editing ? "Updated" : "Saved"} ${name}`);
     clear();
@@ -846,12 +1089,47 @@ const OFFICIAL_CFG = {
   fields: [
     { key: "name", label: "Name", type: "text" },
     { key: "role", label: "Role", type: "select", options: ["Umpire", "Match Referee", "Scorer"] },
+    { key: "state", label: "State", type: "text" },
     { key: "country", label: "Country", type: "text" },
-    { key: "category", label: "Category", type: "select", options: ["International", "Domestic", "Elite"] },
+    { key: "category", label: "Officials Category", type: "checks", options: ["International", "Domestic", "Elite", "Plate"] },
+    { key: "image", label: "Officials Portrait", type: "image" },
   ],
   columns: [
     { key: "name", label: "Officials Name" }, { key: "country", label: "Country" },
-    { key: "role", label: "Role" }, { key: "category", label: "Category" },
+    { key: "role", label: "Role" },
+  ],
+  required: ["name"],
+};
+
+const COACH_CFG = {
+  entity: "Coach",
+  listFn: "coaches", saveFn: "saveCoach", deleteFn: "deleteCoach",
+  fields: [
+    { key: "name", label: "Coach Name", type: "text" },
+    { key: "teams", label: "Team", type: "checks", optionsFn: "teams" },
+    { key: "specializations", label: "Specialization", type: "checks",
+      options: ["Assistance", "Batting", "Bowling", "Fielding", "Fitness", "Head Coach", "Wicket Keeping"] },
+    { key: "image", label: "Coach Portrait", type: "image" },
+  ],
+  columns: [
+    { key: "name", label: "Coach Name" },
+    { key: "specializations", label: "Coach Specialization" },
+  ],
+  required: ["name"],
+};
+
+const BOWLER_SPEC_CFG = {
+  entity: "Bowler Specialization",
+  listFn: "bowlerSpecs", saveFn: "saveBowlerSpec", deleteFn: "deleteBowlerSpec",
+  fields: [
+    { key: "name", label: "Bowler Specialization", type: "text" },
+    { key: "bowlingType", label: "Bowling Type", type: "select", options: ["Fast", "Spin"] },
+    { key: "bowlingStyle", label: "Bowling Style", type: "select", options: ["Left Arm", "Right Arm", "Both"] },
+  ],
+  columns: [
+    { key: "name", label: "Bowler Specialization" },
+    { key: "bowlingStyle", label: "Bowling Style" },
+    { key: "bowlingType", label: "Bowling Type" },
   ],
   required: ["name"],
 };
@@ -864,6 +1142,9 @@ const GROUND_CFG = {
     { key: "country", label: "Country", type: "text" },
     { key: "state", label: "State", type: "text" },
     { key: "city", label: "City", type: "text" },
+    { key: "profile", label: "Ground Profile", type: "textarea" },
+    { key: "image", label: "Ground Image", type: "image" },
+    { key: "size", label: "Ground Size in Meters", type: "ground" },
   ],
   columns: [
     { key: "name", label: "Ground Name" }, { key: "country", label: "Country" },

@@ -12,6 +12,13 @@ const DEFAULT_CONFIG = {
   recordingsPath: "",
   databasePath: "",
   cameraDeviceId: "",
+  shortcuts: {},
+  videoResolution: "1280x720",
+  videoBitrate: "Medium",
+  recordAudio: false,
+  localCapture: false,
+  deinterlace: false,
+  operationMode: "Offline",
 };
 
 function configFilePath() {
@@ -183,6 +190,22 @@ ipcMain.handle("db:official:save", (_e, o) => db.saveOfficial(o));
 ipcMain.handle("db:official:delete", (_e, id) => db.deleteOfficial(id));
 ipcMain.handle("db:ground:save", (_e, g) => db.saveGround(g));
 ipcMain.handle("db:ground:delete", (_e, id) => db.deleteGround(id));
+ipcMain.handle("db:bowlerSpecs", () => db.bowlerSpecs());
+ipcMain.handle("db:bowlerSpec:save", (_e, s) => db.saveBowlerSpec(s));
+ipcMain.handle("db:bowlerSpec:delete", (_e, id) => db.deleteBowlerSpec(id));
+ipcMain.handle("db:coaches", () => db.coaches());
+ipcMain.handle("db:coach:save", (_e, c) => db.saveCoach(c));
+ipcMain.handle("db:coach:delete", (_e, id) => db.deleteCoach(id));
+ipcMain.handle("db:import", async (event, { mode }) => {
+  const win = BrowserWindow.fromWebContents(event.sender);
+  const { canceled, filePaths } = await dialog.showOpenDialog(win, {
+    title: mode === "master" ? "Import Master Data" : "Import Reconciled Data",
+    filters: [{ name: "SQLite database", extensions: ["sqlite", "db", "sqlite3"] }],
+    properties: ["openFile"],
+  });
+  if (canceled || !filePaths?.length) return { canceled: true };
+  return db.importFromFile(filePaths[0], mode);
+});
 ipcMain.handle("db:competition:save", (_e, c) => db.saveCompetition(c));
 ipcMain.handle("db:competition:delete", (_e, id) => db.deleteCompetition(id));
 ipcMain.handle("db:match:save", (_e, match) => db.saveMatch(match));

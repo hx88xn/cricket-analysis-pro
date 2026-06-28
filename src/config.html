@@ -20,41 +20,121 @@
         <h1 class="screen-title config-title">Configuration</h1>
       </header>
 
-      <p class="screen-subtitle">Manage capture paths, database location, and camera preferences for the desktop workspace.</p>
+      <p class="screen-subtitle">Manage database, keyboard shortcuts, and application preferences for the desktop workspace.</p>
+
+      <div class="config-tabs" role="tablist">
+        <button type="button" class="config-tab is-active" data-tab="database" role="tab" aria-selected="true">Database</button>
+        <button type="button" class="config-tab" data-tab="shortcut" role="tab" aria-selected="false">Shortcut</button>
+        <button type="button" class="config-tab" data-tab="application" role="tab" aria-selected="false">Application</button>
+        <button type="button" class="config-tab" data-tab="video" role="tab" aria-selected="false">Video</button>
+      </div>
 
       <form class="config-form" id="config-form">
-        <div class="config-field">
-          <label class="config-label" for="recordings-path">Video recordings folder</label>
-          <div class="config-row">
-            <input type="text" id="recordings-path" class="config-input" placeholder="Leave empty to choose folder each time" />
-            <button type="button" class="btn blue" id="btn-browse-recordings">Browse…</button>
+        <!-- Database -->
+        <div class="config-panel is-active" data-panel="database" role="tabpanel">
+          <div class="config-field">
+            <label class="config-label" for="database-path">Database file</label>
+            <div class="config-row">
+              <input type="text" id="database-path" class="config-input" placeholder="No database open" readonly />
+              <button type="button" class="btn blue" id="btn-browse-database">Open…</button>
+            </div>
+            <div class="config-row">
+              <button type="button" class="btn blue" id="btn-new-database">New blank database…</button>
+              <button type="button" class="btn blue" id="btn-export-database">Export / Backup…</button>
+              <button type="button" class="btn red" id="btn-reset-database">Clear all data…</button>
+            </div>
+            <p class="config-hint">Open an existing <code>.sqlite</code> file (e.g. one sent by a colleague), start a fresh blank database, or export a safe copy of the current one to hand off. <strong>Clear all data</strong> empties the current database in place (removes all teams, players, matches, etc. — keeps only the option lists). Opening, creating, or clearing a database reloads the app.</p>
           </div>
-          <p class="config-hint">Save dialog will start in this folder when you end a capture.</p>
         </div>
 
-        <div class="config-field">
-          <label class="config-label" for="database-path">Database file</label>
-          <div class="config-row">
-            <input type="text" id="database-path" class="config-input" placeholder="No database open" readonly />
-            <button type="button" class="btn blue" id="btn-browse-database">Open…</button>
+        <!-- Shortcut -->
+        <div class="config-panel" data-panel="shortcut" role="tabpanel" hidden>
+          <div class="config-field">
+            <label class="config-label">Keyboard shortcuts</label>
+            <div class="config-shortcuts">
+              <label class="config-sc-label" for="sc-start-over">Start / End Over</label><input type="text" id="sc-start-over" class="config-input" data-shortcut="startOver" />
+              <label class="config-sc-label" for="sc-start-ball">Start / End Ball</label><input type="text" id="sc-start-ball" class="config-input" data-shortcut="startBall" />
+              <label class="config-sc-label" for="sc-start-capture">Start / End Capture</label><input type="text" id="sc-start-capture" class="config-input" data-shortcut="startCapture" />
+              <label class="config-sc-label" for="sc-browse-video">Browse Video</label><input type="text" id="sc-browse-video" class="config-input" data-shortcut="browseVideo" />
+              <label class="config-sc-label" for="sc-bowling-compute">Bowling Compute</label><input type="text" id="sc-bowling-compute" class="config-input" data-shortcut="bowlingCompute" />
+              <label class="config-sc-label" for="sc-appeals">Appeals</label><input type="text" id="sc-appeals" class="config-input" data-shortcut="appeals" />
+              <label class="config-sc-label" for="sc-fielding-events">Fielding Events</label><input type="text" id="sc-fielding-events" class="config-input" data-shortcut="fieldingEvents" />
+              <label class="config-sc-label" for="sc-match-events">Match Events</label><input type="text" id="sc-match-events" class="config-input" data-shortcut="matchEvents" />
+              <label class="config-sc-label" for="sc-remarks">Remarks</label><input type="text" id="sc-remarks" class="config-input" data-shortcut="remarks" />
+              <label class="config-sc-label" for="sc-wickets">Wickets</label><input type="text" id="sc-wickets" class="config-input" data-shortcut="wickets" />
+              <label class="config-sc-label" for="sc-edit-mode">Edit Mode</label><input type="text" id="sc-edit-mode" class="config-input" data-shortcut="editMode" />
+            </div>
+            <p class="config-hint">Assign the keys used during live scoring and capture. Press <strong>Save settings</strong> to apply.</p>
           </div>
-          <div class="config-row">
-            <button type="button" class="btn blue" id="btn-new-database">New blank database…</button>
-            <button type="button" class="btn blue" id="btn-export-database">Export / Backup…</button>
-            <button type="button" class="btn red" id="btn-reset-database">Clear all data…</button>
-          </div>
-          <p class="config-hint">Open an existing <code>.sqlite</code> file (e.g. one sent by a colleague), start a fresh blank database, or export a safe copy of the current one to hand off. <strong>Clear all data</strong> empties the current database in place (removes all teams, players, matches, etc. — keeps only the option lists). Opening, creating, or clearing a database reloads the app.</p>
         </div>
 
-        <div class="config-field">
-          <label class="config-label" for="camera-select">Camera</label>
-          <div class="config-row config-row-select">
-            <select id="camera-select" class="config-select">
-              <option value="">Default camera</option>
-            </select>
-            <button type="button" class="btn blue" id="btn-refresh-cameras">Refresh list</button>
+        <!-- Application -->
+        <div class="config-panel" data-panel="application" role="tabpanel" hidden>
+          <div class="config-field">
+            <label class="config-label">Operation Mode</label>
+            <div class="vid-inline">
+              <label class="vid-check"><input type="radio" name="op-mode" value="Offline" checked /> Offline</label>
+              <label class="vid-check"><input type="radio" name="op-mode" value="Online 1" /> Online 1</label>
+              <label class="vid-check"><input type="radio" name="op-mode" value="Online 2" /> Online 2</label>
+            </div>
+            <p class="config-hint">How the app sources data. Saved with the <strong>Save settings</strong> button below.</p>
           </div>
-          <p class="config-hint">Refreshing may request camera permission once so device names can be resolved.</p>
+
+          <div class="config-field">
+            <label class="config-label">Data import</label>
+            <div class="config-row">
+              <button type="button" class="btn blue btn-block" id="btn-import-reconciled">Import Reconciled Data…</button>
+              <button type="button" class="btn blue btn-block" id="btn-import-master">Import Master Data…</button>
+            </div>
+            <p class="config-hint">Import from another Cricket Analysis Pro <code>.sqlite</code> file. <strong>Master Data</strong> brings in teams, players, competitions, officials, grounds, coaches and the option lists. <strong>Reconciled Data</strong> brings in matches and their scoring/ball data. The app reloads after a successful import.</p>
+          </div>
+        </div>
+
+        <!-- Video -->
+        <div class="config-panel" data-panel="video" role="tabpanel" hidden>
+          <div class="vid-layout">
+            <div class="vid-left">
+              <div class="vid-stage" id="vid-stage">
+                <video id="vid-preview" class="vid-video" autoplay muted playsinline></video>
+                <div class="vid-line" id="vid-line" hidden></div>
+                <div class="vid-placeholder" id="vid-ph">Camera preview — press Play</div>
+              </div>
+              <div class="vid-btns">
+                <button type="button" class="btn green" id="vid-play">Play</button>
+                <button type="button" class="btn green" id="vid-overlay">Overlay</button>
+                <button type="button" class="btn green" id="vid-capture">Start Capture</button>
+              </div>
+            </div>
+            <div class="vid-right">
+              <label class="vid-check"><input type="checkbox" id="vid-local" /> Local video capturing</label>
+
+              <select id="vid-device" class="config-select"><option value="">Default camera</option></select>
+
+              <select id="vid-resolution" class="config-select"></select>
+
+              <label class="vid-check"><input type="checkbox" id="vid-deinterlace" /> Deinterlace</label>
+
+              <div class="vid-inline">
+                <span class="vid-label">Video Bitrate</span>
+                <label class="vid-check"><input type="radio" name="vid-bitrate" value="High" /> High</label>
+                <label class="vid-check"><input type="radio" name="vid-bitrate" value="Medium" checked /> Medium</label>
+                <label class="vid-check"><input type="radio" name="vid-bitrate" value="Low" /> Low</label>
+              </div>
+
+              <label class="vid-check"><input type="checkbox" id="vid-audio" /> Record Audio</label>
+
+              <div class="config-field">
+                <span class="vid-label">Video Recordings Folder</span>
+                <div class="config-row">
+                  <input type="text" id="recordings-path" class="config-input" placeholder="Leave empty to choose folder each time" />
+                  <button type="button" class="btn blue" id="btn-browse-recordings">Browse…</button>
+                </div>
+              </div>
+
+              <button type="button" class="btn green vid-save" id="vid-save">Save</button>
+              <p class="config-hint" id="vid-note"></p>
+            </div>
+          </div>
         </div>
 
         <div class="config-actions">
