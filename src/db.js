@@ -368,7 +368,7 @@ function ballCount() {
 }
 
 function competitions() {
-  const comps = db.prepare("SELECT * FROM competitions").all();
+  const comps = db.prepare("SELECT * FROM competitions ORDER BY name").all();
   const teamStmt = db.prepare("SELECT team_id FROM competition_teams WHERE competition_id = ?");
   return comps.map((c) => ({
     id: c.id, name: c.name, trophy: c.trophy, season: c.season, format: c.format,

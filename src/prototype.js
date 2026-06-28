@@ -1266,11 +1266,16 @@ function initCompetitionMaster(root) {
     });
   });
 
+  // Competitions matching the current name-search box (full, unpaged set).
+  const filteredRows = () => {
+    const term = (nameSearch.value || "").trim().toLowerCase();
+    return (tableEl._all || []).filter((r) => !term || (r.name || "").toLowerCase().includes(term));
+  };
+
   // Render one page of the competitions table, filtered by the name search box.
   function renderTable() {
     const size = tableEl._pageSize || PAGE_SIZE;
-    const term = (nameSearch.value || "").trim().toLowerCase();
-    const rows = (tableEl._all || []).filter((r) => !term || (r.name || "").toLowerCase().includes(term));
+    const rows = filteredRows();
     tableEl._items = rows; // full filtered set, so onRowAction can find any row by id
     const meta = paginate(rows, page, size);
     page = meta.page;
@@ -1284,12 +1289,18 @@ function initCompetitionMaster(root) {
   }
   nameSearch.addEventListener("input", () => { page = 0; renderTable(); });
 
-  async function refresh() {
+  async function refresh(focusId) {
     const [comps, teams] = await Promise.all([dbCall("competitions"), dbCall("teams")]);
     const nameOf = (id) => ((teams || []).find((t) => t.id === id) || {}).name || id;
     tableEl._all = (comps || []).map((c) => ({
       ...c, teamsLabel: (c.teamIds || []).map(nameOf).join(", "),
     }));
+    // After adding a competition, jump to the page that actually contains it so
+    // it's visible right away instead of hiding on a later page.
+    if (focusId) {
+      const idx = filteredRows().findIndex((r) => r.id === focusId);
+      if (idx >= 0) page = Math.floor(idx / (tableEl._pageSize || PAGE_SIZE));
+    }
     renderTable();
   }
   async function onRowAction() {
@@ -1313,14 +1324,18 @@ function initCompetitionMaster(root) {
   saveBtn.addEventListener("click", async () => {
     const name = f.name.value.trim();
     if (!name) return toast("Competition name is required", true);
-    await dbCall("saveCompetition", {
+    const wasNew = !editing;
+    const saved = await dbCall("saveCompetition", {
       id: editing || undefined, name, season: f.season.value.trim(), trophy: f.trophy.value.trim(),
       format: f.format.value, matchType: f.type.value,
       startDate: isoToDMY(f.start.value), endDate: isoToDMY(f.end.value), teamIds: checkedTeamIds(),
     });
-    toast(`${editing ? "Updated" : "Saved"} ${name}`);
+    toast(`${wasNew ? "Saved" : "Updated"} ${name}`);
     clear();
-    refresh();
+    // Drop any active name filter on a fresh add so the new row isn't hidden,
+    // then refresh focused on it so it lands on the visible page.
+    if (wasNew) nameSearch.value = "";
+    refresh(wasNew ? (saved && saved.id) : null);
   });
   setEditing(null);
   refresh();
