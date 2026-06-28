@@ -156,6 +156,11 @@ const state = {
   matchOver: false,
   overStarted: false, // a new over must be started before any ball
   ballStarted: false, // each ball must be started before it can be entered
+  // The current ball is staged here as it is entered (runs/extras/wicket/etc.)
+  // and only committed to the log when "End Ball" is pressed. `staged` mirrors
+  // the highlighted keypad key so it survives keypad re-renders.
+  pending: null,
+  staged: null,
   bowlExpanded: false, // extended bowl-type page shown
   shotExpanded: false, // extended shot-type page shown
   wagonLines: [],
@@ -277,11 +282,17 @@ function fillKeypad() {
   const el = document.getElementById("keypad");
   if (!el) return;
   el.innerHTML = "";
+  const staged = state.staged;
   getKeypadKeys().forEach((k) => {
     const b = document.createElement("button");
     b.type = "button";
     b.className = `keypad-btn ${k.cls || ""}`.trim();
     b.textContent = k.label;
+    // Keep the staged delivery's key highlighted until the ball is committed.
+    if (staged && ((staged.type === "run" && k.type === "run" && k.val === staged.val)
+        || (staged.type === "ext" && k.type === "ext" && k.ext === staged.ext))) {
+      b.classList.add("staged");
+    }
     if (k.disabled) {
       b.disabled = true;
       b.classList.add("disabled");
@@ -767,10 +778,10 @@ function handleKeypad(k, btn) {
     return;
   }
   if (k.type === "run") {
-    state.pendingRuns = k.val;
     // When RBW is armed, the dialpad number is captured as RBW external data
     // (no wicket, no extra runs — the runs still score as a normal delivery).
-    logBall({ runs: k.val, ext: 0, boundary: k.boundary, legal: true, rbw: state.rbw ? k.val : 0 });
+    stageDelivery({ runs: k.val, ext: 0, boundary: k.boundary, legal: true, rbw: state.rbw ? k.val : 0 },
+      { type: "run", val: k.val });
   } else if (k.type === "ext") {
     handleExtra(k.ext);
   }
@@ -782,10 +793,29 @@ function handleExtra(ext) {
   //           may also go for a boundary), ball is NOT legal (re-bowled).
   // LB / B  = bye runs (default 1, editable), ball IS legal and counts.
   if (ext === "NB" || ext === "WD") {
-    logBall({ runs: 0, ext: 1, extLabel: ext, legal: false });
+    stageDelivery({ runs: 0, ext: 1, extLabel: ext, legal: false }, { type: "ext", ext });
   } else if (ext === "LB" || ext === "B") {
-    logBall({ runs: 0, ext: 1, extLabel: ext, legal: true, bye: true });
+    stageDelivery({ runs: 0, ext: 1, extLabel: ext, legal: true, bye: true }, { type: "ext", ext });
   }
+}
+
+// Stage (queue) the current ball's data without committing. The ball is only
+// written to the log when "End Ball" is pressed (see commitBall). `params` are
+// merged so runs, extras, overthrow, wicket etc. accumulate for the one ball;
+// `keyMark` (optional) highlights the matching keypad key until commit.
+function stageDelivery(params, keyMark) {
+  if (!ballInputAllowed()) return; // over + ball must be started first
+  state.pending = { ...(state.pending || { runs: 0, ext: 0, legal: true }), ...params };
+  // keep the wagon-line colour in sync with the staged run value
+  if (typeof params.runs === "number") state.pendingRuns = params.runs;
+  if (keyMark) { state.staged = keyMark; fillKeypad(); }
+  setBallButton("End Ball ✓"); // signal a delivery is queued for this ball
+}
+
+// Commit the staged delivery (or a dot ball if nothing was entered) to the log.
+function commitBall() {
+  const p = state.pending || { runs: 0, ext: 0, legal: true };
+  logBall(p); // logBall resets ballStarted, pending, staged and the button label
 }
 
 function shortName(name) {
@@ -876,6 +906,8 @@ function logBall({ runs = 0, ext = 0, boundary = false, legal = true, bye = fals
   clearPitchDots();
   clearReview();
   state.ballStarted = false;
+  state.pending = null;
+  state.staged = null;
   setBallButton("Start Ball");
 
   state.pendingRuns = 0;
@@ -1009,10 +1041,14 @@ function undo() {
   // than silently doing nothing (which reads as "the button isn't working").
   if (!prev) { flash(document.getElementById("btn-undo")); return; }
   Object.assign(state, JSON.parse(prev));
+  // Undo discards any half-staged delivery for the restored ball.
+  state.pending = null;
+  state.staged = null;
   // Re-sync the Over/Ball buttons to the restored flags; undo can cross an over
   // boundary (a completed 6th ball reset them) so the labels must follow.
   setOverButton(state.overStarted ? "End Over" : "Start Over");
   setBallButton(state.ballStarted ? "End Ball" : "Start Ball");
+  fillKeypad();
   render();
 }
 
@@ -1110,8 +1146,9 @@ function setBallButton(label) {
   const b = document.getElementById("btn-ball");
   if (!b) return;
   b.textContent = label;
-  b.classList.toggle("red", label === "End Ball");
-  b.classList.toggle("teal", label !== "End Ball");
+  const ending = label.startsWith("End Ball");
+  b.classList.toggle("red", ending);
+  b.classList.toggle("teal", !ending);
 }
 
 // A ball may only be entered once its over and the ball itself are started.
@@ -1139,15 +1176,27 @@ function wireActionButtons() {
       // continued from where the ball left off (re-click Start Over to resume).
       state.overStarted = false;
       state.ballStarted = false;
+      state.pending = null;
+      state.staged = null;
       setOverButton("Start Over");
       setBallButton("Start Ball");
+      fillKeypad();
     }
   });
 
   ball?.addEventListener("click", () => {
     if (!state.overStarted) { flash(over); return; }   // start the over first
-    state.ballStarted = !state.ballStarted;
-    setBallButton(state.ballStarted ? "End Ball" : "Start Ball");
+    if (!state.ballStarted) {
+      // Start the ball — begin staging a fresh delivery.
+      state.ballStarted = true;
+      state.pending = null;
+      state.staged = null;
+      setBallButton("End Ball");
+      fillKeypad();
+    } else {
+      // End Ball — commit whatever was staged (a dot ball if nothing entered).
+      commitBall();
+    }
   });
 
   undoBtn?.addEventListener("click", undo);
@@ -1185,9 +1234,9 @@ function wireOverthrow() {
     b.addEventListener("click", () => {
       // Over-throw is an external parameter — it is recorded against the ball
       // but does NOT add runs to the score (the delivery's runs are entered on
-      // the keypad as usual).
+      // the keypad as usual). Staged onto the current ball, committed on End Ball.
       const overthrow = Number(b.getAttribute("data-ot")) || 0;
-      logBall({ runs: 0, ext: 0, legal: true, overthrow });
+      stageDelivery({ overthrow });
       flash(b);
       setOpen(false);
     });
@@ -1345,7 +1394,11 @@ function overlayWickets() {
   }));
   document.getElementById("wkt-save")?.addEventListener("click", () => {
     closeOverlay();
-    logBall({ runs: 0, ext: 0, legal: true, wicket: true });
+    // Stage the wicket onto the current ball; it commits when End Ball is pressed
+    // (so any runs on the same delivery, e.g. a run-out, can still be entered).
+    if (!state.ballStarted) { flash(document.getElementById("btn-ball")); toast("Start the ball first"); return; }
+    stageDelivery({ wicket: true });
+    toast("Wicket staged — press End Ball to confirm");
   });
 }
 

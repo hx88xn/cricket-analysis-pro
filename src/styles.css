@@ -1900,3 +1900,141 @@ body.edit-mode .app { outline: 2px solid rgba(240, 199, 97, 0.5); outline-offset
 .movie-controls { color: var(--success); font-size: 18px; letter-spacing: 6px; text-align: center; }
 .movie-trim { display: flex; gap: 12px; }
 .movie-trim .m-btn { flex: 1; }
+
+/* ============================================================================
+   Coding screen — proposed layout
+   Header: [score] [stats] [reports grid].  Body: 4 columns x 2 rows —
+   col1 Ball-by-ball (spans rows), col2 center (video+events+keypad, spans rows),
+   col3 pitch (row1) / wagon (row2), col4 Fast-Spin grid (row1) / Agg-Def (row2).
+   Rules appended last so they win over the legacy .mid/.footer layout.
+   ============================================================================ */
+.coding-app {
+  grid-template-rows: auto minmax(0, 1fr);
+}
+.coding-app .header {
+  grid-template-columns: minmax(220px, 1fr) minmax(480px, 2.1fr) minmax(330px, 1.15fr);
+}
+
+/* Reports grid (header right) */
+.header-right.reports-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-auto-rows: 1fr;
+  gap: 7px;
+  padding: 10px;
+  overflow: hidden;
+}
+.report-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  text-decoration: none;
+  padding: 6px 5px;
+  border-radius: 9px;
+  border: 1px solid rgba(103, 177, 236, 0.3);
+  background: linear-gradient(180deg, #1f5e95 0%, #163f63 100%);
+  color: #eaf3ff;
+  font-size: 10px;
+  font-weight: 700;
+  line-height: 1.12;
+  letter-spacing: 0.02em;
+  cursor: pointer;
+}
+.report-btn:hover { filter: brightness(1.14); }
+
+/* Body grid */
+.coding-body {
+  display: grid;
+  grid-template-columns: minmax(210px, 1fr) minmax(300px, 1.35fr) minmax(330px, 1.12fr) minmax(225px, 0.78fr);
+  grid-template-rows: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 12px;
+  min-height: 0;
+}
+.cb-log    { grid-column: 1; grid-row: 1 / 3; }
+.cb-center { grid-column: 2; grid-row: 1 / 3; }
+.cb-pitch  { grid-column: 3; grid-row: 1; }
+.cb-bowl   { grid-column: 4; grid-row: 1; }
+.cb-wagon  { grid-column: 3; grid-row: 2; }
+.cb-bat    { grid-column: 4; grid-row: 2; }
+.cb-log, .cb-center, .cb-pitch, .cb-bowl, .cb-wagon, .cb-bat { min-width: 0; min-height: 0; }
+
+/* Panel surface for log + center */
+.cb-log, .cb-center {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 12px;
+  border-radius: var(--radius-lg);
+  background: linear-gradient(180deg, rgba(11, 21, 35, 0.9), rgba(7, 14, 25, 0.9));
+  border: 1px solid var(--border);
+  box-shadow: var(--shadow-md);
+}
+.cb-title {
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--warning);
+  background: rgba(6, 12, 20, 0.6);
+  padding: 6px 10px;
+  border-radius: 8px;
+  align-self: flex-start;
+}
+.cb-log .table-wrap { flex: 1; min-height: 0; overflow: auto; }
+
+/* Center column stacking */
+.cb-center .video-panel { flex: 1 1 38%; min-height: 150px; }
+.cb-center .video-actions { flex: 0 0 auto; }
+.events-block { display: flex; flex-direction: column; gap: 8px; flex: 1 1 50%; min-height: 0; }
+.events-head { display: flex; align-items: center; gap: 12px; flex: 0 0 auto; }
+.events-title {
+  font-size: 12px; font-weight: 800; letter-spacing: 0.12em; text-transform: uppercase;
+  color: var(--warning); background: rgba(6, 12, 20, 0.6); padding: 6px 10px; border-radius: 8px;
+}
+.events-head-spacer { flex: 1; }
+.events-head #btn-editmode { width: auto; flex: 0 0 auto; padding: 8px 14px; }
+.events-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-auto-rows: minmax(38px, 1fr);
+  gap: 8px;
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+}
+.events-grid .appeals-row { min-width: 0; }
+.events-grid .appeals-row .appeals-btn { flex: 1; }
+.events-grid .btn { width: 100%; height: 100%; }
+.keypad-row { flex: 0 0 auto; padding: 10px; }
+.keypad-row .keypad-grid { grid-template-rows: repeat(4, minmax(30px, 38px)); }
+.keypad-row .keypad-btn { padding: 6px; font-size: 14px; }
+
+/* Pitch / wagon / grid cells */
+.cb-pitch, .cb-wagon, .cb-bowl, .cb-bat { display: flex; flex-direction: column; gap: 8px; min-height: 0; }
+.cb-pitch .pitch-wrap,
+.cb-wagon .field-map-wrap {
+  flex: 1;
+  min-height: 0;
+  border-radius: var(--radius-lg);
+  border: 1px solid var(--border);
+  box-shadow: var(--shadow-md);
+}
+.cb-wagon .footer-radios { flex: 0 0 auto; justify-content: center; }
+.cb-bowl .bowl-panel,
+.cb-bat .bat-panel {
+  flex: 1;
+  min-height: 0;
+  border-radius: var(--radius-lg);
+  background: linear-gradient(180deg, rgba(11, 21, 35, 0.9), rgba(7, 14, 25, 0.9));
+  border: 1px solid var(--border);
+  box-shadow: var(--shadow-md);
+}
+
+/* Staged keypad key: a delivery is queued for the current ball but not yet
+   committed (it commits when "End Ball" is pressed). */
+.keypad-btn.staged {
+  outline: 2px solid var(--warning, #f0c761);
+  outline-offset: -2px;
+  box-shadow: 0 0 0 3px rgba(240, 199, 97, 0.25);
+}

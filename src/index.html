@@ -14,7 +14,7 @@
     <script src="stage.js"></script>
   </head>
   <body>
-    <div class="app">
+    <div class="app coding-app">
       <header class="header">
         <div class="header-left">
           <div class="header-back-row">
@@ -101,42 +101,27 @@
           </div>
         </div>
 
-        <div class="header-right">
-          <div class="umpire-row">
-            <button type="button" class="btn btn-block blue" data-overlay="umpire" data-arg="RICHARD ILLINGWORTH">UMPIRE 1</button>
-            <button type="button" class="btn btn-block blue" data-overlay="umpire" data-arg="CHRIS GAFFANEY">UMPIRE 2</button>
-          </div>
-          <button type="button" class="btn btn-block blue" data-overlay="overcomp">OVER COMPARISION</button>
-          <button type="button" class="btn btn-block blue" data-overlay="bowlcompute">BOWLING COMPUTE</button>
+        <!-- Reports grid (replaces the old umpire / over-comp / bowl-compute column) -->
+        <div class="header-right reports-grid">
+          <button type="button" class="report-btn" data-overlay="scorecard">Match Report</button>
+          <button type="button" class="report-btn" data-overlay="overcomp">Over Comparison</button>
+          <button type="button" class="report-btn" data-overlay="bowlcompute">Bowling Compute</button>
+          <button type="button" class="report-btn" data-overlay="umpire" data-arg="RICHARD ILLINGWORTH">Umpire 1</button>
+          <a class="report-btn" href="prototype.html?screen=reports">Manhattan</a>
+          <a class="report-btn" href="prototype.html?screen=reports">Run Rate</a>
+          <a class="report-btn" href="prototype.html?screen=reports">Partnership</a>
+          <button type="button" class="report-btn" data-overlay="umpire" data-arg="CHRIS GAFFANEY">Umpire 2</button>
+          <a class="report-btn" href="prototype.html?screen=reports">Wagon Wheel</a>
+          <a class="report-btn" href="prototype.html?screen=reports">Worm</a>
+          <a class="report-btn" href="prototype.html?screen=reports">Extras</a>
+          <a class="report-btn" href="prototype.html?screen=reports">Fielder</a>
         </div>
       </header>
 
-      <section class="mid">
-        <div class="mid-left">
-          <div class="video-panel">
-            <video
-              id="camera-preview"
-              class="camera-preview"
-              autoplay
-              muted
-              playsinline
-              aria-label="Camera preview"
-            ></video>
-            <div class="video-toolbar">
-              <span class="video-icon monitor-icon" title="Display">&#9635;</span>
-              <span class="video-icon camera-icon red-icon" title="Camera">&#9673;</span>
-            </div>
-          </div>
-          <div class="video-actions">
-            <button type="button" id="btn-over" class="btn wide teal">Start Over</button>
-            <button type="button" id="btn-ball" class="btn wide teal">Start Ball</button>
-            <button type="button" id="btn-capture" class="btn wide teal">Start Capture</button>
-            <button type="button" class="btn wide teal" title="Live Score">LS</button>
-            <button type="button" id="btn-undo" class="btn wide teal icon-refresh" title="Undo last ball">&#8635;</button>
-          </div>
-        </div>
-
-        <div class="mid-center">
+      <section class="coding-body">
+        <!-- Col 1: Ball by Ball log -->
+        <div class="cb-log">
+          <div class="cb-title">Ball by Ball</div>
           <div class="log-toolbar">
             <span class="this-over" id="this-over"></span>
           </div>
@@ -159,17 +144,119 @@
           </div>
         </div>
 
-        <div class="mid-right">
-          <div class="mid-actions">
-            <div class="appeals-row">
-              <input type="checkbox" class="appeals-check" />
-              <button type="button" class="btn btn-block blue sm appeals-btn" data-overlay="appeals">Appeals</button>
+        <!-- Col 2: video + capture + events + keypad -->
+        <div class="cb-center">
+          <div class="video-panel">
+            <video
+              id="camera-preview"
+              class="camera-preview"
+              autoplay
+              muted
+              playsinline
+              aria-label="Camera preview"
+            ></video>
+            <div class="video-toolbar">
+              <span class="video-icon monitor-icon" title="Display">&#9635;</span>
+              <span class="video-icon camera-icon red-icon" title="Camera">&#9673;</span>
             </div>
-            <button type="button" class="btn btn-block blue sm" data-overlay="fielding">Fielding Events</button>
-            <button type="button" class="btn btn-block blue sm" data-overlay="matchevents">Match Events</button>
-            <button type="button" class="btn btn-block blue sm" data-overlay="remarks">Remarks</button>
-            <button type="button" class="btn btn-block blue sm" data-overlay="wickets">Wickets</button>
-            <button type="button" class="btn btn-block blue sm" id="btn-editmode">Edit Mode</button>
+          </div>
+          <div class="video-actions">
+            <button type="button" id="btn-over" class="btn wide teal">Start Over</button>
+            <button type="button" id="btn-ball" class="btn wide teal">Start Ball</button>
+            <button type="button" id="btn-capture" class="btn wide teal">Start Capture</button>
+            <button type="button" class="btn wide teal" title="Live Score">LS</button>
+            <button type="button" id="btn-undo" class="btn wide teal icon-refresh" title="Undo last ball">&#8635;</button>
+          </div>
+
+          <div class="events-block">
+            <div class="events-head">
+              <span class="events-title">Events</span>
+              <label class="radio-pill"><input type="radio" name="ds" /> DS</label>
+              <label class="radio-pill"><input type="radio" name="ds" id="radio-li" checked /> LI</label>
+              <span class="events-head-spacer"></span>
+              <button type="button" class="btn btn-block blue sm" id="btn-editmode">Edit Mode</button>
+            </div>
+            <div class="events-grid mid-actions">
+              <div class="appeals-row">
+                <input type="checkbox" class="appeals-check" />
+                <button type="button" class="btn btn-block blue sm appeals-btn" data-overlay="appeals">Appeals</button>
+              </div>
+              <button type="button" class="btn btn-block blue sm" data-overlay="fielding">Fielding Events</button>
+              <button type="button" class="btn btn-block blue sm" data-overlay="matchevents">Match Events</button>
+              <button type="button" class="btn btn-block blue sm" data-overlay="remarks">Remarks</button>
+              <button type="button" class="btn btn-block blue sm" data-overlay="wickets">Wickets</button>
+              <button type="button" class="btn btn-block blue sm" data-tag="pm">Play and Miss</button>
+              <button type="button" class="btn btn-block blue sm" data-tag="edge">Edge</button>
+              <button type="button" class="btn btn-block blue sm" data-tag="overthrow">Overthrow</button>
+              <button type="button" class="btn btn-block blue sm" data-tag="rbw">RBW</button>
+              <button type="button" class="btn btn-block blue sm" data-tag="freehit">Free Hit</button>
+              <button type="button" class="btn btn-block blue sm" data-tag="keymoment">Key Moment</button>
+              <button type="button" class="btn btn-block blue sm" data-tag="bowlvar">Bowling Variations</button>
+            </div>
+          </div>
+
+          <div class="keypad-panel panel keypad-row">
+            <button type="button" class="btn btn-block blue keypad-top" id="overthrow-btn" aria-expanded="false">OVER THROW</button>
+            <div class="keypad-grid" id="keypad"></div>
+            <div class="overthrow-grid" id="overthrow-grid" hidden></div>
+          </div>
+        </div>
+
+        <!-- Col 3 (row 1): pitch map -->
+        <div class="cb-pitch">
+          <div class="pitch-wrap" id="pitch-wrap">
+            <img
+              class="pitch-map-img"
+              src="assets/pitch-map.png"
+              width="776"
+              height="596"
+              alt="Pitch map: length zones and line; OTW, RTW, CD"
+              draggable="false"
+            />
+            <svg class="pitch-overlay-svg" id="pitch-overlay-svg" viewBox="0 0 100 100" preserveAspectRatio="none"></svg>
+            <button type="button" class="pitch-overlay-btn otw-btn active" data-group="otw">OTW</button>
+            <button type="button" class="pitch-overlay-btn rtw-btn" data-group="otw">RTW</button>
+            <button type="button" class="pitch-overlay-btn cd-btn" data-group="otw">CD</button>
+          </div>
+        </div>
+
+        <!-- Col 4 (row 1): Fast / Spin bowl grid -->
+        <div class="cb-bowl">
+          <div class="bowl-panel panel">
+            <div class="toggle-row">
+              <button type="button" class="expand-arrow" id="bowl-expand" title="Show more">&#9656;</button>
+              <button type="button" class="plus-btn">+</button>
+              <button type="button" class="toggle active" data-group="pace">Fast</button>
+              <button type="button" class="toggle" data-group="pace">Spin</button>
+              <span class="mph-label speed-units">
+                <button type="button" class="unit-btn active" data-unit="KPH">KPH</button>
+                <button type="button" class="unit-btn" data-unit="MPH" hidden>MPH</button>
+                <input type="text" class="tiny-input" id="kph-input" value="" />
+              </span>
+            </div>
+            <div class="btn-grid cols-3" id="bowl-grid"></div>
+          </div>
+        </div>
+
+        <!-- Col 3 (row 2): wagon wheel + footwork radios -->
+        <div class="cb-wagon">
+          <div class="footer-radios">
+            <label class="radio-pill"><input type="checkbox" data-tag="btn" /> BTN</label>
+            <label class="radio-pill"><input type="checkbox" data-tag="unc" /> UNC</label>
+            <div class="select-wrap">
+              <select class="dark-select">
+                <option>Select</option>
+                <option>Option A</option>
+                <option>Option B</option>
+              </select>
+            </div>
+            <label class="radio-pill"><input type="checkbox" data-tag="wtb" /> WTB</label>
+            <label class="radio-pill"><input type="checkbox" data-tag="rs" /> RS</label>
+            <span class="spacer"></span>
+            <label class="radio-pill"><input type="radio" name="footwork" data-footwork="ff" /> FF</label>
+            <label class="radio-pill"><input type="radio" name="footwork" data-footwork="bf" /> BF</label>
+            <label class="radio-pill"><input type="radio" name="footwork" data-footwork="sd" /> SD</label>
+            <label class="radio-pill"><input type="radio" name="footwork" data-footwork="crm" /> CRM</label>
           </div>
           <div class="field-map-wrap" id="field-map-wrap">
             <img
@@ -184,91 +271,21 @@
             <div class="wagon-region" id="wagon-region" aria-live="polite"></div>
           </div>
         </div>
-      </section>
 
-      <footer class="footer">
-        <div class="footer-main">
-          <div class="pitch-wrap" id="pitch-wrap">
-            <img
-              class="pitch-map-img"
-              src="assets/pitch-map.png"
-              width="776"
-              height="596"
-              alt="Pitch map: length zones and line; OTW, RTW, CD"
-              draggable="false"
-            />
-            <svg class="pitch-overlay-svg" id="pitch-overlay-svg" viewBox="0 0 100 100" preserveAspectRatio="none"></svg>
-            <!-- OTW: top-left corner -->
-            <button type="button" class="pitch-overlay-btn otw-btn active" data-group="otw">OTW</button>
-            <!-- RTW: top-right corner -->
-            <button type="button" class="pitch-overlay-btn rtw-btn" data-group="otw">RTW</button>
-            <!-- CD: below RTW, top-right -->
-            <button type="button" class="pitch-overlay-btn cd-btn" data-group="otw">CD</button>
-          </div>
-
-
-          <div class="footer-right-col">
-            <div class="footer-radios">
-              <label class="radio-pill"><input type="radio" name="ds" /> DS</label>
-              <label class="radio-pill"><input type="radio" name="ds" id="radio-li" checked /> LI</label>
-              <span class="spacer"></span>
-              <!-- BTN/UNC/WTB/RS: multi-select tags (any combination) -->
-              <label class="radio-pill"><input type="checkbox" data-tag="btn" /> BTN</label>
-              <label class="radio-pill"><input type="checkbox" data-tag="unc" /> UNC</label>
-              <div class="select-wrap">
-                <select class="dark-select">
-                  <option>Select</option>
-                  <option>Option A</option>
-                  <option>Option B</option>
-                </select>
-              </div>
-              <span class="spacer"></span>
-              <label class="radio-pill"><input type="checkbox" data-tag="wtb" /> WTB</label>
-              <label class="radio-pill"><input type="checkbox" data-tag="rs" /> RS</label>
-              <span class="spacer"></span>
-              <!-- FF/BF/SD/CRM: footwork, single-select (at most one) -->
-              <label class="radio-pill"><input type="radio" name="footwork" data-footwork="ff" /> FF</label>
-              <label class="radio-pill"><input type="radio" name="footwork" data-footwork="bf" /> BF</label>
-              <span class="spacer"></span>
-              <label class="radio-pill"><input type="radio" name="footwork" data-footwork="sd" /> SD</label>
-              <label class="radio-pill"><input type="radio" name="footwork" data-footwork="crm" /> CRM</label>
+        <!-- Col 4 (row 2): Aggressive / Defensive bat grid -->
+        <div class="cb-bat">
+          <div class="bat-panel panel">
+            <div class="toggle-row">
+              <button type="button" class="expand-arrow" id="bat-expand" title="Show more">&#9656;</button>
+              <button type="button" class="plus-btn">+</button>
+              <button type="button" class="toggle active" data-group="style">Aggressive</button>
+              <button type="button" class="toggle" data-group="style">Defensive</button>
+              <label class="mph-label distance-label">6's Distance <input type="text" class="tiny-input" value="" placeholder="—" /></label>
             </div>
-            <div class="footer-panels-row">
-              <div class="bowl-panel panel">
-                <div class="toggle-row">
-                  <button type="button" class="plus-btn">+</button>
-                  <button type="button" class="toggle active" data-group="pace">Fast</button>
-                  <button type="button" class="toggle" data-group="pace">Spin</button>
-                  <span class="mph-label speed-units">
-                    <button type="button" class="unit-btn active" data-unit="KPH">KPH</button>
-                    <button type="button" class="unit-btn" data-unit="MPH" hidden>MPH</button>
-                    <input type="text" class="tiny-input" id="kph-input" value="" />
-                  </span>
-                  <button type="button" class="expand-arrow" id="bowl-expand" title="Show more">&#9656;</button>
-                </div>
-                <div class="btn-grid cols-3" id="bowl-grid"></div>
-              </div>
-
-              <div class="bat-panel panel">
-                <div class="toggle-row">
-                  <button type="button" class="plus-btn">+</button>
-                  <button type="button" class="toggle active" data-group="style">Aggressive</button>
-                  <button type="button" class="toggle" data-group="style">Defensive</button>
-                  <label class="mph-label distance-label">6's Distance <input type="text" class="tiny-input" value="" placeholder="—" /></label>
-                  <button type="button" class="expand-arrow" id="bat-expand" title="Show more">&#9656;</button>
-                </div>
-                <div class="btn-grid cols-3" id="bat-grid"></div>
-              </div>
-            </div>
-          </div>
-
-          <div class="keypad-panel panel">
-            <button type="button" class="btn btn-block blue keypad-top" id="overthrow-btn" aria-expanded="false">OVER THROW</button>
-            <div class="keypad-grid" id="keypad"></div>
-            <div class="overthrow-grid" id="overthrow-grid" hidden></div>
+            <div class="btn-grid cols-3" id="bat-grid"></div>
           </div>
         </div>
-      </footer>
+      </section>
     </div>
 
     <!-- Overlay root for modals / full-screen modules -->

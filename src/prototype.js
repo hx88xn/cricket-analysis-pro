@@ -73,6 +73,121 @@ function wireTableSearch(searchEl, tableEl) {
 const tableSearchHtml = (id) =>
   `<input type="text" class="field-control mst-search" id="${id}" placeholder="Search…" />`;
 
+// ---- Pagination (keeps master tables to one frame, no scrollbar) ----------
+const PAGE_SIZE = 8; // fallback before the frame can be measured
+
+// How many rows fit in the visible frame below a table, given the scale-to-fit
+// stage (a 1920-wide design scaled to the window). We work in design px:
+//   visible design height = window.innerHeight / scale,  scale = innerWidth/1920
+// then subtract the table's top offset, its header, and room for the pager/
+// footer to get the space left for rows, divided by one row's height.
+function fitPageSize(tableEl, reserve = 112) {
+  const w = window.innerWidth || 1920;
+  const h = window.innerHeight || 1080;
+  const scale = w / 1920;
+  const designH = Math.floor(h / scale);
+  const row = tableEl.querySelector(".table-row");
+  if (!row) return null; // nothing rendered yet → caller keeps its fallback
+  // Table's top within the design canvas (offsetTop chain up to <body>).
+  let top = 0;
+  for (let el = tableEl; el; el = el.offsetParent) top += el.offsetTop || 0;
+  const head = tableEl.querySelector(".table-head");
+  const rowH = row.offsetHeight || 44;
+  const headH = head ? head.offsetHeight : 0;
+  const avail = designH - top - headH - reserve;
+  return Math.max(1, Math.floor(avail / Math.max(1, rowH)));
+}
+
+// After a paged table has been drawn at `currentSize`, measure the real frame
+// and, if a different number of rows fits, store it and redraw once. Guarded
+// against re-entry so it settles in a single correction.
+function applyAutoPage(tableEl, currentSize, redraw, reserve) {
+  // Remember how to redraw this table so a window resize can re-fit it.
+  tableEl._rerender = redraw;
+  tableEl._reserve = reserve;
+  if (tableEl._fitting) return;
+  const fit = fitPageSize(tableEl, reserve);
+  if (fit && fit !== currentSize) {
+    tableEl._fitting = true;
+    tableEl._pageSize = fit;
+    redraw();
+    tableEl._fitting = false;
+  }
+}
+
+// On window resize the visible frame changes, so recompute every paged table's
+// page size. Debounced; tables that never paginated have no _rerender and are
+// skipped. Re-fires after stage.js has applied the new transform.
+let _autoPageResizeT = null;
+function refitAllPagedTables() {
+  document.querySelectorAll('[id$="-table"]').forEach((t) => {
+    if (typeof t._rerender === "function") { t._pageSize = 0; t._rerender(); }
+  });
+}
+window.addEventListener("resize", () => {
+  clearTimeout(_autoPageResizeT);
+  _autoPageResizeT = setTimeout(refitAllPagedTables, 160);
+});
+// Re-measure once after fonts/layout settle so the first fit is accurate.
+window.addEventListener("load", () => setTimeout(refitAllPagedTables, 60));
+
+// Clamp page and return the slice for the current page plus meta for the pager.
+function paginate(items, page, size = PAGE_SIZE) {
+  const total = items.length;
+  const totalPages = Math.max(1, Math.ceil(total / size));
+  const p = Math.min(Math.max(0, page | 0), totalPages - 1);
+  const start = p * size;
+  return { slice: items.slice(start, start + size), page: p, start, totalPages, total };
+}
+
+// Pager bar markup. `label` names the records (e.g. "players").
+function pagerHtml(meta, label = "records") {
+  const { page, totalPages, total } = meta;
+  const btn = (act, sym, disabled) =>
+    `<button type="button" class="pg-btn" data-pg="${act}" ${disabled ? "disabled" : ""}>${sym}</button>`;
+  const atStart = page === 0, atEnd = page >= totalPages - 1;
+  return `<div class="mst-pager">
+      ${btn("first", "⏮", atStart)}${btn("prev", "◀", atStart)}
+      <span class="pg-info">Page ${page + 1} of ${totalPages} · ${total} ${esc(label)}</span>
+      ${btn("next", "▶", atEnd)}${btn("last", "⏭", atEnd)}
+    </div>`;
+}
+
+// Wire the pager buttons inside `container`; calls onGo(newPage) when clicked.
+function wirePager(container, meta, onGo) {
+  container.querySelectorAll(".pg-btn").forEach((b) => b.addEventListener("click", () => {
+    const a = b.dataset.pg;
+    let p = meta.page;
+    if (a === "first") p = 0;
+    else if (a === "prev") p = meta.page - 1;
+    else if (a === "next") p = meta.page + 1;
+    else if (a === "last") p = meta.totalPages - 1;
+    onGo(Math.min(Math.max(0, p), meta.totalPages - 1));
+  }));
+}
+
+// Case-insensitive "row text contains term" filter over a list, using the
+// given column keys (falls back to all own values when keys omitted).
+function filterItems(items, term, keys) {
+  const t = (term || "").trim().toLowerCase();
+  if (!t) return items;
+  return items.filter((it) => {
+    const hay = (keys ? keys.map((k) => it[k]) : Object.values(it))
+      .map((v) => (Array.isArray(v) ? v.join(" ") : v))
+      .join(" ").toLowerCase();
+    return hay.includes(t);
+  });
+}
+
+// Inline radio group (used by Player Master for batting/bowling style + type).
+// options: array of strings or {value,label}. selected matches a value.
+function radioGroup(name, options, selected) {
+  const opts = options.map((o) => (typeof o === "string" ? { value: o, label: o } : o));
+  return `<div class="radio-group">${opts.map((o) =>
+    `<label class="radio-pill"><input type="radio" name="${esc(name)}" value="${esc(o.value)}" ${
+      o.value === selected ? "checked" : ""} /> ${esc(o.label || "—")}</label>`).join("")}</div>`;
+}
+
 // ---- generic table renderer (static + interactive) ------------------------
 
 function buildTable(columns, rows, extraStyle = "") {
@@ -246,6 +361,7 @@ const screenDefs = {
   },
   "match-registration": { title: "Match Registration", back: "prototype.html?screen=match-details", build: buildMatchRegistration, init: initMatchRegistration },
   "match-details": { title: "Match Details", back: "home.html", build: buildMatchDetails, init: initMatchDetails },
+  "fixtures": { title: "Fixtures", back: "prototype.html?screen=competition-master", build: buildFixtures, init: initFixtures },
 };
 
 // ===========================================================================
@@ -287,17 +403,27 @@ function initTeamMaster(root) {
   const tableEl = root.querySelector("#tm-table");
   const saveBtn = root.querySelector("#tm-save");
   const logo = wireImageBox(root.querySelector('[data-key="tm-image"]'));
-  wireTableSearch(root.querySelector("#tm-search"), tableEl);
+  const searchEl = root.querySelector("#tm-search");
   let editing = null;
+  let page = 0;
+  searchEl.addEventListener("input", () => { page = 0; render(); });
 
   const setEditing = (id) => { editing = id; saveBtn.textContent = id ? "Update" : "Add"; saveBtn.classList.toggle("btn-blue", !!id); };
   const clear = () => { nameEl.value = ""; codeEl.value = ""; typeEl.selectedIndex = 0; logo.set(""); setEditing(null); };
 
+  function render() {
+    const size = tableEl._pageSize || PAGE_SIZE;
+    const filtered = filterItems(tableEl._items || [], searchEl.value, TEAM_COLUMNS.map((c) => c.key));
+    const meta = paginate(filtered, page, size);
+    page = meta.page;
+    tableEl.innerHTML = crudRows(meta.slice, TEAM_COLUMNS) + pagerHtml(meta, "teams");
+    tableEl.querySelectorAll("button.mst-btn").forEach((b) => b.addEventListener("click", onRowAction));
+    wirePager(tableEl, meta, (p) => { page = p; render(); });
+    applyAutoPage(tableEl, size, render);
+  }
   async function refresh() {
-    const teams = (await dbCall("teams")) || [];
-    tableEl._items = teams;
-    tableEl.innerHTML = crudRows(teams, TEAM_COLUMNS);
-    tableEl.querySelectorAll(".mst-btn").forEach((b) => b.addEventListener("click", onRowAction));
+    tableEl._items = (await dbCall("teams")) || [];
+    render();
   }
   async function onRowAction() {
     const id = this.dataset.id;
@@ -337,19 +463,21 @@ async function buildPlayerMaster() {
   const teamOpts = optionList(teams, (t) => t.id, (t) => t.name, teams[0] && teams[0].id);
   return `
     <section class="form-screen">
-      <div class="form-layout" style="grid-template-columns: 1.4fr 0.8fr;">
-        <div class="form-grid" style="grid-template-columns: 200px 1fr;">
-          <label class="field-label">Player Name</label><input class="field-control" id="pm-name" />
+      <div class="form-layout" style="grid-template-columns: 1.7fr 0.7fr;">
+        <div class="form-grid pm-grid" style="grid-template-columns: 150px 1fr 150px 1fr;">
+          <label class="field-label">Player Name (ID)</label><input class="field-control" id="pm-name" />
           <label class="field-label">Short Name</label><input class="field-control" id="pm-short" />
           <label class="field-label">Team Name</label><select class="field-select" id="pm-team">${teamOpts}</select>
           <label class="field-label">Player Role</label>
           <select class="field-select" id="pm-role"><option>Batsman</option><option>Bowler</option><option>All Rounder</option><option>Wicket Keeper</option></select>
+          <label class="field-label">Date of Birth</label><input type="date" class="field-control" id="pm-dob" />
+          <label class="field-label">Nationality</label><input class="field-control" id="pm-nationality" />
           <label class="field-label">Batting Style</label>
-          <select class="field-select" id="pm-bat"><option value="RHB">Right Hand Bat</option><option value="LHB">Left Hand Bat</option></select>
+          ${radioGroup("pm-bat", [{ value: "RHB", label: "Right Hand Bat" }, { value: "LHB", label: "Left Hand Bat" }], "RHB")}
           <label class="field-label">Bowling Style</label>
-          <select class="field-select" id="pm-bowlstyle"><option value="">None</option><option>Right Arm</option><option>Left Arm</option></select>
+          ${radioGroup("pm-bowlstyle", [{ value: "", label: "None" }, { value: "Right Arm", label: "Right Arm" }, { value: "Left Arm", label: "Left Arm" }], "")}
           <label class="field-label">Bowling Type</label>
-          <select class="field-select" id="pm-bowltype"><option value="">None</option><option>Fast</option><option>Spin</option></select>
+          ${radioGroup("pm-bowltype", [{ value: "", label: "None" }, { value: "Fast", label: "Fast" }, { value: "Spin", label: "Spin" }], "")}
         </div>
         <div><div class="panel-header">Player Portrait</div>${imageBoxHtml("pm-image")}</div>
       </div>
@@ -365,51 +493,85 @@ async function buildPlayerMaster() {
 
 // Reorderable player table (mirrors the Masters editor): an order column with a
 // drag handle, ▲ ▼ nudge buttons, plus edit/delete. Order is per-team.
-function playerRows(players) {
+// players = the current page slice; startIndex = its offset in the full list;
+// total = full count (for order numbers, end-of-list arrows, the count footer);
+// draggable enables grip/drag (off while a search filter is active).
+function playerRows(players, startIndex = 0, total = players.length, draggable = true) {
   const cols = "70px 1.4fr 1fr 1fr 1fr 132px";
   const head = `<div class="table-head" style="grid-template-columns:${cols};">
     <span>Order</span><span>Player Name</span><span>Batting Style</span><span>Bowling Style</span><span>Role</span><span>Actions</span></div>`;
-  const body = players.length ? players.map((p, i) => `
-    <div class="table-row mst-row" draggable="true" data-id="${esc(p.id)}" style="grid-template-columns:${cols};">
-      <span class="mst-order"><span class="mst-grip" title="Drag to reorder">⠿</span>${i + 1}</span>
+  const body = players.length ? players.map((p, i) => {
+    const g = startIndex + i; // global index in the full list
+    return `
+    <div class="table-row mst-row" ${draggable ? 'draggable="true"' : ""} data-id="${esc(p.id)}" style="grid-template-columns:${cols};">
+      <span class="mst-order">${draggable ? '<span class="mst-grip" title="Drag to reorder">⠿</span>' : ""}${g + 1}</span>
       <span>${esc(p.name)}</span>
       <span>${esc(p.battingStyle || "")}</span>
       <span>${esc([p.bowlingStyle, p.bowlingType].filter(Boolean).join(" "))}</span>
       <span>${esc(p.role || "")}</span>
       <span class="mst-actions">
-        <button class="mst-btn" data-act="up" data-id="${esc(p.id)}" ${i === 0 ? "disabled" : ""}>▲</button>
-        <button class="mst-btn" data-act="down" data-id="${esc(p.id)}" ${i === players.length - 1 ? "disabled" : ""}>▼</button>
+        <button class="mst-btn" data-act="up" data-id="${esc(p.id)}" ${g === 0 ? "disabled" : ""}>▲</button>
+        <button class="mst-btn" data-act="down" data-id="${esc(p.id)}" ${g === total - 1 ? "disabled" : ""}>▼</button>
         <button class="mst-btn" data-act="edit" data-id="${esc(p.id)}" title="Edit">✎</button>
         <button class="mst-btn mst-del" data-act="del" data-id="${esc(p.id)}" title="Delete">✕</button>
       </span>
-    </div>`).join("") : `<div class="table-empty-row">No records found.</div>`;
-  return `<section class="table-shell">${head}<div class="table-rows">${body}</div></section>`;
+    </div>`; }).join("") : `<div class="table-empty-row">No records found.</div>`;
+  const count = `<div class="mst-count">Total players: <strong>${total}</strong></div>`;
+  return `<section class="table-shell">${head}<div class="table-rows">${body}</div></section>${count}`;
 }
 
 function initPlayerMaster(root) {
   const q = (id) => root.querySelector(id);
   const nameEl = q("#pm-name"), shortEl = q("#pm-short"), teamEl = q("#pm-team");
-  const roleEl = q("#pm-role"), batEl = q("#pm-bat"), bowlStyleEl = q("#pm-bowlstyle"), bowlTypeEl = q("#pm-bowltype");
+  const roleEl = q("#pm-role"), dobEl = q("#pm-dob"), natEl = q("#pm-nationality");
   const tableEl = q("#pm-table"), saveBtn = q("#pm-save");
   const portrait = wireImageBox(q('[data-key="pm-image"]'));
-  wireTableSearch(q("#pm-search"), tableEl);
+  const searchEl = q("#pm-search");
   let editing = null;
+  let page = 0;
+  searchEl.addEventListener("input", () => { page = 0; render(); });
+
+  // Radio-group get/set helpers (batting/bowling style + type).
+  const radioGet = (name) => (root.querySelector(`input[name="${name}"]:checked`) || {}).value || "";
+  const radioSet = (name, val) => {
+    const el = root.querySelector(`input[name="${name}"][value="${val == null ? "" : val}"]`)
+      || root.querySelector(`input[name="${name}"]`);
+    if (el) el.checked = true;
+  };
 
   const setEditing = (id) => { editing = id; saveBtn.textContent = id ? "Update" : "Add"; saveBtn.classList.toggle("btn-blue", !!id); };
-  const clear = () => { nameEl.value = ""; shortEl.value = ""; portrait.set(""); setEditing(null); };
+  const clear = () => {
+    nameEl.value = ""; shortEl.value = ""; dobEl.value = ""; natEl.value = "";
+    roleEl.selectedIndex = 0; radioSet("pm-bat", "RHB"); radioSet("pm-bowlstyle", ""); radioSet("pm-bowltype", "");
+    portrait.set(""); setEditing(null);
+  };
 
+  // Render one page. Drag-reorder is disabled while searching (a filtered view
+  // can't map back to contiguous positions in the stored order).
+  function render() {
+    const size = tableEl._pageSize || PAGE_SIZE;
+    const all = tableEl._items || [];
+    const searching = !!searchEl.value.trim();
+    const filtered = filterItems(all, searchEl.value, ["name", "battingStyle", "bowlingStyle", "bowlingType", "role"]);
+    const meta = paginate(filtered, page, size);
+    page = meta.page;
+    tableEl.innerHTML = playerRows(meta.slice, searching ? 0 : meta.start, searching ? filtered.length : all.length, !searching)
+      + pagerHtml(meta, "players");
+    tableEl.querySelectorAll("button.mst-btn").forEach((b) => b.addEventListener("click", onRowAction));
+    if (!searching) wirePlayerDrag(meta.start);
+    wirePager(tableEl, meta, (p) => { page = p; render(); });
+    // Reserve extra for the "Total players" footer above the pager.
+    applyAutoPage(tableEl, size, render, 120);
+  }
   async function refresh() {
-    const players = (await dbCall("players", teamEl.value)) || [];
-    tableEl._items = players;
-    tableEl.innerHTML = playerRows(players);
-    tableEl.querySelectorAll(".mst-btn").forEach((b) => b.addEventListener("click", onRowAction));
-    wirePlayerDrag();
+    tableEl._items = (await dbCall("players", teamEl.value)) || [];
+    render();
   }
 
   // Drag-and-drop reordering within the selected team. On drop (or ▲ ▼) the new
   // order of ids is read and persisted; dragging is suppressed when the press
   // starts on an action button.
-  function wirePlayerDrag() {
+  function wirePlayerDrag(pageStart = 0) {
     let dragEl = null;
     const container = tableEl.querySelector(".table-rows");
     if (!container) return;
@@ -450,9 +612,15 @@ function initPlayerMaster(root) {
     container.addEventListener("drop", async (e) => {
       if (!dragEl) return;
       e.preventDefault();
-      const ids = [...container.querySelectorAll(".mst-row")].map((r) => r.dataset.id);
-      await dbCall("reorderPlayers", teamEl.value, ids);
-      refresh(); // re-render so order numbers + arrow disabled-states update
+      // Rebuild the FULL order: replace this page's window with its new DOM order.
+      const pageIds = [...container.querySelectorAll(".mst-row")].map((r) => r.dataset.id);
+      const fullIds = (tableEl._items || []).map((x) => x.id);
+      fullIds.splice(pageStart, pageIds.length, ...pageIds);
+      await dbCall("reorderPlayers", teamEl.value, fullIds);
+      // Reflect the new order locally, then re-render the same page.
+      const byId = new Map((tableEl._items || []).map((p) => [p.id, p]));
+      tableEl._items = fullIds.map((id) => byId.get(id)).filter(Boolean);
+      render();
     });
   }
 
@@ -477,29 +645,39 @@ function initPlayerMaster(root) {
     nameEl.value = p.name || ""; shortEl.value = p.shortName || "";
     if (p.teamId) teamEl.value = p.teamId;
     roleEl.value = p.role || roleEl.options[0].value;
-    batEl.value = p.battingStyleCode || (p.battingStyle === "Left Hand Bat" ? "LHB" : "RHB");
-    bowlStyleEl.value = p.bowlingStyle || "";
-    bowlTypeEl.value = p.bowlingType || "";
+    dobEl.value = dmyToIso(p.dob) || p.dob || "";
+    natEl.value = p.nationality || "";
+    radioSet("pm-bat", p.battingStyleCode || (p.battingStyle === "Left Hand Bat" ? "LHB" : "RHB"));
+    radioSet("pm-bowlstyle", p.bowlingStyle || "");
+    radioSet("pm-bowltype", p.bowlingType || "");
     portrait.set(p.image || "");
     setEditing(id); nameEl.focus();
   }
 
-  teamEl.addEventListener("change", () => { if (!editing) refresh(); });
+  teamEl.addEventListener("change", () => { if (!editing) { page = 0; refresh(); } });
   q("#pm-clear").addEventListener("click", clear);
   saveBtn.addEventListener("click", async () => {
     const name = nameEl.value.trim();
     if (!name) return toast("Player name is required", true);
-    const bat = batEl.value;
+    // Player Name doubles as the player's unique ID — reject duplicates
+    // (case-insensitive, across all teams), allowing the row being edited.
+    const all = (await dbCall("players")) || [];
+    if (all.some((x) => x.id !== editing && (x.name || "").trim().toLowerCase() === name.toLowerCase())) {
+      return toast(`A player named "${name}" already exists`, true);
+    }
+    const bat = radioGet("pm-bat") || "RHB";
     await dbCall("savePlayer", {
       id: editing || undefined,
       name,
       shortName: shortEl.value.trim() || name.split(" ").slice(-1)[0],
       teamId: teamEl.value,
       role: roleEl.value,
+      dob: dobEl.value ? isoToDMY(dobEl.value) : "",
+      nationality: natEl.value.trim(),
       battingStyleCode: bat,
       battingStyle: bat === "LHB" ? "Left Hand Bat" : "Right Hand Bat",
-      bowlingStyle: bowlStyleEl.value,
-      bowlingType: bowlTypeEl.value,
+      bowlingStyle: radioGet("pm-bowlstyle"),
+      bowlingType: radioGet("pm-bowltype"),
       bowlingSpec: "",
       image: portrait.get(),
     });
@@ -520,29 +698,28 @@ function masterTableCols(hasGroups) {
   return `70px 1fr ${hasGroups ? "150px " : ""}132px`;
 }
 
-function renderMasterRows(items, groups, nameLabel, groupLabel = "Group") {
-  const hasGroups = groups && groups.length;
+// Renders ONE table for the active group's current page. `slice` is the page's
+// rows; startIndex is its offset within the group; total is the group size;
+// draggable toggles grip/drag (off while searching).
+function renderMasterRows(slice, hasGroups, nameLabel, groupLabel, grp, startIndex, total, draggable) {
   const cols = masterTableCols(hasGroups);
-  const sections = (hasGroups ? groups : [""]).map((grp) => {
-    const list = items.filter((it) => (it.grp || "") === grp);
-    const head = `<div class="table-head" style="grid-template-columns:${cols};">
-      <span>Order</span><span>${esc(nameLabel)}</span>${hasGroups ? `<span>${esc(groupLabel)}</span>` : ""}<span>Actions</span></div>`;
-    const rows = list.length ? list.map((it, i) => `
-      <div class="table-row mst-row" draggable="true" data-id="${esc(it.id)}" data-grp="${esc(grp)}" style="grid-template-columns:${cols};">
-        <span class="mst-order"><span class="mst-grip" title="Drag to reorder">⠿</span>${i + 1}</span>
+  const head = `<div class="table-head" style="grid-template-columns:${cols};">
+    <span>Order</span><span>${esc(nameLabel)}</span>${hasGroups ? `<span>${esc(groupLabel)}</span>` : ""}<span>Actions</span></div>`;
+  const rows = slice.length ? slice.map((it, i) => {
+    const g = startIndex + i;
+    return `
+      <div class="table-row mst-row" ${draggable ? 'draggable="true"' : ""} data-id="${esc(it.id)}" data-grp="${esc(grp)}" style="grid-template-columns:${cols};">
+        <span class="mst-order">${draggable ? '<span class="mst-grip" title="Drag to reorder">⠿</span>' : ""}${g + 1}</span>
         <span>${esc(it.name)}</span>
         ${hasGroups ? `<span>${esc(grp)}</span>` : ""}
         <span class="mst-actions">
-          <button class="mst-btn" data-act="up" data-id="${esc(it.id)}" data-grp="${esc(grp)}" ${i === 0 ? "disabled" : ""}>▲</button>
-          <button class="mst-btn" data-act="down" data-id="${esc(it.id)}" data-grp="${esc(grp)}" ${i === list.length - 1 ? "disabled" : ""}>▼</button>
+          <button class="mst-btn" data-act="up" data-id="${esc(it.id)}" data-grp="${esc(grp)}" ${g === 0 ? "disabled" : ""}>▲</button>
+          <button class="mst-btn" data-act="down" data-id="${esc(it.id)}" data-grp="${esc(grp)}" ${g === total - 1 ? "disabled" : ""}>▼</button>
           <button class="mst-btn" data-act="edit" data-id="${esc(it.id)}" data-name="${esc(it.name)}" data-grp="${esc(grp)}" title="Edit">✎</button>
           <button class="mst-btn mst-del" data-act="del" data-id="${esc(it.id)}">✕</button>
         </span>
-      </div>`).join("") : `<div class="table-empty-row">No records found.</div>`;
-    return `${hasGroups ? `<h4 class="mst-grp-title">${esc(grp)}</h4>` : ""}
-      <section class="table-shell">${head}<div class="table-rows" data-grp="${esc(grp)}">${rows}</div></section>`;
-  }).join("");
-  return sections;
+      </div>`; }).join("") : `<div class="table-empty-row">No records found.</div>`;
+  return `<section class="table-shell">${head}<div class="table-rows" data-grp="${esc(grp)}">${rows}</div></section>`;
 }
 
 async function buildMasterEditor(category, groups, nameLabel, groupLabel = "Group") {
@@ -562,18 +739,58 @@ async function buildMasterEditor(category, groups, nameLabel, groupLabel = "Grou
         <button class="btn-main btn-yellow" id="mm-clear">Clear</button>
       </div>
       <p class="mst-hint">Drag a row by its ⠿ handle, or use ▲ ▼, to set the display order — it replicates on the coding screen (top-left first).</p>
+      ${hasGroups ? `<div class="mm-tabs">${groups.map((g, i) =>
+        `<button type="button" class="mm-tab${i === 0 ? " is-active" : ""}" data-grp="${esc(g)}">${esc(g)}</button>`).join("")}</div>` : ""}
       ${tableSearchHtml("mm-search")}
       <div id="mm-table"></div>
     </section>`;
 }
 
 function initMasterEditor(root, category, groups, nameLabel, groupLabel = "Group") {
+  const hasGroups = groups && groups.length;
   const tableEl = root.querySelector("#mm-table");
   const nameEl = root.querySelector("#mm-name");
   const grpEl = root.querySelector("#mm-grp");
   const saveBtn = root.querySelector("#mm-save");
-  wireTableSearch(root.querySelector("#mm-search"), tableEl);
+  const searchEl = root.querySelector("#mm-search");
+  let activeGrp = hasGroups ? groups[0] : "";
   let editing = null; // { id, grp, ord } when editing an existing row
+  let page = 0;
+  let allItems = [];
+
+  // Items belonging to the active group, in their stored (sortable) order.
+  const groupItems = () => (hasGroups ? allItems.filter((it) => (it.grp || "") === activeGrp) : allItems);
+
+  // Render the active group's current page (+ pager). Drag is off while searching.
+  function render() {
+    const size = tableEl._pageSize || PAGE_SIZE;
+    const searching = !!searchEl.value.trim();
+    const list = groupItems();
+    const filtered = filterItems(list, searchEl.value, ["name"]);
+    const meta = paginate(filtered, page, size);
+    page = meta.page;
+    tableEl.innerHTML = renderMasterRows(
+      meta.slice, hasGroups, nameLabel, groupLabel, activeGrp,
+      searching ? 0 : meta.start, searching ? filtered.length : list.length, !searching,
+    ) + pagerHtml(meta, "entries");
+    tableEl.querySelectorAll("button.mst-btn").forEach((btn) => btn.addEventListener("click", onRowAction));
+    if (!searching) wireDrag(meta.start);
+    wirePager(tableEl, meta, (p) => { page = p; render(); });
+    applyAutoPage(tableEl, size, render);
+  }
+
+  searchEl.addEventListener("input", () => { page = 0; render(); });
+
+  // Tab switching between groups (Aggressive/Defensive, Fast/Spin).
+  root.querySelectorAll(".mm-tab").forEach((tab) => {
+    tab.addEventListener("click", () => {
+      activeGrp = tab.dataset.grp;
+      page = 0;
+      root.querySelectorAll(".mm-tab").forEach((t) => t.classList.toggle("is-active", t === tab));
+      if (grpEl) grpEl.value = activeGrp; // new rows land in the visible group
+      render();
+    });
+  });
 
   const setEditing = (item) => {
     editing = item;
@@ -582,10 +799,8 @@ function initMasterEditor(root, category, groups, nameLabel, groupLabel = "Group
   };
 
   async function refresh() {
-    const items = (await dbCall("masters", category)) || [];
-    tableEl.innerHTML = renderMasterRows(items, groups, nameLabel, groupLabel);
-    tableEl.querySelectorAll(".mst-btn").forEach((btn) => btn.addEventListener("click", onRowAction));
-    wireDrag();
+    allItems = (await dbCall("masters", category)) || [];
+    render();
   }
 
   async function onRowAction() {
@@ -598,14 +813,13 @@ function initMasterEditor(root, category, groups, nameLabel, groupLabel = "Group
     if (act === "edit") {
       nameEl.value = this.dataset.name || "";
       if (grpEl) grpEl.value = grp;
-      const items = (await dbCall("masters", category)) || [];
-      const cur = items.find((it) => it.id === id) || {};
+      const cur = allItems.find((it) => it.id === id) || {};
       setEditing({ id, grp, ord: cur.ord });
       nameEl.focus();
       return;
     }
-    const items = (await dbCall("masters", category)) || [];
-    const ids = items.filter((it) => (it.grp || "") === grp).map((it) => it.id);
+    // up/down: swap within the group's full ordered id list (works across pages).
+    const ids = allItems.filter((it) => (it.grp || "") === grp).map((it) => it.id);
     const idx = ids.indexOf(id);
     const swap = act === "up" ? idx - 1 : idx + 1;
     if (idx < 0 || swap < 0 || swap >= ids.length) return;
@@ -619,7 +833,7 @@ function initMasterEditor(root, category, groups, nameLabel, groupLabel = "Group
   // Drag-and-drop reordering: rows can only be reordered within their own group
   // (Fast/Spin, Aggressive/Defensive). On drop we read the new DOM order of ids
   // and persist it. Dragging is suppressed when the press starts on a button.
-  function wireDrag() {
+  function wireDrag(pageStart = 0) {
     let dragEl = null;
     let dragGrp = null;
 
@@ -668,9 +882,12 @@ function initMasterEditor(root, category, groups, nameLabel, groupLabel = "Group
         if (!dragEl || (container.dataset.grp || "") !== dragGrp) return;
         e.preventDefault();
         const grp = container.dataset.grp || "";
-        const ids = [...container.querySelectorAll(".mst-row")].map((r) => r.dataset.id);
-        await dbCall("reorderMaster", category, grp, ids);
-        refresh(); // re-render so the order numbers + arrow disabled-states update
+        // Rebuild the FULL group order: replace this page's window with its new order.
+        const pageIds = [...container.querySelectorAll(".mst-row")].map((r) => r.dataset.id);
+        const fullIds = allItems.filter((it) => (it.grp || "") === grp).map((it) => it.id);
+        fullIds.splice(pageStart, pageIds.length, ...pageIds);
+        await dbCall("reorderMaster", category, grp, fullIds);
+        refresh();
       });
     });
   }
@@ -795,8 +1012,11 @@ function crudControlHtml(f) {
   }
 }
 
-function crudRows(items, columns) {
-  const cols = `${columns.map(() => "1fr").join(" ")} 120px`;
+// rowActions: optional (item) => HTML, injected before the edit/delete buttons
+// (used by Competition Master to add a per-row "Fixtures" link).
+function crudRows(items, columns, rowActions) {
+  const actionsW = rowActions ? "180px" : "120px";
+  const cols = `${columns.map(() => "1fr").join(" ")} ${actionsW}`;
   const head = `<div class="table-head" style="grid-template-columns:${cols};">${
     columns.map((c) => `<span>${esc(c.label)}</span>`).join("")}<span>Actions</span></div>`;
   const fmt = (v) => (Array.isArray(v) ? v.join(", ") : (v ?? ""));
@@ -804,6 +1024,7 @@ function crudRows(items, columns) {
     <div class="table-row" style="grid-template-columns:${cols};">
       ${columns.map((c) => `<span>${esc(fmt(it[c.key]))}</span>`).join("")}
       <span class="mst-actions">
+        ${rowActions ? rowActions(it) : ""}
         <button class="mst-btn" data-act="edit" data-id="${esc(it.id)}" title="Edit">✎</button>
         <button class="mst-btn mst-del" data-act="del" data-id="${esc(it.id)}" title="Delete">✕</button>
       </span>
@@ -842,7 +1063,10 @@ function initCrudMaster(root, cfg) {
   const tableEl = root.querySelector("#cm-table");
   const saveBtn = root.querySelector("#cm-save");
   const delBtn = root.querySelector("#cm-delete");
-  wireTableSearch(root.querySelector("#cm-search"), tableEl);
+  const searchEl = root.querySelector("#cm-search");
+  let page = 0;
+  const colKeys = cfg.columns.map((c) => c.key);
+  searchEl.addEventListener("input", () => { page = 0; render(); });
   const ctrl = {};
   cfg.fields.forEach((f) => { ctrl[f.key] = root.querySelector(`[data-key="${f.key}"]`); });
   let editing = null;
@@ -912,11 +1136,21 @@ function initCrudMaster(root, cfg) {
   // Wire image upload boxes (click → picker → data-URL preview).
   cfg.fields.filter((f) => f.type === "image").forEach((f) => wireImageBox(ctrl[f.key]));
 
+  // Render the current page of the (search-filtered) list + pager.
+  function render() {
+    const size = tableEl._pageSize || PAGE_SIZE;
+    const filtered = filterItems(tableEl._items || [], searchEl.value, colKeys);
+    const meta = paginate(filtered, page, size);
+    page = meta.page;
+    tableEl.innerHTML = crudRows(meta.slice, cfg.columns, cfg.rowActions) + pagerHtml(meta, cfg.entity.toLowerCase() + "s");
+    tableEl.querySelectorAll("button.mst-btn").forEach((b) => b.addEventListener("click", onRowAction));
+    wirePager(tableEl, meta, (p) => { page = p; render(); });
+    applyAutoPage(tableEl, size, render);
+  }
+
   async function refresh() {
-    const items = (await dbCall(cfg.listFn)) || [];
-    tableEl._items = items;
-    tableEl.innerHTML = crudRows(items, cfg.columns);
-    tableEl.querySelectorAll(".mst-btn").forEach((b) => b.addEventListener("click", onRowAction));
+    tableEl._items = (await dbCall(cfg.listFn)) || [];
+    render();
   }
 
   async function onRowAction() {
@@ -1013,6 +1247,7 @@ function initCompetitionMaster(root) {
   const teamsBox = q("#cp-teams"), tableEl = q("#cp-table"), saveBtn = q("#cp-save");
   const teamSearch = q("#cp-team-search"), nameSearch = q("#cp-name-search");
   let editing = null;
+  let page = 0;
 
   const checkedTeamIds = () => [...teamsBox.querySelectorAll("input:checked")].map((c) => c.value);
   const setTeams = (ids) => teamsBox.querySelectorAll("input").forEach((c) => { c.checked = (ids || []).includes(c.value); });
@@ -1031,15 +1266,23 @@ function initCompetitionMaster(root) {
     });
   });
 
-  // Render the competitions table, filtered by the name search box.
+  // Render one page of the competitions table, filtered by the name search box.
   function renderTable() {
+    const size = tableEl._pageSize || PAGE_SIZE;
     const term = (nameSearch.value || "").trim().toLowerCase();
     const rows = (tableEl._all || []).filter((r) => !term || (r.name || "").toLowerCase().includes(term));
-    tableEl._items = rows;
-    tableEl.innerHTML = crudRows(rows, COMPETITION_COLUMNS);
-    tableEl.querySelectorAll(".mst-btn").forEach((b) => b.addEventListener("click", onRowAction));
+    tableEl._items = rows; // full filtered set, so onRowAction can find any row by id
+    const meta = paginate(rows, page, size);
+    page = meta.page;
+    tableEl.innerHTML = crudRows(meta.slice, COMPETITION_COLUMNS, (it) =>
+      `<a class="mst-btn mst-fixtures" href="prototype.html?screen=fixtures&comp=${encodeURIComponent(it.id)}" title="Add / view fixtures">Fixtures</a>`)
+      + pagerHtml(meta, "competitions");
+    // The Fixtures link is a plain anchor; only wire the edit/delete buttons.
+    tableEl.querySelectorAll("button.mst-btn").forEach((b) => b.addEventListener("click", onRowAction));
+    wirePager(tableEl, meta, (p) => { page = p; renderTable(); });
+    applyAutoPage(tableEl, size, renderTable);
   }
-  nameSearch.addEventListener("input", renderTable);
+  nameSearch.addEventListener("input", () => { page = 0; renderTable(); });
 
   async function refresh() {
     const [comps, teams] = await Promise.all([dbCall("competitions"), dbCall("teams")]);
@@ -1278,33 +1521,37 @@ async function buildMatchRegistration() {
 
   return `
     <section class="form-screen" style="max-width:1520px;">
-      <div class="reg-layout">
-        <!-- left form -->
-        <div class="reg-form">
-          <label class="field-label">Competition Name</label>${sel("rg-comp", reg.competitions, (c) => c.id, (c) => c.name)}
-          <label class="field-label">Match Name</label><input class="field-control" id="rg-name" />
-          <label class="field-label">Match Type</label>${sel("rg-type", reg.matchTypes.map((m) => ({ v: m })), (m) => m.v, (m) => m.v)}
-          <label class="field-label">Number of Overs</label><input class="field-control" id="rg-overs" value="50" />
-          <label class="field-label">Match Date</label><input class="field-control" id="rg-date" type="datetime-local" />
-          <label class="field-label">Venue</label>${sel("rg-venue", reg.grounds, (g) => g.id, (g) => g.name)}
-          <label class="field-label">Home Team</label>${sel("rg-home", reg.teams, (t) => t.id, (t) => t.name)}
-          <label class="field-label">Away Team</label>${sel("rg-away", reg.teams, (t) => t.id, (t) => t.name)}
-          <label class="field-label">&nbsp;</label>
-          <div class="reg-checks">
-            <label><input type="checkbox" id="rg-neutral" /> Neutral Venue</label>
-            <label><input type="checkbox" id="rg-daynight" checked /> Day / Night</label>
-          </div>
-          <label class="field-label">Umpire 1</label>${sel("rg-ump1", umpires, (o) => o.id, (o) => o.name)}
-          <label class="field-label">Umpire 2</label>${sel("rg-ump2", umpires, (o) => o.id, (o) => o.name)}
-          <label class="field-label">Umpire 3</label>${sel("rg-ump3", umpires, (o) => o.id, (o) => o.name)}
-          <label class="field-label">Match Referee</label>${sel("rg-ref", referees, (o) => o.id, (o) => o.name)}
-          <label class="field-label">Match Status</label>
-          <select class="field-select" id="rg-status"><option value="RESUME">Resume (in progress)</option><option value="COMPLETED">Completed</option></select>
+      <!-- Full-width form: three label+field pairs per row so the whole screen
+           fits one frame without scrolling. -->
+      <div class="reg-form-grid">
+        <label class="field-label">Competition Name</label>${sel("rg-comp", reg.competitions, (c) => c.id, (c) => c.name)}
+        <label class="field-label">Match Name</label><input class="field-control" id="rg-name" />
+        <label class="field-label">Match Type</label>${sel("rg-type", reg.matchTypes.map((m) => ({ v: m })), (m) => m.v, (m) => m.v)}
+        <label class="field-label">Number of Overs</label><input class="field-control" id="rg-overs" value="50" />
+        <label class="field-label">Match Date</label><input class="field-control" id="rg-date" type="datetime-local" />
+        <label class="field-label">Venue</label>${sel("rg-venue", reg.grounds, (g) => g.id, (g) => g.name)}
+        <label class="field-label">Home Team</label>${sel("rg-home", reg.teams, (t) => t.id, (t) => t.name)}
+        <label class="field-label">Away Team</label>${sel("rg-away", reg.teams, (t) => t.id, (t) => t.name)}
+        <label class="field-label">Match Status</label>
+        <select class="field-select" id="rg-status"><option value="RESUME">Resume (in progress)</option><option value="COMPLETED">Completed</option></select>
+        <label class="field-label">Umpire 1</label>${sel("rg-ump1", umpires, (o) => o.id, (o) => o.name)}
+        <label class="field-label">Umpire 2</label>${sel("rg-ump2", umpires, (o) => o.id, (o) => o.name)}
+        <label class="field-label">Umpire 3</label>${sel("rg-ump3", umpires, (o) => o.id, (o) => o.name)}
+        <label class="field-label">Match Referee</label>${sel("rg-ref", referees, (o) => o.id, (o) => o.name)}
+        <label class="field-label">Phase</label><input class="field-control" id="rg-phase" placeholder="Group / Super 8 / Final" />
+        <label class="field-label">Team / Ref ID</label><input class="field-control" id="rg-refid" />
+        <label class="field-label">Match Result</label><input class="field-control" id="rg-result" />
+        <label class="field-label">Points A</label><input class="field-control" id="rg-points-a" type="number" />
+        <label class="field-label">Points B</label><input class="field-control" id="rg-points-b" type="number" />
+        <label class="field-label">Options</label>
+        <div class="reg-checks">
+          <label><input type="checkbox" id="rg-neutral" /> Neutral Venue</label>
+          <label><input type="checkbox" id="rg-daynight" checked /> Day / Night</label>
         </div>
+      </div>
 
-        <!-- team A -->
+      <div class="reg-teams">
         <div class="team-panel" id="panel-A">${renderTeamPanel("A")}</div>
-        <!-- team B -->
         <div class="team-panel" id="panel-B">${renderTeamPanel("B")}</div>
       </div>
 
@@ -1469,9 +1716,25 @@ async function loadSide(which, teamId, root, keepSelection) {
 }
 
 async function refreshMatchesTable(root) {
-  const matches = (await dbCall("matches")) || [];
-  root.querySelector("#rg-table").innerHTML = renderMatchesTable(matches, true);
+  const tableEl = root.querySelector("#rg-table");
+  if (!tableEl) return;
+  tableEl._matches = (await dbCall("matches")) || [];
+  renderRegMatches(root);
+}
+
+// Render one page of the registration matches list (paginated so the screen
+// doesn't grow unbounded as matches accumulate).
+function renderRegMatches(root) {
+  const tableEl = root.querySelector("#rg-table");
+  if (!tableEl) return;
+  const matches = tableEl._matches || [];
+  const size = tableEl._pageSize || 5;
+  const meta = paginate(matches, tableEl._page || 0, size);
+  tableEl._page = meta.page;
+  tableEl.innerHTML = renderMatchesTable(meta.slice, true) + pagerHtml(meta, "matches");
   wireMatchesTable(root, matches);
+  wirePager(tableEl, meta, (p) => { tableEl._page = p; renderRegMatches(root); });
+  applyAutoPage(tableEl, size, () => renderRegMatches(root));
 }
 
 function renderMatchesTable(matches, withName) {
@@ -1485,10 +1748,15 @@ function renderMatchesTable(matches, withName) {
   const body = matches.length
     ? matches
         .map((m) => {
-          const statusCell =
-            m.status === "COMPLETED"
-              ? `<a class="status-completed" href="index.html?match=${m.id}">COMPLETED</a>`
-              : `<a class="status-resume" href="index.html?match=${m.id}">RESUME</a>`;
+          let statusCell;
+          if (m.status === "COMPLETED") {
+            statusCell = `<a class="status-completed" href="index.html?match=${m.id}">COMPLETED</a>`;
+          } else if (m.status === "TEAM SELECTION") {
+            // Fixtures await team selection — open Match Registration to finish them.
+            statusCell = `<a class="status-team" href="prototype.html?screen=match-registration&edit=${m.id}">TEAM SELECTION</a>`;
+          } else {
+            statusCell = `<a class="status-resume" href="index.html?match=${m.id}">RESUME</a>`;
+          }
           const nameCell = withName
             ? `<button class="row-link" data-edit="${m.id}">${esc(m.matchName)}</button>`
             : esc(m.matchName);
@@ -1547,6 +1815,11 @@ async function loadMatchIntoForm(id, root, matches) {
   setVal("#rg-ump3", m.umpire3Id);
   setVal("#rg-ref", m.refereeId);
   setVal("#rg-status", m.status);
+  setVal("#rg-phase", m.phase);
+  setVal("#rg-refid", m.refId);
+  setVal("#rg-result", m.matchResult);
+  setVal("#rg-points-a", m.pointsA);
+  setVal("#rg-points-b", m.pointsB);
   root.querySelector("#rg-neutral").checked = !!m.neutralVenue;
   root.querySelector("#rg-daynight").checked = !!m.dayNight;
   if (m.matchDate) {
@@ -1590,7 +1863,8 @@ function clearRegForm(root) {
   reg.A = emptySide();
   reg.B = emptySide();
   ["#rg-comp", "#rg-name", "#rg-type", "#rg-venue", "#rg-home", "#rg-away",
-   "#rg-ump1", "#rg-ump2", "#rg-ump3", "#rg-ref", "#rg-date"].forEach((s) => {
+   "#rg-ump1", "#rg-ump2", "#rg-ump3", "#rg-ref", "#rg-date",
+   "#rg-phase", "#rg-refid", "#rg-result", "#rg-points-a", "#rg-points-b"].forEach((s) => {
     const el = root.querySelector(s);
     if (el) el.value = "";
   });
@@ -1679,8 +1953,29 @@ async function initMatchRegistration(root) {
   root.querySelector("#rg-save").addEventListener("click", async () => {
     const comp = reg.competitions.find((c) => c.id === root.querySelector("#rg-comp").value);
     const ground = reg.grounds.find((g) => g.id === root.querySelector("#rg-venue").value);
-    if (!reg.A.teamId || !reg.B.teamId) return toast("Select both Home and Away teams", true);
-    if (reg.A.teamId === reg.B.teamId) return toast("Home and Away teams must differ", true);
+    const val = (id) => (root.querySelector(id).value || "").trim();
+
+    // Compulsory fields (video location intentionally excluded). Collected in
+    // display order so the first missing one is reported.
+    const missing = [];
+    if (!val("#rg-comp")) missing.push("Competition Name");
+    if (!val("#rg-name")) missing.push("Match Name");
+    if (!val("#rg-type")) missing.push("Match Type");
+    if (!val("#rg-overs") || Number(val("#rg-overs")) <= 0) missing.push("Number of Overs");
+    if (!val("#rg-date")) missing.push("Match Date and Time");
+    if (!reg.A.teamId) missing.push("Team A");
+    if (!reg.B.teamId) missing.push("Team B");
+    if (!val("#rg-ump1")) missing.push("Umpire 1");
+    if (!val("#rg-ump2")) missing.push("Umpire 2");
+    if (!reg.A.captainId) missing.push("Team A Captain");
+    if (!reg.A.keeperId) missing.push("Team A Wicket Keeper");
+    if (!reg.B.captainId) missing.push("Team B Captain");
+    if (!reg.B.keeperId) missing.push("Team B Wicket Keeper");
+    if (reg.A.xi.length < 7) missing.push("Minimum 7 players in Team A");
+    if (reg.B.xi.length < 7) missing.push("Minimum 7 players in Team B");
+    if (missing.length) return toast(`Required: ${missing.join(", ")}`, true);
+
+    if (reg.A.teamId === reg.B.teamId) return toast("Team A and Team B must differ", true);
     // A match may only be created for teams participating in the selected competition.
     if (comp && Array.isArray(comp.teamIds) && comp.teamIds.length) {
       const allowed = new Set(comp.teamIds);
@@ -1688,7 +1983,6 @@ async function initMatchRegistration(root) {
         return toast(`Both teams must be participating teams of ${comp.name}`, true);
       }
     }
-    if (reg.A.xi.length < 2 || reg.B.xi.length < 2) return toast("Each team needs a Playing XI", true);
 
     const sideOut = (s) => ({
       id: s.teamId, name: s.name, code: s.code,
@@ -1716,6 +2010,11 @@ async function initMatchRegistration(root) {
       teamA: sideOut(reg.A),
       teamB: sideOut(reg.B),
       status: root.querySelector("#rg-status").value || "RESUME",
+      phase: root.querySelector("#rg-phase").value.trim(),
+      refId: root.querySelector("#rg-refid").value.trim(),
+      matchResult: root.querySelector("#rg-result").value.trim(),
+      pointsA: root.querySelector("#rg-points-a").value.trim(),
+      pointsB: root.querySelector("#rg-points-b").value.trim(),
     };
     try {
       const saved = await dbCall("saveMatch", match);
@@ -1731,7 +2030,14 @@ async function initMatchRegistration(root) {
     }
   });
 
-  refreshMatchesTable(root);
+  await refreshMatchesTable(root);
+
+  // Deep-link from a fixture (?edit=<id>) → load it for team selection.
+  const editId = new URLSearchParams(window.location.search).get("edit");
+  if (editId) {
+    const all = (await dbCall("matches")) || [];
+    await loadMatchIntoForm(editId, root, all);
+  }
 }
 
 // ===========================================================================
@@ -1739,19 +2045,248 @@ async function initMatchRegistration(root) {
 // ===========================================================================
 
 async function buildMatchDetails() {
-  const matches = (await dbCall("matches")) || [];
   return `
     <section class="form-screen">
       <div class="btn-row" style="justify-content: flex-end; margin-top: 0;">
         <a class="btn-main btn-green" style="text-decoration:none;" href="prototype.html?screen=match-registration">+ Create Match</a>
       </div>
-      <div id="md-table">${renderMatchesTable(matches, false)}</div>
+      <input type="text" class="field-control mst-search" id="md-search" placeholder="Search…" />
+      <div id="md-table"></div>
     </section>`;
 }
 
 function initMatchDetails(root) {
-  // status links already navigate via href; nothing extra needed.
-  void root;
+  const tableEl = root.querySelector("#md-table");
+  const searchEl = root.querySelector("#md-search");
+  let page = 0;
+  searchEl.addEventListener("input", () => { page = 0; render(); });
+
+  function render() {
+    const size = tableEl._pageSize || PAGE_SIZE;
+    const all = tableEl._matches || [];
+    const filtered = filterItems(all.map((m) => ({
+      ...m, teamAName: m.teamA && m.teamA.name, teamBName: m.teamB && m.teamB.name,
+    })), searchEl.value, ["competitionName", "matchName", "matchType", "teamAName", "teamBName", "status"]);
+    const meta = paginate(filtered, page, size);
+    page = meta.page;
+    tableEl.innerHTML = renderMatchesTable(meta.slice, false) + pagerHtml(meta, "matches");
+    wirePager(tableEl, meta, (p) => { page = p; render(); });
+    applyAutoPage(tableEl, size, render);
+  }
+
+  (async () => { tableEl._matches = (await dbCall("matches")) || []; render(); })();
+}
+
+// ===========================================================================
+// Fixtures — schedule matches under a competition (initial details only).
+// A fixture is saved as a match with status "TEAM SELECTION"; it then appears
+// in Match Details where opening it completes registration (XI, captains, etc).
+// ===========================================================================
+
+const fx = { teams: [], competitions: [], officials: [], grounds: [], matchTypes: [], editingId: null };
+
+async function buildFixtures() {
+  fx.competitions = (await dbCall("competitions")) || [];
+  fx.teams = (await dbCall("teams")) || [];
+  fx.officials = (await dbCall("officials")) || [];
+  fx.grounds = (await dbCall("grounds")) || [];
+  fx.editingId = null;
+  // Fixtures are scoped to one competition (passed from Competition Master).
+  fx.compId = new URLSearchParams(window.location.search).get("comp") || "";
+  fx.comp = fx.competitions.find((c) => c.id === fx.compId) || null;
+  const comp = fx.comp;
+  const umpires = fx.officials.filter((o) => o.role === "Umpire");
+  const referees = fx.officials.filter((o) => o.role === "Match Referee");
+  const compTeams = comp && comp.teamIds && comp.teamIds.length
+    ? fx.teams.filter((t) => comp.teamIds.includes(t.id)) : fx.teams;
+  const sel = (id, items, getV, getL, ph = "Select") =>
+    `<select class="field-select" id="${id}"><option value="">${ph}</option>${optionList(items, getV, getL)}</select>`;
+  return `
+    <section class="form-screen" style="max-width:1180px;">
+      <div class="form-layout" style="grid-template-columns: 1fr 1fr;">
+        <div class="form-grid fx-grid" style="grid-template-columns: 180px 1fr;">
+          <label class="field-label">Competition Name</label>
+          <div class="field-readonly" id="fx-comp-name">${esc(comp ? comp.name : "—")}</div>
+          <label class="field-label">Match Date *</label>
+          <div class="fx-datetime">
+            <input type="date" class="field-control" id="fx-date" />
+            <input type="time" class="field-control" id="fx-time" value="00:00" />
+          </div>
+          <label class="field-label">Match Name</label><input class="field-control" id="fx-name" />
+          <label class="fx-check fx-span"><input type="checkbox" id="fx-neutral" /> <span>Neutral Venue</span></label>
+          <label class="field-label">Home Team *</label>${sel("fx-home", compTeams, (t) => t.id, (t) => t.name)}
+          <label class="field-label">Umpire 1</label>${sel("fx-ump1", umpires, (o) => o.id, (o) => o.name)}
+          <label class="field-label">Umpire 3</label>${sel("fx-ump3", umpires, (o) => o.id, (o) => o.name)}
+        </div>
+        <div class="form-grid fx-grid" style="grid-template-columns: 180px 1fr;">
+          <label class="field-label">Match Type</label>
+          <div class="field-readonly" id="fx-type">${esc((comp && comp.matchType) || "—")}</div>
+          <label class="fx-check fx-span"><input type="checkbox" id="fx-daynight" checked /> <span>Day Night</span></label>
+          <label class="field-label">Number of Overs *</label><input class="field-control" id="fx-overs" type="number" value="20" />
+          <label class="field-label">Venue</label>${sel("fx-venue", fx.grounds, (g) => g.id, (g) => g.name)}
+          <label class="field-label">Away Team *</label>${sel("fx-away", compTeams, (t) => t.id, (t) => t.name)}
+          <label class="field-label">Umpire 2</label>${sel("fx-ump2", umpires, (o) => o.id, (o) => o.name)}
+          <label class="field-label">Match Referee</label>${sel("fx-ref", referees, (o) => o.id, (o) => o.name)}
+        </div>
+      </div>
+      <div class="btn-row" style="justify-content:center;">
+        <button class="btn-main btn-green" id="fx-save">Save</button>
+        <button class="btn-main btn-yellow" id="fx-clear">Clear</button>
+        <button class="btn-main btn-red" id="fx-delete" disabled>Delete</button>
+      </div>
+      <div id="fx-table"></div>
+    </section>`;
+}
+
+// "09-02-2026 14:30" / ISO → "09-Feb-2026" for the fixtures list.
+function fxDateLabel(stored) {
+  const iso = parseStoredDate(stored);
+  const d = iso ? new Date(iso) : null;
+  if (!d || isNaN(d)) return stored || "";
+  const mon = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"][d.getMonth()];
+  return `${String(d.getDate()).padStart(2, "0")}-${mon}-${d.getFullYear()}`;
+}
+
+function fixtureRows(matches, scorers) {
+  const cols = "1.1fr 1.8fr 1fr 1fr 1.7fr 1.4fr";
+  const head = `<div class="table-head" style="grid-template-columns:${cols};">
+    <span>Match Date</span><span>Match Name</span><span>Team A</span><span>Team B</span><span>Ground Name and City</span><span>Scorer</span></div>`;
+  const scorerOpts = (selId) => `<option value="">Allocate Scorer…</option>${
+    scorers.map((s) => `<option value="${esc(s.id)}" ${s.id === selId ? "selected" : ""}>${esc(s.name)}</option>`).join("")}`;
+  const body = matches.length ? matches.map((m) => {
+    const g = fx.grounds.find((x) => x.id === m.groundId);
+    const groundLabel = g ? [g.name, g.city].filter(Boolean).join(", ") : (m.venueName || "");
+    const scorerCell = scorers.length
+      ? `<select class="field-select fx-scorer" data-id="${esc(m.id)}">${scorerOpts(m.scorerId)}</select>`
+      : `<span class="mst-hint">Add scorers in Officials</span>`;
+    return `
+    <div class="table-row fx-row" data-id="${esc(m.id)}" style="grid-template-columns:${cols};" title="Click to edit">
+      <span>${esc(fxDateLabel(m.matchDate))}</span>
+      <span>${esc(m.matchName)}</span>
+      <span>${esc(m.teamA && m.teamA.name)}</span>
+      <span>${esc(m.teamB && m.teamB.name)}</span>
+      <span>${esc(groundLabel)}</span>
+      <span class="fx-scorer-cell">${scorerCell}</span>
+    </div>`; }).join("") : `<div class="table-empty-row">No fixtures yet for this competition.</div>`;
+  return `<section class="table-shell">${head}<div class="table-rows">${body}</div></section>`;
+}
+
+async function initFixtures(root) {
+  const q = (id) => root.querySelector(id);
+  const tableEl = q("#fx-table"), delBtn = q("#fx-delete");
+  const scorers = fx.officials.filter((o) => o.role === "Scorer");
+
+  const setEditing = (id) => { fx.editingId = id; q("#fx-save").textContent = id ? "Update" : "Save"; delBtn.disabled = !id; };
+
+  const clear = () => {
+    ["#fx-name", "#fx-date", "#fx-home", "#fx-away", "#fx-ump1", "#fx-ump2", "#fx-ump3", "#fx-ref", "#fx-venue"].forEach((s) => { q(s).value = ""; });
+    q("#fx-time").value = "00:00"; q("#fx-overs").value = "20";
+    q("#fx-neutral").checked = false; q("#fx-daynight").checked = true;
+    setEditing(null);
+  };
+
+  let page = 0;
+  function render() {
+    const size = tableEl._pageSize || PAGE_SIZE;
+    const all = tableEl._items || [];
+    const list = all.filter((m) => m.status === "TEAM SELECTION" && (!fx.compId || m.competitionId === fx.compId));
+    const meta = paginate(list, page, size);
+    page = meta.page;
+    tableEl.innerHTML = fixtureRows(meta.slice, scorers) + pagerHtml(meta, "fixtures");
+    // Clicking a fixture row loads it into the form (but not when using the scorer select).
+    tableEl.querySelectorAll(".fx-row").forEach((rowEl) => {
+      rowEl.addEventListener("click", (e) => { if (!e.target.closest(".fx-scorer")) loadFixture(rowEl.dataset.id); });
+    });
+    tableEl.querySelectorAll(".fx-scorer").forEach((selEl) => {
+      selEl.addEventListener("change", () => allocateScorer(selEl.dataset.id, selEl.value));
+    });
+    wirePager(tableEl, meta, (p) => { page = p; render(); });
+    applyAutoPage(tableEl, size, render);
+  }
+  async function refresh() {
+    tableEl._items = (await dbCall("matches")) || [];
+    page = 0;
+    render();
+  }
+
+  function loadFixture(id) {
+    const m = (tableEl._items || []).find((x) => x.id === id);
+    if (!m) return;
+    q("#fx-name").value = m.matchName || "";
+    const iso = parseStoredDate(m.matchDate);
+    if (iso) { const [d, t] = iso.split("T"); q("#fx-date").value = d; q("#fx-time").value = t || "00:00"; }
+    q("#fx-overs").value = m.overs || 20;
+    q("#fx-venue").value = m.groundId || "";
+    q("#fx-home").value = (m.teamA && m.teamA.id) || "";
+    q("#fx-away").value = (m.teamB && m.teamB.id) || "";
+    q("#fx-ump1").value = m.umpire1Id || ""; q("#fx-ump2").value = m.umpire2Id || "";
+    q("#fx-ump3").value = m.umpire3Id || ""; q("#fx-ref").value = m.refereeId || "";
+    q("#fx-neutral").checked = !!m.neutralVenue; q("#fx-daynight").checked = !!m.dayNight;
+    setEditing(id);
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  }
+
+  // Allocate (or clear) a scorer on a fixture without disturbing its other data.
+  async function allocateScorer(matchId, scorerId) {
+    const m = (tableEl._items || []).find((x) => x.id === matchId);
+    if (!m) return;
+    const scorer = scorers.find((s) => s.id === scorerId);
+    await dbCall("saveMatch", { ...m, scorerId, scorerName: scorer ? scorer.name : "" });
+    m.scorerId = scorerId; m.scorerName = scorer ? scorer.name : "";
+    toast(scorer ? `Allocated ${scorer.name}` : "Scorer cleared");
+  }
+
+  q("#fx-clear").addEventListener("click", clear);
+  delBtn.addEventListener("click", async () => {
+    if (!fx.editingId) return;
+    if (!window.confirm("Delete this fixture? This cannot be undone.")) return;
+    await dbCall("deleteMatch", fx.editingId);
+    clear(); refresh();
+  });
+
+  q("#fx-save").addEventListener("click", async () => {
+    const comp = fx.comp;
+    const ground = fx.grounds.find((g) => g.id === q("#fx-venue").value);
+    const homeId = q("#fx-home").value, awayId = q("#fx-away").value;
+    const home = fx.teams.find((t) => t.id === homeId), away = fx.teams.find((t) => t.id === awayId);
+    const dateVal = q("#fx-date").value, timeVal = q("#fx-time").value || "00:00";
+    const missing = [];
+    if (!comp) missing.push("Competition");
+    if (!dateVal) missing.push("Match Date");
+    if (!q("#fx-overs").value || Number(q("#fx-overs").value) <= 0) missing.push("Number of Overs");
+    if (!homeId) missing.push("Home Team");
+    if (!awayId) missing.push("Away Team");
+    if (missing.length) return toast(`Required: ${missing.join(", ")}`, true);
+    if (homeId === awayId) return toast("Home and Away teams must differ", true);
+
+    const matchDate = `${isoToDMY(dateVal)} ${timeVal}`;
+    const name = q("#fx-name").value.trim()
+      || `${(home && home.code) || ""}VS${(away && away.code) || ""}${ddmmyy(dateVal)}`.toUpperCase();
+    // Preserve an already-allocated scorer when updating an existing fixture.
+    const prev = (tableEl._items || []).find((x) => x.id === fx.editingId);
+    const match = {
+      id: fx.editingId || undefined,
+      competitionId: comp.id, competitionName: comp.name,
+      matchName: name, matchType: comp.matchType || "", overs: Number(q("#fx-overs").value) || 20,
+      matchDate, groundId: ground ? ground.id : "", venueName: ground ? ground.name : "",
+      neutralVenue: q("#fx-neutral").checked, dayNight: q("#fx-daynight").checked,
+      umpire1Id: q("#fx-ump1").value, umpire2Id: q("#fx-ump2").value, umpire3Id: q("#fx-ump3").value,
+      refereeId: q("#fx-ref").value,
+      scorerId: prev ? prev.scorerId : "", scorerName: prev ? prev.scorerName : "",
+      // Initial details only — no XI yet. Status drives the TEAM SELECTION flow.
+      teamA: { id: homeId, name: home ? home.name : "", code: home ? home.code : "" },
+      teamB: { id: awayId, name: away ? away.name : "", code: away ? away.code : "" },
+      status: "TEAM SELECTION",
+    };
+    try {
+      const saved = await dbCall("saveMatch", match);
+      if (saved) { toast(`Saved fixture ${saved.matchName}`); clear(); refresh(); }
+      else toast("Could not save fixture", true);
+    } catch (err) { toast((err && err.message) || "Could not save fixture", true); }
+  });
+
+  setEditing(null);
+  refresh();
 }
 
 // ===========================================================================

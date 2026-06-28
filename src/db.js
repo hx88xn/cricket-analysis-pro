@@ -155,7 +155,16 @@ function ensureColumns() {
   addCol("grounds", "image", "TEXT");
   addCol("grounds", "size_json", "TEXT");
   addCol("players", "image", "TEXT"); // player portrait (data URL)
+  addCol("players", "nationality", "TEXT"); // player nationality
   addCol("teams", "image", "TEXT"); // team logo (data URL)
+  // Match registration extras (result, reference id, phase, points per side).
+  addCol("matches", "match_result", "TEXT");
+  addCol("matches", "ref_id", "TEXT");
+  addCol("matches", "phase", "TEXT");
+  addCol("matches", "points_a", "TEXT");
+  addCol("matches", "points_b", "TEXT");
+  addCol("matches", "scorer_id", "TEXT");   // fixture scorer allocation
+  addCol("matches", "scorer_name", "TEXT");
 
   const cols = db.prepare("PRAGMA table_info(players)").all().map((c) => c.name);
   if (!cols.includes("sort_order")) {
@@ -295,7 +304,7 @@ const mapPlayer = (r) => r && {
   shortName: r.short_name, role: r.role, battingStyle: r.batting_style,
   battingStyleCode: r.batting_style_code, bowlingStyle: r.bowling_style,
   bowlingType: r.bowling_type, bowlingSpec: r.bowling_spec, dob: r.dob,
-  image: r.image || "",
+  nationality: r.nationality || "", image: r.image || "",
 };
 // Parse a stored value that may be JSON (array/object) or a legacy plain string.
 function parseJsonArray(v) {
@@ -456,6 +465,9 @@ function rowToMatch(m) {
     neutralVenue: !!m.neutral_venue, dayNight: !!m.day_night,
     umpire1Id: m.umpire1_id, umpire2Id: m.umpire2_id, umpire3Id: m.umpire3_id, refereeId: m.referee_id,
     status: m.status, createdAt: m.created_at, updatedAt: m.updated_at,
+    matchResult: m.match_result || "", refId: m.ref_id || "", phase: m.phase || "",
+    pointsA: m.points_a || "", pointsB: m.points_b || "",
+    scorerId: m.scorer_id || "", scorerName: m.scorer_name || "",
     teamA: sideOf(m.id, "A", m), teamB: sideOf(m.id, "B", m),
     state,
   };
@@ -509,17 +521,17 @@ function savePlayer(player) {
     sortOrder = (max == null ? -1 : max) + 1;
   }
   db.prepare(`INSERT INTO players
-    (id,team_id,name,short_name,role,batting_style,batting_style_code,bowling_style,bowling_type,bowling_spec,dob,image,sort_order)
-    VALUES (@id,@team_id,@name,@short_name,@role,@batting_style,@batting_style_code,@bowling_style,@bowling_type,@bowling_spec,@dob,@image,@sort_order)
+    (id,team_id,name,short_name,role,batting_style,batting_style_code,bowling_style,bowling_type,bowling_spec,dob,nationality,image,sort_order)
+    VALUES (@id,@team_id,@name,@short_name,@role,@batting_style,@batting_style_code,@bowling_style,@bowling_type,@bowling_spec,@dob,@nationality,@image,@sort_order)
     ON CONFLICT(id) DO UPDATE SET team_id=@team_id, name=@name, short_name=@short_name, role=@role,
       batting_style=@batting_style, batting_style_code=@batting_style_code, bowling_style=@bowling_style,
-      bowling_type=@bowling_type, bowling_spec=@bowling_spec, dob=@dob, image=@image`)
+      bowling_type=@bowling_type, bowling_spec=@bowling_spec, dob=@dob, nationality=@nationality, image=@image`)
     .run({
       id, team_id: teamId, name: player.name, short_name: player.shortName || "",
       role: player.role || "", batting_style: player.battingStyle || "",
       batting_style_code: player.battingStyleCode || "", bowling_style: player.bowlingStyle || "",
       bowling_type: player.bowlingType || "", bowling_spec: player.bowlingSpec || "", dob: player.dob || "",
-      image: player.image || "",
+      nationality: player.nationality || "", image: player.image || "",
       sort_order: sortOrder,
     });
   return { ...player, id, teamName };
@@ -726,6 +738,15 @@ function writeMatch(match) {
       team_a_captain_id: A.captainId || "", team_a_keeper_id: A.keeperId || "",
       team_b_id: B.id || "", team_b_name: B.name || "", team_b_code: B.code || "",
       team_b_captain_id: B.captainId || "", team_b_keeper_id: B.keeperId || "",
+    });
+
+  // Match registration extras (added as columns after the original schema).
+  db.prepare(`UPDATE matches SET match_result=@match_result, ref_id=@ref_id, phase=@phase,
+      points_a=@points_a, points_b=@points_b, scorer_id=@scorer_id, scorer_name=@scorer_name WHERE id=@id`)
+    .run({
+      id, match_result: match.matchResult || "", ref_id: match.refId || "",
+      phase: match.phase || "", points_a: match.pointsA || "", points_b: match.pointsB || "",
+      scorer_id: match.scorerId || "", scorer_name: match.scorerName || "",
     });
 
   // replace squad rows for both sides
