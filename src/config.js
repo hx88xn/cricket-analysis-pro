@@ -249,7 +249,6 @@ async function vidStartCapture() {
   };
   recorder.start();
   vidRecorder = recorder;
-  vidEl("vid-capture").textContent = "End Capture";
   setVidNote("Recording…");
 }
 
@@ -287,38 +286,45 @@ async function initVideoTab(cfg) {
   resSelect.addEventListener("change", restartIfLive);
 
   vidEl("vid-play").addEventListener("click", () => {
-    if (vidStream) { vidStopStream(); vidEl("vid-ph").hidden = false; vidEl("vid-play").textContent = "Play"; }
-    else { vidStartPreview(vidEl("vid-audio").checked); vidEl("vid-play").textContent = "Stop"; }
+    // "Stop" ends the running capture and tears the preview down.
+    vidStopCapture();
+    vidStopStream();
+    vidEl("vid-ph").hidden = false;
+    refreshVidButtons();
   });
   vidEl("vid-overlay").addEventListener("click", () => {
     const line = vidEl("vid-line");
     line.hidden = !line.hidden;
   });
-  vidEl("vid-capture").addEventListener("click", () => {
-    if (vidRecorder) vidStopCapture(); else vidStartCapture();
+  vidEl("vid-capture").addEventListener("click", async () => {
+    await vidStartCapture();
+    refreshVidButtons();
   });
-
-  vidEl("vid-save").addEventListener("click", saveVideoSettings);
+  refreshVidButtons();
 }
 
-async function saveVideoSettings() {
-  if (!window.cricketApp?.setConfig) return;
+// Start Capture and Stop are mutually exclusive: only Start Capture is clickable
+// while idle, and only Stop is clickable once a capture is running.
+function refreshVidButtons() {
+  const capturing = !!vidRecorder;
+  vidEl("vid-capture").disabled = capturing;
+  vidEl("vid-play").disabled = !capturing;
+}
+
+// Collect the current video-tab settings as a config payload. Persisted by the
+// main "Save settings" button (see the form submit handler) — the video tab no
+// longer has its own Save.
+function videoConfigPayload() {
   const bitrate = (document.querySelector('input[name="vid-bitrate"]:checked') || {}).value || "Medium";
-  try {
-    await window.cricketApp.setConfig({
-      recordingsPath: recordingsInput.value.trim(),
-      cameraDeviceId: vidEl("vid-device").value || "",
-      videoResolution: vidEl("vid-resolution").value || "1280x720",
-      videoBitrate: bitrate,
-      recordAudio: vidEl("vid-audio").checked,
-      localCapture: vidEl("vid-local").checked,
-      deinterlace: vidEl("vid-deinterlace").checked,
-    });
-    setVidNote("Video settings saved.");
-  } catch (e) {
-    console.error(e);
-    setVidNote("Could not save video settings.", true);
-  }
+  return {
+    recordingsPath: recordingsInput.value.trim(),
+    cameraDeviceId: vidEl("vid-device").value || "",
+    videoResolution: vidEl("vid-resolution").value || "1280x720",
+    videoBitrate: bitrate,
+    recordAudio: vidEl("vid-audio").checked,
+    localCapture: vidEl("vid-local").checked,
+    deinterlace: vidEl("vid-deinterlace").checked,
+  };
 }
 
 // Stop the camera when leaving the page so the device LED turns off.
@@ -436,7 +442,7 @@ form.addEventListener("submit", async (e) => {
       if (val && !val.endsWith("…")) shortcuts[input.dataset.shortcut] = val;
     });
     const operationMode = (document.querySelector('input[name="op-mode"]:checked') || {}).value || "Offline";
-    await window.cricketApp.setConfig({ shortcuts, operationMode });
+    await window.cricketApp.setConfig({ shortcuts, operationMode, ...videoConfigPayload() });
     setStatus("Settings saved.");
   } catch (err) {
     console.error(err);

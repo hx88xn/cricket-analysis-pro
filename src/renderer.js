@@ -107,8 +107,7 @@ const DISMISSALS = [
 
 const MATCH_EVENTS_NAV = [
   "Breaks", "Other Wickets", "Power Play", "Revised Overs", "Revised Target",
-  "Penalty", "End Session", "End Innings", "End Day", "Declare Innings",
-  "Follow On", "Match Results", "Match Info Edit", "Batsman In / Out Time",
+  "Match Results", "Match Info Edit", "Batsman In / Out Time",
   "Ball Change", "Video Count Validation", "Movie Organiser",
 ];
 
@@ -122,6 +121,7 @@ const state = {
   wkts: 0,
   over: 4,
   ball: 3,            // legal balls bowled in the current over
+  overs: 20,          // total overs per innings — drives match format (≤20 → T20)
   pace: "Fast",
   style: "Aggressive",
   keypadShifted: false,
@@ -167,6 +167,7 @@ const state = {
   pendingWagonLine: null,
   pitchInputs: [],    // current ball's pitch-map dots (saved + cleared per ball)
   fieldingEvents: [],
+  otherWickets: [],   // dismissals recorded without a delivery (Other Wickets)
 };
 
 function row(num, bowler, striker, nonstr, bowl, shot, runs, ext) {
@@ -967,7 +968,6 @@ function endInnings() {
     return;
   }
 
-  const prevBatCode = state.battingCode;
   state.innings = 2;
 
   if (state.battingTeam && state.bowlingTeam) {
@@ -1012,12 +1012,41 @@ function endInnings() {
   renderBowlGrid(); renderBatGrid();
   render();
 
-  openOverlay(popupShell("INNINGS OVER",
-    `<div class="confirm-box">
-       <p><strong>${prevBatCode}</strong> all out for the innings (10 wickets).</p>
-       <p><strong>${state.battingCode}</strong> now bats — click <em>Start Over</em> to begin.</p>
-       <div class="btn-row-modal center"><button class="m-btn m-green" data-close>Start 2nd Innings</button></div>
-     </div>`));
+  // Before the 2nd innings begins, collect the opening striker / non-striker /
+  // bowler and the bowling end for the newly-batting side.
+  overlayInningsDetails();
+}
+
+// The "Innings Details" screen shown at the start of the 2nd innings. Defaults
+// are pre-filled from the swapped playing XIs (set in endInnings); the scorer
+// can adjust before pressing Start Innings.
+function overlayInningsDetails() {
+  const sel = (id, opts, cur) =>
+    `<select class="f-select" id="${id}">${["Select", ...opts].map((o) =>
+      `<option ${o === cur ? "selected" : ""}>${o}</option>`).join("")}</select>`;
+  const body = `
+    <div class="innings-details">
+      <label class="f-row"><span class="f-label">Team</span><input class="f-input" value="${state.battingCode}" disabled/></label>
+      <label class="f-row"><span class="f-label">Striker</span>${sel("id-striker", CANADA, state.striker)}</label>
+      <label class="f-row"><span class="f-label">Non Striker</span>${sel("id-nonstriker", CANADA, state.nonStriker)}</label>
+      <label class="f-row"><span class="f-label">Bowler</span>${sel("id-bowler", OMAN_BOWLERS, state.bowler)}</label>
+      <div class="seg-row"><span class="f-label">Bowling End</span>
+        <label class="ck"><input type="radio" name="id-end" value="NEAR END" checked/> NEAR END</label>
+        <label class="ck"><input type="radio" name="id-end" value="FAR END"/> FAR END</label>
+      </div>
+      <div class="btn-row-modal center"><button class="m-btn m-green" id="id-start">Start Innings</button></div>
+    </div>`;
+  openOverlay(popupShell("INNINGS DETAILS", body));
+  document.getElementById("id-start")?.addEventListener("click", () => {
+    const pick = (id) => document.getElementById(id)?.value;
+    const s = pick("id-striker"), ns = pick("id-nonstriker"), bw = pick("id-bowler");
+    if (s && s !== "Select") state.striker = s;
+    if (ns && ns !== "Select") state.nonStriker = ns;
+    if (bw && bw !== "Select") state.bowler = bw;
+    state.bowlEnd = (document.querySelector('input[name="id-end"]:checked') || {}).value || "NEAR END";
+    closeOverlay();
+    render();
+  });
 }
 
 // ---- Undo -----------------------------------------------------------------
@@ -1372,6 +1401,25 @@ function overlayRemarks() {
   openOverlay(popupShell("REMARKS", body));
 }
 
+// ---- Penalty --------------------------------------------------------------
+
+function overlayPenalty() {
+  const body = `
+    <div class="seg-row center"><div class="seg"><button class="seg-btn active">Batting</button><button class="seg-btn">Bowling</button></div></div>
+    <div class="penalty-list">
+      ${["Player returning without permission, comes in contact with the ball while in play",
+         "Fielding the ball, willfully fielding it otherwise",
+         "The ball when in play strikes the helmet of fielding side kept on the ground within the field of play",
+         "Changing balls condition",
+         "Deliberate attempt to distract striker — Ball not count as one of the over",
+         "Deliberate distraction or obstruction of batsman — Ball shall not count as one of the over",
+         "Time wasting by fielding side","Fielder damaging the pitch"].map((p)=>`<div class="penalty-row"><label class="ck"><input type="checkbox"/></label> ${p}</div>`).join("")}
+    </div>
+    <div class="btn-row-modal center"><button class="m-btn m-green" data-close>Save</button><button class="m-btn m-yellow" data-close>Clear</button></div>`;
+  openOverlay(popupShell("PENALTY", body));
+  wireSeg();
+}
+
 // ---- Wickets --------------------------------------------------------------
 
 function overlayWickets() {
@@ -1516,14 +1564,60 @@ function overlayScorecard() {
 // ---- Match Events module (full screen, left nav) --------------------------
 
 function overlayMatchEvents(active = "Breaks") {
+  // Revised Overs applies only in the 1st innings, Revised Target only in the
+  // 2nd — disable the one that doesn't apply to the current innings.
+  const navDisabled = (n) =>
+    (n === "Revised Target" && state.innings === 1) ||
+    (n === "Revised Overs" && state.innings === 2);
   const nav = `<div class="me-nav">${MATCH_EVENTS_NAV.map((n) =>
-    `<button class="me-nav-item ${n === active ? "active" : ""}" data-nav="${n}">${n}</button>`).join("")}</div>`;
+    `<button class="me-nav-item ${n === active ? "active" : ""} ${navDisabled(n) ? "disabled" : ""}" data-nav="${n}" ${navDisabled(n) ? "disabled" : ""}>${n}</button>`).join("")}</div>`;
   openOverlay(moduleShell(matchEventTitle(active), nav, matchEventBody(active)));
   const root = overlayRoot();
   root.querySelectorAll("[data-nav]").forEach((b) => b.addEventListener("click", () => {
     overlayMatchEvents(b.getAttribute("data-nav"));
   }));
   wireSeg();
+
+  if (active === "Other Wickets") {
+    let owDismissal = null;
+    root.querySelectorAll("[data-dismiss]").forEach((b) => b.addEventListener("click", () => {
+      root.querySelectorAll("[data-dismiss]").forEach((x) => x.classList.remove("active"));
+      b.classList.add("active");
+      owDismissal = b.textContent.trim();
+    }));
+    document.getElementById("ow-save")?.addEventListener("click", () => {
+      const batsman = document.getElementById("ow-player")?.value;
+      const wicketNo = Number(document.getElementById("ow-wktno")?.value) || state.wkts + 1;
+      if (!owDismissal) { toast("Select a dismissal type"); return; }
+      if (!batsman || batsman === "PLAYER NAME") { toast("Select a batsman"); return; }
+      // A wicket recorded here is not tied to a delivery: log the dismissal and
+      // bump the wicket count, leaving the over/ball counters and ball log alone.
+      state.otherWickets.push({ dismissal: owDismissal, batsman, wicketNo, video: "" });
+      state.wkts += 1;
+      render();
+      overlayMatchEvents("Other Wickets"); // refresh the table + next wicket no
+      toast("Wicket recorded (no ball)");
+    });
+    document.getElementById("ow-delete")?.addEventListener("click", () => {
+      // Remove the most recently saved Other Wicket and roll the count back.
+      if (!state.otherWickets.length) { closeOverlay(); return; }
+      state.otherWickets.pop();
+      state.wkts = Math.max(0, state.wkts - 1);
+      render();
+      overlayMatchEvents("Other Wickets");
+      toast("Last Other Wicket removed");
+    });
+  }
+
+  if (active === "Match Results") {
+    document.getElementById("mr-done")?.addEventListener("click", () => {
+      const result = document.getElementById("mr-result");
+      const comments = document.getElementById("mr-comments");
+      if (!result.value || result.value === "Select") { flash(result); toast("Select a result type"); return; }
+      if (!comments.value.trim()) { flash(comments); toast("Comments are required"); return; }
+      closeOverlay();
+    });
+  }
 }
 
 function matchEventTitle(name) {
@@ -1541,6 +1635,12 @@ function tableHead(cols) {
 
 function saveDeleteRow(extra = "") {
   return `<div class="btn-row-modal center">${extra}<button class="m-btn m-green" data-close>Save</button><button class="m-btn m-red" data-close>Delete</button></div>`;
+}
+
+// Saved Other-Wickets rows (dismissal recorded without a delivery).
+function otherWicketsRows() {
+  return state.otherWickets.map((w) =>
+    `<tr><td>${w.dismissal}</td><td>${w.batsman}</td><td>${w.wicketNo}</td><td>${w.video || "—"}</td></tr>`).join("");
 }
 
 function matchEventBody(name) {
@@ -1564,45 +1664,36 @@ function matchEventBody(name) {
         ${tableHead(["Break Type", "Started Time", "Ended Time", "Total Mins"])}`;
     case "Other Wickets":
       return `
+        <p class="me-note">Records a dismissal without a delivery — no ball is counted.</p>
         <div class="pill-grid wide-pills">
-          ${["Mankading","Absent Hurt","Timed Out","Retired Hurt","Retired Out"].map((d)=>`<button class="pill-btn">${d}</button>`).join("")}
+          ${["Mankading","Absent Hurt","Timed Out","Retired Hurt","Retired Out"].map((d)=>`<button class="pill-btn" data-dismiss>${d}</button>`).join("")}
         </div>
         <div class="me-form-narrow">
-          ${selectEl("Player Name", CANADA, "PLAYER NAME")}
-          <label class="f-row"><span class="f-label">Wicket No</span><input class="f-input" value="1"/></label>
+          <label class="f-row"><span class="f-label">Player Name</span><select class="f-select" id="ow-player">${["PLAYER NAME", ...CANADA].map((o)=>`<option>${o}</option>`).join("")}</select></label>
+          <label class="f-row"><span class="f-label">Wicket No</span><input class="f-input" id="ow-wktno" value="${state.wkts + 1}"/></label>
           <button class="m-btn m-dark wide" >Browse Video</button>
         </div>
-        ${saveDeleteRow()}
-        ${tableHead(["Dismissal Type", "Batsman Name", "Wicket No", "Video"])}`;
-    case "Penalty":
-      return `
-        <div class="seg-row center"><div class="seg"><button class="seg-btn active">Batting</button><button class="seg-btn">Bowling</button></div></div>
-        <div class="penalty-list">
-          ${["Player returning without permission, comes in contact with the ball while in play",
-             "Fielding the ball, willfully fielding it otherwise",
-             "The ball when in play strikes the helmet of fielding side kept on the ground within the field of play",
-             "Changing balls condition",
-             "Deliberate attempt to distract striker — Ball not count as one of the over",
-             "Deliberate distraction or obstruction of batsman — Ball shall not count as one of the over",
-             "Time wasting by fielding side","Fielder damaging the pitch"].map((p)=>`<div class="penalty-row"><label class="ck"><input type="checkbox"/></label> ${p}</div>`).join("")}
-        </div>
-        <div class="btn-row-modal center"><button class="m-btn m-green" data-close>Save</button><button class="m-btn m-yellow" data-close>Clear</button></div>`;
+        <div class="btn-row-modal center"><button class="m-btn m-green" id="ow-save">Save</button><button class="m-btn m-red" id="ow-delete">Delete</button></div>
+        <table class="data-table grid-table">
+          <thead><tr>${["Dismissal Type","Batsman Name","Wicket No","Video"].map((c)=>`<th>${c} <span class="th-filter">▾</span></th>`).join("")}</tr></thead>
+          <tbody>${otherWicketsRows()}</tbody>
+        </table>`;
     case "Ball Change":
       return `
         ${dateField("Ball Change Date/Time", "28-Jan-2026", "22:05")}
         <div class="pill-grid wide-pills center">
           ${["New Ball","Semi New Ball","Second New Ball","Old Ball"].map((d)=>`<button class="pill-btn">${d}</button>`).join("")}
         </div>
-        <label class="f-row"><span class="f-label">Remarks</span><textarea class="f-textarea yellow-area">b/c of fade color</textarea></label>
+        <label class="f-row"><span class="f-label">Remarks</span><textarea class="f-textarea yellow-area" placeholder="Remarks"></textarea></label>
         ${saveDeleteRow()}
         ${tableHead(["Ball Change Date/Time","Team Name","Inns #","Runs","Overs","Wkts","Ball Type","Remarks"])}`;
     case "Match Results":
       return `
         <div class="me-results">
           <div class="me-results-left">
-            ${selectEl("Result Type", ["Win","Loss","Tie","No Result","Abandoned"]) }
+            <label class="f-row"><span class="f-label">Result Type <span class="req">*</span></span><select class="f-select" id="mr-result">${["Select","Win","Loss","Tie","No Result","Abandoned"].map((o)=>`<option>${o}</option>`).join("")}</select></label>
             ${selectEl("Team", ["OMN","CANA"]) }
-            <label class="f-row"><span class="f-label">Comments</span><input class="f-input" placeholder="Comments"/></label>
+            <label class="f-row"><span class="f-label">Comments <span class="req">*</span></span><input class="f-input" id="mr-comments" placeholder="Comments"/></label>
             ${selectEl("Man Of The Match", [...CANADA, ...OMAN_BOWLERS])}
             ${selectEl("Man Of The Series", [...CANADA, ...OMAN_BOWLERS])}
             ${selectEl("Best Batsman", CANADA)}
@@ -1616,7 +1707,7 @@ function matchEventBody(name) {
             <div class="points-row"><input class="f-input" value="CANA"/><input class="f-input" placeholder="Point"/></div>
           </div>
         </div>
-        <div class="btn-row-modal center"><button class="m-btn m-green" data-close>Done</button><button class="m-btn m-red" data-close>Revert</button></div>`;
+        <div class="btn-row-modal center"><button class="m-btn m-green" id="mr-done">Done</button><button class="m-btn m-red" data-close>Revert</button></div>`;
     case "Movie Organiser":
       return `
         <label class="f-row narrow-row"><span class="f-label">Innings No</span><select class="f-select"><option>1</option><option>2</option></select></label>
@@ -1634,26 +1725,16 @@ function matchEventBody(name) {
     case "Revised Target":
       return `
         <div class="me-form-narrow">
-          ${selectEl("Innings", ["1st Innings","2nd Innings"]) }
+          <label class="f-row"><span class="f-label">Innings</span><span class="f-input f-static">${name === "Revised Overs" ? "1st Innings" : "2nd Innings"}</span></label>
           <label class="f-row"><span class="f-label">${name === "Revised Overs" ? "Revised Overs" : "Revised Target"}</span><input class="f-input"/></label>
           <label class="f-row"><span class="f-label">Reason</span><input class="f-input" placeholder="Reason"/></label>
         </div>${saveDeleteRow()}`;
-    case "Declare Innings":
-    case "End Innings":
-    case "End Session":
-    case "End Day":
-    case "Follow On":
-      return `
-        <div class="confirm-box">
-          <p>Confirm <strong>${name}</strong> at ${state.runs}/${state.wkts} (${state.over}.${state.ball})?</p>
-          <div class="btn-row-modal center"><button class="m-btn m-green" data-close>Confirm</button><button class="m-btn m-red" data-close>Cancel</button></div>
-        </div>`;
     case "Match Info Edit":
       return `
         <div class="me-form-narrow">
           ${selectEl("Toss Won By", ["CANA","OMN"]) }
           ${selectEl("Elected To", ["Bat","Bowl"]) }
-          <label class="f-row"><span class="f-label">Number of Overs</span><input class="f-input" value="20"/></label>
+          <label class="f-row"><span class="f-label">Number of Overs</span><input class="f-input" value="${state.overs}"/></label>
           <label class="f-row"><span class="f-label">Venue</span><input class="f-input" value="Al Amerat Cricket Ground"/></label>
         </div>${saveDeleteRow()}`;
     case "Batsman In / Out Time":
@@ -1670,10 +1751,17 @@ function matchEventBody(name) {
   }
 }
 
+function powerPlayOptions() {
+  // ≤20 overs → T20 has a single powerplay; otherwise ODI has three.
+  return state.overs <= 20
+    ? ["PP1 (1-6)", "Batting PP", "Bowling PP"]
+    : ["PP1 (1-10)", "PP2 (11-40)", "PP3 (41-50)", "Batting PP", "Bowling PP"];
+}
+
 function powerPlayBody() {
   return `
     <div class="me-form-narrow">
-      ${selectEl("Power Play", ["PP1 (1-6)","PP2 (7-15)","PP3 (16-20)","Batting PP","Bowling PP"]) }
+      ${selectEl("Power Play", powerPlayOptions()) }
       <label class="f-row"><span class="f-label">From Over</span><input class="f-input" value="${state.over}"/></label>
       <label class="f-row"><span class="f-label">To Over</span><input class="f-input"/></label>
     </div>${saveDeleteRow()}
@@ -1884,6 +1972,7 @@ const OVERLAYS = {
   appeals: overlayAppeals,
   fielding: overlayFielding,
   remarks: overlayRemarks,
+  penalty: overlayPenalty,
   wickets: overlayWickets,
   matchevents: () => overlayMatchEvents(),
   scorecard: overlayScorecard,
