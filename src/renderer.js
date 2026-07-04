@@ -159,8 +159,12 @@ const state = {
   history: [],        // for undo
   innings: 1,
   matchOver: false,
+  target: 0,          // runs to win in the 2nd innings (1st-innings total + 1)
+  nextBatIndex: 2,    // batting-order index of the next batsman to come in
+  dismissed: [],      // names of batsmen already out this innings (can't return)
   overStarted: false, // a new over must be started before any ball
   ballStarted: false, // each ball must be started before it can be entered
+  capturing: false,   // a video capture is currently recording
   // The current ball is staged here as it is entered (runs/extras/wicket/etc.)
   // and only committed to the log when "End Ball" is pressed. `staged` mirrors
   // the highlighted keypad key so it survives keypad re-renders.
@@ -180,6 +184,9 @@ const state = {
   ballChanges: [],
   revisedOvers: [],
   revisedTargets: [],
+  penalties: [],
+  matchResult: null,  // Match Results form (single record)
+  batTimes: [],       // { batsman, inTime, outTime, mins, balls } per batsman spell
 };
 
 function row(num, bowler, striker, nonstr, bowl, shot, runs, ext) {
@@ -675,6 +682,7 @@ function onDocDownForMenu(e) {
 function recordFieldingEvent(position, event, fielder, p) {
   state.fieldingEvents = state.fieldingEvents || [];
   state.fieldingEvents.push({ position, event, fielder, x: p?.x, y: p?.y, ball: state.log.length });
+  scheduleSave(); // persist fielding events to the DB
   const label = document.getElementById("wagon-region");
   if (label) {
     label.textContent = `${position} · ${event} · ${fielder}`;
@@ -944,7 +952,7 @@ function shortName(name) {
   return (name || "").split(" ").slice(0, 2).join(" ");
 }
 
-function logBall({ runs = 0, ext = 0, boundary = false, legal = true, bye = false, wicket = false, extLabel = "", overthrow = 0, rbw = 0 }) {
+function logBall({ runs = 0, ext = 0, boundary = false, legal = true, bye = false, wicket = false, extLabel = "", overthrow = 0, rbw = 0, outBatsman = null, dismissal = "" }) {
   if (!ballInputAllowed()) return; // over + ball must be started first
   pushHistory();
 
@@ -1008,7 +1016,16 @@ function logBall({ runs = 0, ext = 0, boundary = false, legal = true, bye = fals
   if (wicket) {
     state.wkts += 1;
     state.bowl.wkts += 1;
-    if (state.wkts < 10) newBatsman(); // 10th wicket = all out (no new batter)
+    // Which batsman is out: the selection from the Wickets overlay (for a
+    // non-striker run-out), else the striker by default.
+    const end = outBatsman && outBatsman === state.nonStriker ? "nonStriker" : "striker";
+    const outName = end === "nonStriker" ? state.nonStriker : state.striker;
+    if (!state.dismissed.includes(outName)) state.dismissed.push(outName);
+    logged.wicket = true;
+    logged.dismissal = dismissal || "Wicket";
+    logged.outBatsman = outName;
+    markBatsmanOut(outName, state.bat[end]?.balls ?? "");
+    if (state.wkts < 10) newBatsman(end); // 10th wicket = all out (no new batter)
   }
 
   const allOut = state.wkts >= 10;
@@ -1055,11 +1072,53 @@ function swapStrike() {
   [state.bat.striker, state.bat.nonStriker] = [state.bat.nonStriker, state.bat.striker];
 }
 
-function newBatsman() {
-  const used = new Set([state.striker, state.nonStriker]);
-  const next = CANADA.find((p) => !used.has(p)) || "NEW BATSMAN";
-  state.striker = next;
-  state.bat.striker = { runs: 0, balls: 0, fours: 0, sixes: 0 };
+// Next batsman down the order: the next player in the batting line-up who is
+// not already at the crease and has not been dismissed this innings.
+function nextBatsmanName() {
+  while (state.nextBatIndex < CANADA.length) {
+    const name = CANADA[state.nextBatIndex++];
+    if (name && name !== state.striker && name !== state.nonStriker
+        && !state.dismissed.includes(name)) return name;
+  }
+  return "NEW BATSMAN";
+}
+
+// Bring the next batsman in at the given end (the one that just fell). Defaults
+// to the striker's end (bowled/caught/lbw); pass "nonStriker" for a non-striker
+// run-out so the correct player is replaced.
+function newBatsman(end = "striker") {
+  const name = nextBatsmanName();
+  if (end === "nonStriker") {
+    state.nonStriker = name;
+    state.bat.nonStriker = { runs: 0, balls: 0, fours: 0, sixes: 0 };
+  } else {
+    state.striker = name;
+    state.bat.striker = { runs: 0, balls: 0, fours: 0, sixes: 0 };
+  }
+  markBatsmanIn(name);
+}
+
+// ---- Batsman in / out timing ----------------------------------------------
+// A record is opened when a batsman walks in and closed (out time, minutes,
+// balls) when they are dismissed. Surfaced on the Batsman In / Out Time screen.
+function markBatsmanIn(name) {
+  if (!name || name === "NEW BATSMAN") return;
+  state.batTimes.push({ batsman: name, inTime: clockNow(), inTs: Date.now(), outTime: "", mins: "", balls: "" });
+  scheduleSave();
+}
+
+function markBatsmanOut(name, balls) {
+  // Close the most recent still-open spell for this batsman.
+  for (let i = state.batTimes.length - 1; i >= 0; i--) {
+    const r = state.batTimes[i];
+    if (r.batsman === name && !r.outTime) {
+      r.outTime = clockNow();
+      r.mins = r.inTs ? Math.max(0, Math.round((Date.now() - r.inTs) / 60000)) : "";
+      r.balls = balls;
+      break;
+    }
+  }
+  scheduleSave();
 }
 
 // Record an Other-Wicket dismissal onto the current delivery: it appears in the
@@ -1074,11 +1133,15 @@ function logOtherWicket(batsman, dismissal) {
   logged.wicket = true;
   logged.otherWicket = true;
   logged.dismissal = dismissal;
+  logged.outBatsman = batsman;
   state.wkts += 1;
   state.bowl.wkts += 1;
   state.ballStarted = false;
   setBallButton("Start Ball");
-  if (state.wkts < 10) newBatsman(); // 10th wicket = all out (no new batter)
+  const end = batsman === state.nonStriker ? "nonStriker" : "striker";
+  if (!state.dismissed.includes(batsman)) state.dismissed.push(batsman);
+  markBatsmanOut(batsman, state.bat[end]?.balls ?? "");
+  if (state.wkts < 10) newBatsman(end); // 10th wicket = all out (no new batter)
 }
 
 function completeOver() {
@@ -1112,6 +1175,9 @@ function endInnings() {
     return;
   }
 
+  // Target for the chase = 1st-innings total + 1 (before the score is reset
+  // below). A saved Revised Target, if any, overrides it.
+  state.target = state.runs + 1;
   state.innings = 2;
 
   if (state.battingTeam && state.bowlingTeam) {
@@ -1142,6 +1208,7 @@ function endInnings() {
 
   // reset the scoreboard for the new innings
   state.runs = 0; state.wkts = 0; state.over = 0; state.ball = 0;
+  state.nextBatIndex = 2; state.dismissed = [];
   state.bat = {
     striker: { runs: 0, balls: 0, fours: 0, sixes: 0 },
     nonStriker: { runs: 0, balls: 0, fours: 0, sixes: 0 },
@@ -1204,6 +1271,8 @@ function pushHistory() {
     // capture the over/ball gate flags too, so undoing across an over boundary
     // restores the button state instead of leaving it stale (see undo()).
     overStarted: state.overStarted, ballStarted: state.ballStarted,
+    // batting-order tracking so undoing a wicket restores the fallen batsman
+    nextBatIndex: state.nextBatIndex, dismissed: state.dismissed,
   }));
   if (state.history.length > 60) state.history.shift();
 }
@@ -1238,6 +1307,7 @@ function render() {
   const oversFloat = state.over + state.ball / 6;
   const rr = oversFloat > 0 ? (state.runs / oversFloat).toFixed(2) : "0.00";
   setText("runrate-value", rr);
+  renderChaseRow();
   setText("name-striker", state.striker);
   setText("name-nonstriker", state.nonStriker);
   setText("name-bowlend", state.bowlEnd);
@@ -1271,6 +1341,31 @@ function render() {
 
   renderLog();
   scheduleSave();
+}
+
+// The chase panel (Target / Required Run Rate / Runs Required) is shown only in
+// the 2nd innings. Target = 1st-innings total + 1, overridden by a saved Revised
+// Target; the balls available follow a saved Revised Overs, else state.overs.
+function renderChaseRow() {
+  const row = document.getElementById("chase-row");
+  if (!row) return;
+  if (state.innings !== 2) { row.hidden = true; return; }
+  row.hidden = false;
+
+  const revT = state.revisedTargets?.[state.revisedTargets.length - 1];
+  const target = Number(revT?.value) || state.target || 0;
+  const revO = state.revisedOvers?.[state.revisedOvers.length - 1];
+  const totalOvers = Number(revO?.value) || state.overs || 0;
+
+  const ballsBowled = state.over * 6 + state.ball;
+  const ballsRemaining = Math.max(0, totalOvers * 6 - ballsBowled);
+  const runsNeeded = Math.max(0, target - state.runs);
+  const rrr = ballsRemaining > 0 ? (runsNeeded / (ballsRemaining / 6)).toFixed(2) : "0.00";
+
+  setText("chase-target", target);
+  setText("chase-rrr", rrr);
+  setText("chase-need", runsNeeded);
+  setText("chase-balls", ballsRemaining);
 }
 
 function applyBat(who, s) {
@@ -1313,6 +1408,16 @@ function setOverButton(label) {
   b.textContent = label;
   b.classList.toggle("red", label === "End Over");
   b.classList.toggle("teal", label !== "End Over");
+  updateCaptureEnabled();
+}
+
+// Start Capture is only usable once a ball has been started (Start Ball pressed);
+// it captures the delivery. An in-progress capture stays enabled so it can
+// always be stopped, even after the ball is ended.
+function updateCaptureEnabled() {
+  const cap = document.getElementById("btn-capture");
+  if (!cap) return;
+  cap.disabled = !(state.ballStarted || state.capturing);
 }
 
 function setBallButton(label) {
@@ -1322,6 +1427,7 @@ function setBallButton(label) {
   const ending = label.startsWith("End Ball");
   b.classList.toggle("red", ending);
   b.classList.toggle("teal", !ending);
+  updateCaptureEnabled();
 }
 
 // A ball may only be entered once its over and the ball itself are started.
@@ -1487,9 +1593,9 @@ function popupShell(title, bodyHtml, wide = false) {
     </div>`;
 }
 
-function selectEl(label, options, value = "Select") {
+function selectEl(label, options, value = "Select", id = "") {
   const opts = [value, ...options].map((o) => `<option>${o}</option>`).join("");
-  return `<label class="f-row"><span class="f-label">${label}</span><select class="f-select">${opts}</select></label>`;
+  return `<label class="f-row"><span class="f-label">${label}</span><select class="f-select"${id ? ` id="${id}"` : ""}>${opts}</select></label>`;
 }
 
 // ---- Appeals --------------------------------------------------------------
@@ -1556,30 +1662,45 @@ function overlayRemarks() {
 
 // ---- Penalty --------------------------------------------------------------
 
+const PENALTY_REASONS = [
+  "Player returning without permission, comes in contact with the ball while in play",
+  "Fielding the ball, willfully fielding it otherwise",
+  "The ball when in play strikes the helmet of fielding side kept on the ground within the field of play",
+  "Changing balls condition",
+  "Deliberate attempt to distract striker — Ball not count as one of the over",
+  "Deliberate distraction or obstruction of batsman — Ball shall not count as one of the over",
+  "Time wasting by fielding side", "Fielder damaging the pitch",
+];
+
 function overlayPenalty() {
   const body = `
-    <div class="seg-row center"><div class="seg"><button class="seg-btn active">Batting</button><button class="seg-btn">Bowling</button></div></div>
+    <div class="seg-row center"><div class="seg"><button class="seg-btn active" data-pen-side="Batting">Batting</button><button class="seg-btn" data-pen-side="Bowling">Bowling</button></div></div>
     <div class="penalty-list">
-      ${["Player returning without permission, comes in contact with the ball while in play",
-         "Fielding the ball, willfully fielding it otherwise",
-         "The ball when in play strikes the helmet of fielding side kept on the ground within the field of play",
-         "Changing balls condition",
-         "Deliberate attempt to distract striker — Ball not count as one of the over",
-         "Deliberate distraction or obstruction of batsman — Ball shall not count as one of the over",
-         "Time wasting by fielding side","Fielder damaging the pitch"].map((p)=>`<div class="penalty-row"><label class="ck"><input type="checkbox"/></label> ${p}</div>`).join("")}
+      ${PENALTY_REASONS.map((p, i) => `<div class="penalty-row"><label class="ck"><input type="checkbox" data-pen="${i}"/></label> ${p}</div>`).join("")}
     </div>
-    <div class="btn-row-modal center"><button class="m-btn m-green" data-close>Save</button><button class="m-btn m-yellow" data-close>Clear</button></div>`;
+    <div class="btn-row-modal center"><button class="m-btn m-green" id="pen-save">Save</button><button class="m-btn m-yellow" data-close>Clear</button></div>`;
   openOverlay(popupShell("PENALTY", body));
   wireSeg();
+  document.getElementById("pen-save")?.addEventListener("click", () => {
+    const reasons = [...document.querySelectorAll("[data-pen]:checked")]
+      .map((c) => PENALTY_REASONS[Number(c.dataset.pen)]);
+    if (!reasons.length) { toast("Select at least one reason"); return; }
+    const side = document.querySelector(".seg-btn.active[data-pen-side]")?.dataset.penSide || "Batting";
+    state.penalties.push({ side, reasons, over: `${state.over}.${state.ball}`, innings: state.innings });
+    scheduleSave();
+    closeOverlay();
+    toast("Penalty saved");
+  });
 }
 
 // ---- Wickets --------------------------------------------------------------
 
 function overlayWickets() {
   const dis = DISMISSALS.map((d) => `<button class="pill-btn" data-dismiss>${d}</button>`).join("");
+  const batOpts = [state.striker, state.nonStriker].map((o) => `<option>${o}</option>`).join("");
   const body = `
     <div class="pill-grid">${dis}</div>
-    ${selectEl("Batsman Out", [state.striker, state.nonStriker])}
+    <label class="f-row"><span class="f-label">Batsman Out</span><select class="f-select" id="wkt-batsman">${batOpts}</select></label>
     ${selectEl("Fielder", FIELDERS)}
     ${selectEl("Bowler", OMAN_BOWLERS)}
     <label class="f-row"><span class="f-label">Wicket No</span><input class="f-input" value="${state.wkts + 1}" /></label>
@@ -1589,17 +1710,21 @@ function overlayWickets() {
     </div>`;
   openOverlay(popupShell("WICKETS", body));
   const root = overlayRoot();
+  let dismissal = null;
   root.querySelectorAll("[data-dismiss]").forEach((b) => b.addEventListener("click", () => {
     root.querySelectorAll("[data-dismiss]").forEach((x) => x.classList.remove("active"));
     b.classList.add("active");
+    dismissal = b.textContent.trim();
   }));
   document.getElementById("wkt-save")?.addEventListener("click", () => {
-    closeOverlay();
     // Stage the wicket onto the current ball; it commits when End Ball is pressed
     // (so any runs on the same delivery, e.g. a run-out, can still be entered).
     if (!state.ballStarted) { flash(document.getElementById("btn-ball")); toast("Start the ball first"); return; }
-    stageDelivery({ wicket: true });
-    toast("Wicket staged — press End Ball to confirm");
+    if (!dismissal) { toast("Select a dismissal type"); return; }
+    const outBatsman = document.getElementById("wkt-batsman")?.value || state.striker;
+    closeOverlay();
+    stageDelivery({ wicket: true, outBatsman, dismissal });
+    toast(`${dismissal} staged — press End Ball to confirm`);
   });
 }
 
@@ -1774,7 +1899,22 @@ function overlayMatchEvents(active = "Breaks") {
       const comments = document.getElementById("mr-comments");
       if (!result.value || result.value === "Select") { flash(result); toast("Select a result type"); return; }
       if (!comments.value.trim()) { flash(comments); toast("Comments are required"); return; }
+      // Save the result to the match state (persisted to the DB).
+      const pick = (id) => document.getElementById(id)?.value || "";
+      state.matchResult = {
+        resultType: result.value,
+        team: pick("mr-team"),
+        comments: comments.value.trim(),
+        manOfMatch: pick("mr-motm"),
+        manOfSeries: pick("mr-mots"),
+        bestBatsman: pick("mr-best-bat"),
+        bestBowler: pick("mr-best-bowl"),
+        bestAllRounder: pick("mr-best-ar"),
+        mvp: pick("mr-mvp"),
+      };
+      scheduleSave();
       closeOverlay();
+      toast("Match result saved");
     });
   }
 
@@ -1786,12 +1926,14 @@ function overlayMatchEvents(active = "Breaks") {
       const rec = buildRecord();
       if (!rec) return; // buildRecord toasts + returns null when invalid
       arr.push(rec);
+      scheduleSave();   // persist the event to the DB
       overlayMatchEvents(active);
       toast("Saved");
     });
     document.getElementById(delId)?.addEventListener("click", () => {
       if (!arr.length) { closeOverlay(); return; }
       arr.pop();
+      scheduleSave();
       overlayMatchEvents(active);
       toast("Last entry removed");
     });
@@ -1970,14 +2112,14 @@ function matchEventBody(name) {
         <div class="me-results">
           <div class="me-results-left">
             <label class="f-row"><span class="f-label">Result Type <span class="req">*</span></span><select class="f-select" id="mr-result">${["Select","Win","Loss","Tie","No Result","Abandoned"].map((o)=>`<option>${o}</option>`).join("")}</select></label>
-            ${selectEl("Team", ["OMN","CANA"]) }
+            ${selectEl("Team", ["OMN","CANA"], "Select", "mr-team") }
             <label class="f-row"><span class="f-label">Comments <span class="req">*</span></span><input class="f-input" id="mr-comments" placeholder="Comments"/></label>
-            ${selectEl("Man Of The Match", [...CANADA, ...OMAN_BOWLERS])}
-            ${selectEl("Man Of The Series", [...CANADA, ...OMAN_BOWLERS])}
-            ${selectEl("Best Batsman", CANADA)}
-            ${selectEl("Best Bowler", OMAN_BOWLERS)}
-            ${selectEl("Best All Rounder", CANADA)}
-            ${selectEl("Most Valuable Player", CANADA)}
+            ${selectEl("Man Of The Match", [...CANADA, ...OMAN_BOWLERS], "Select", "mr-motm")}
+            ${selectEl("Man Of The Series", [...CANADA, ...OMAN_BOWLERS], "Select", "mr-mots")}
+            ${selectEl("Best Batsman", CANADA, "Select", "mr-best-bat")}
+            ${selectEl("Best Bowler", OMAN_BOWLERS, "Select", "mr-best-bowl")}
+            ${selectEl("Best All Rounder", CANADA, "Select", "mr-best-ar")}
+            ${selectEl("Most Valuable Player", CANADA, "Select", "mr-mvp")}
           </div>
           <div class="me-results-right">
             <div class="points-head">POINTS</div>
@@ -2418,6 +2560,8 @@ function wireCapture() {
       btn.textContent = active ? "Start Capture" : "End Capture";
       btn.classList.toggle("teal", active);
       btn.classList.toggle("red", !active);
+      state.capturing = !active;
+      updateCaptureEnabled();
     });
     return;
   }
@@ -2431,6 +2575,8 @@ function wireCapture() {
     // Drive the toolbar icon colours: while capturing, the record icon turns red
     // and the stop icon turns black.
     document.querySelector(".video-toolbar")?.classList.toggle("capturing", active);
+    state.capturing = active;      // keeps the button enabled while recording
+    updateCaptureEnabled();
   }
   let captureLabel = "";
   async function start() {
@@ -2613,6 +2759,12 @@ function applyMatch(match) {
   state.matchOver = false;
   state.overStarted = false;
   state.ballStarted = false;
+  state.nextBatIndex = 2; // openers occupy 0 and 1; next in is #3
+  state.dismissed = [];
+  // Fresh match: clear any Match Events left over from a previous one.
+  state.breaks = []; state.otherWickets = []; state.powerPlays = [];
+  state.ballChanges = []; state.revisedOvers = []; state.revisedTargets = [];
+  state.penalties = []; state.fieldingEvents = []; state.matchResult = null;
 }
 
 // ---- persistence (debounced) ----------------------------------------------
@@ -2627,6 +2779,16 @@ function serializeState() {
     bowler: state.bowler, bowlEnd: state.bowlEnd,
     bat: state.bat, bowl: state.bowl, log: state.log,
     overRunsThisOver: state.overRunsThisOver, thisOver: state.thisOver,
+    // innings/target/overs so a resumed 2nd innings still shows the chase panel
+    innings: state.innings, target: state.target, overs: state.overs,
+    // batting-order tracking so the right batsman comes in after a resume
+    nextBatIndex: state.nextBatIndex, dismissed: state.dismissed,
+    // Match Events — all persisted so they survive resume and reporting.
+    breaks: state.breaks, otherWickets: state.otherWickets,
+    powerPlays: state.powerPlays, ballChanges: state.ballChanges,
+    revisedOvers: state.revisedOvers, revisedTargets: state.revisedTargets,
+    penalties: state.penalties, fieldingEvents: state.fieldingEvents,
+    matchResult: state.matchResult,
   };
 }
 function scheduleSave() {
@@ -2668,6 +2830,7 @@ async function boot() {
   syncToggles();
   render();
   wireCapture();
+  updateCaptureEnabled(); // Start Capture stays disabled until a ball is started
   wireShortcuts();
 
   // Optional deep-link: index.html?open=matchevents (or appeals, fielding, wickets,

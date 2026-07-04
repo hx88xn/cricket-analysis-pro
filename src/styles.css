@@ -274,6 +274,21 @@ a.home-main-btn {
   margin-bottom: 8px;
 }
 
+.score-chase-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 14px;
+  margin-top: 6px;
+}
+.score-chase-row .chase-item {
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  font-size: 10px;
+}
+.score-chase-row[hidden] { display: none; }
+
 .score-block,
 .overs-block {
   display: flex;
