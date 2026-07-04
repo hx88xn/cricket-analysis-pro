@@ -43,30 +43,33 @@ let SHOT_TYPES = {
   ],
 };
 
-// The ▲ key is a "shift" toggle: the default page exposes 1/2/3 + boundary
-// B4/B6, while the shifted page swaps the first two columns to plain run values
-// 4/5/6/7/8 (so big run totals can be entered without the boundary flag). The
-// ▲ cell highlights red while shifted.
+// The scoring bar: a single horizontal row of Wicket ▾ (red) · extras Pen/W/NB/
+// LB/B (teal) · runs 0/1/2/3/4▾/6▾/?▾ (green). The ▾ buttons open a small menu:
+//   Wicket ▾ → the Wickets overlay
+//   4 ▾ / 6 ▾ → Boundary vs Ran for that value
+//   ? ▾ → quick 5/7/8 plus a custom run entry (0–99, excluding the bar numbers)
+// RBW and Over Throw live in the small row above the bar.
 function getKeypadKeys() {
-  // ▲ toggles the 4-8 "shifted" run values in the first two cols. RBW is an
-  // external-parameter toggle (no runs) — it highlights while armed and is
-  // recorded against the next ball logged.
-  const s = state.keypadShifted;
   return [
-    { label: s ? "4" : "1", type: "run", val: s ? 4 : 1 },
-    s ? { label: "7", type: "run", val: 7 } : { label: "B4", type: "run", val: 4, cls: "alt", boundary: true },
-    { label: "NB", type: "ext", ext: "NB", cls: "alt" },
-    { label: s ? "5" : "2", type: "run", val: s ? 5 : 2 },
-    s ? { label: "8", type: "run", val: 8 } : { label: "B6", type: "run", val: 6, cls: "alt", boundary: true },
-    { label: "WD", type: "ext", ext: "WD", cls: "alt" },
-    { label: s ? "6" : "3", type: "run", val: s ? 6 : 3 },
-    { label: "MARK FOR EDIT", type: "mark", cls: "alt narrow" },
-    { label: "LB", type: "ext", ext: "LB", cls: "alt" },
-    { label: "▲", type: "shift", cls: `icon-up${s ? " shifted" : ""}` },
-    { label: "RBW", type: "rbw", cls: `alt${state.rbw ? " active-mode" : ""}` },
-    { label: "B", type: "ext", ext: "B", cls: "alt" },
+    { label: "Wicket", type: "wicket", cls: "kb-wicket", caret: true, group: "wicket" },
+    { label: "Pen", type: "pen", ext: "P", cls: "kb-ext", group: "ext" },
+    { label: "W", type: "ext", ext: "WD", cls: "kb-ext", group: "ext" },
+    { label: "NB", type: "ext", ext: "NB", cls: "kb-ext", group: "ext" },
+    { label: "LB", type: "ext", ext: "LB", cls: "kb-ext", group: "ext" },
+    { label: "B", type: "ext", ext: "B", cls: "kb-ext", group: "ext" },
+    { label: "0", type: "run", val: 0, cls: "kb-run", group: "run" },
+    { label: "1", type: "run", val: 1, cls: "kb-run", group: "run" },
+    { label: "2", type: "run", val: 2, cls: "kb-run", group: "run" },
+    { label: "3", type: "run", val: 3, cls: "kb-run", group: "run" },
+    { label: "4", type: "run4", val: 4, cls: "kb-run", caret: true, group: "run" },
+    { label: "6", type: "run6", val: 6, cls: "kb-run", caret: true, group: "run" },
+    { label: "?", type: "other", cls: "kb-run", caret: true, group: "run" },
   ];
 }
+
+// Run values already present as their own buttons on the bar (excluded from the
+// "?" custom-run entry).
+const BAR_RUN_VALUES = new Set([0, 1, 2, 3, 4, 6]);
 
 // Squads. Default to the recorded Canada-vs-Oman session so the screen still
 // works when opened standalone; replaced at boot when a ?match=<id> is loaded
@@ -293,24 +296,32 @@ function fillKeypad() {
   if (!el) return;
   el.innerHTML = "";
   const staged = state.staged;
+  // Buttons are wrapped in per-group containers so a group (e.g. the runs
+  // 0/1/2/3/4/6/?) never breaks across lines — the bar wraps only between groups.
+  const groups = {};
   getKeypadKeys().forEach((k) => {
+    const g = groups[k.group] || (groups[k.group] = document.createElement("div"));
+    g.className = `kb-group kb-group-${k.group}`;
     const b = document.createElement("button");
     b.type = "button";
     b.className = `keypad-btn ${k.cls || ""}`.trim();
-    b.textContent = k.label;
+    if (k.caret) b.innerHTML = `<span class="kb-label">${k.label}</span><span class="kb-caret">&#9662;</span>`;
+    else b.textContent = k.label;
     // Keep the staged delivery's key highlighted until the ball is committed.
-    if (staged && ((staged.type === "run" && k.type === "run" && k.val === staged.val)
-        || (staged.type === "ext" && k.type === "ext" && k.ext === staged.ext))) {
+    const isRunKey = k.type === "run" || k.type === "run4" || k.type === "run6";
+    if (staged && ((staged.type === "run" && isRunKey && k.val === staged.val)
+        || (staged.type === "ext" && (k.type === "ext" || k.type === "pen") && k.ext === staged.ext))) {
       b.classList.add("staged");
     }
     if (k.disabled) {
       b.disabled = true;
       b.classList.add("disabled");
     } else {
-      b.addEventListener("click", () => handleKeypad(k, b));
+      b.addEventListener("click", (e) => handleKeypad(k, b, e));
     }
-    el.appendChild(b);
+    g.appendChild(b);
   });
+  Object.values(groups).forEach((g) => el.appendChild(g));
 }
 
 // ---- Toggles --------------------------------------------------------------
@@ -804,41 +815,99 @@ function positionMenu(menu, clientX, clientY) {
 
 // ---- Keypad / scoring -----------------------------------------------------
 
-function handleKeypad(k, btn) {
-  if (k.type === "shift") {
-    // ▲ shifts the run values (4-8) in the first two columns
-    state.keypadShifted = !state.keypadShifted;
-    fillKeypad();
+function handleKeypad(k, btn, e) {
+  if (k.type === "wicket") {
+    // Red Wicket ▾: open the full Wickets overlay (dismissal + fielder + …).
+    closeContextMenu();
+    overlayWickets();
     return;
   }
-  if (k.type === "rbw") {
-    // RBW is an external parameter: arm/disarm the flag for the next ball. It
-    // adds no runs — it is just recorded against the ball when logged.
-    state.rbw = !state.rbw;
-    fillKeypad();
+  if (k.type === "pen") {
+    // Penalty runs awarded to the batting side (5 by default), recorded as an
+    // extra on the current ball.
+    stageDelivery({ runs: 0, ext: 5, extLabel: "P", legal: true }, { type: "ext", ext: "P" });
     flash(btn);
     return;
   }
-  if (k.type === "mark") {
-    // Flag the most recently entered ball for later editing (toggles), and
-    // persist it on the ball entry so marked balls can be reviewed afterwards.
-    const last = state.log[state.log.length - 1];
-    if (!last) { toast("No ball to mark yet"); return; }
-    last.marked = !last.marked;
-    btn.classList.toggle("marked", last.marked);
-    toast(last.marked ? `Ball ${last.num} marked for edit` : `Ball ${last.num} unmarked`);
-    render();
+  if (k.type === "run4" || k.type === "run6") {
+    // The ▾ opens Boundary vs Ran for that value (the tiny caret is hard to hit,
+    // so the whole button opens the menu).
+    openRunVariantMenu(btn, k.val);
+    return;
+  }
+  if (k.type === "other") {
+    // "?" opens the quick 5/7/8 list plus a custom run entry.
+    openOtherRunsMenu(btn);
     return;
   }
   if (k.type === "run") {
     // When RBW is armed, the dialpad number is captured as RBW external data
     // (no wicket, no extra runs — the runs still score as a normal delivery).
-    stageDelivery({ runs: k.val, ext: 0, boundary: k.boundary, legal: true, rbw: state.rbw ? k.val : 0 },
-      { type: "run", val: k.val });
+    stageRun(k.val, false);
   } else if (k.type === "ext") {
     handleExtra(k.ext);
   }
   flash(btn);
+}
+
+// Stage a plain run value (boundary flag distinguishes a hit-to-the-rope 4/6
+// from one run along the ground, which affects the batter's 4s/6s tally).
+function stageRun(val, boundary) {
+  stageDelivery({ runs: val, ext: 0, boundary, legal: true, rbw: state.rbw ? val : 0 }, { type: "run", val });
+}
+
+// 4 ▾ / 6 ▾ : choose whether the boundary was hit to the rope or run along it.
+function openRunVariantMenu(btn, val) {
+  openKeypadMenu(btn, (menu) => {
+    [[`Boundary ${val}`, true], [`Ran ${val}`, false]].forEach(([label, boundary]) => {
+      const b = document.createElement("button");
+      b.type = "button"; b.className = "ctx-item"; b.textContent = label;
+      b.addEventListener("click", () => { stageRun(val, boundary); closeContextMenu(); flash(btn); });
+      menu.appendChild(b);
+    });
+  });
+}
+
+// "?" : quick 5/7/8 plus a custom number (0–99, excluding the bar's own values).
+function openOtherRunsMenu(btn) {
+  openKeypadMenu(btn, (menu) => {
+    [5, 7, 8].forEach((n) => {
+      const b = document.createElement("button");
+      b.type = "button"; b.className = "ctx-item"; b.textContent = String(n);
+      b.addEventListener("click", () => { stageRun(n, false); closeContextMenu(); flash(btn); });
+      menu.appendChild(b);
+    });
+    const row = document.createElement("div");
+    row.className = "ctx-input-row";
+    const inp = document.createElement("input");
+    inp.type = "number"; inp.min = "0"; inp.max = "99"; inp.placeholder = "Runs";
+    inp.className = "ctx-input";
+    const add = document.createElement("button");
+    add.type = "button"; add.className = "ctx-item ctx-add"; add.textContent = "Add";
+    const commit = () => {
+      const v = Number(inp.value);
+      if (inp.value === "" || !Number.isInteger(v) || v < 0 || v >= 100) { toast("Enter a whole number 0–99"); return; }
+      if (BAR_RUN_VALUES.has(v)) { toast(`${v} already has its own button`); return; }
+      stageRun(v, false); closeContextMenu(); flash(btn);
+    };
+    add.addEventListener("click", commit);
+    inp.addEventListener("keydown", (e) => { if (e.key === "Enter") { e.preventDefault(); commit(); } });
+    row.append(inp, add);
+    menu.appendChild(row);
+    setTimeout(() => inp.focus(), 0);
+  });
+}
+
+// Build a small menu anchored above a keypad button (reusing context-menu chrome).
+function openKeypadMenu(btn, build) {
+  closeContextMenu();
+  const menu = document.createElement("div");
+  menu.id = "context-menu";
+  menu.className = "context-menu keypad-menu";
+  build(menu);
+  const r = btn.getBoundingClientRect();
+  positionMenu(menu, r.left, r.top);
+  setTimeout(() => document.addEventListener("mousedown", onDocDownForMenu, true), 0);
 }
 
 function handleExtra(ext) {
@@ -1344,6 +1413,15 @@ function wireOverthrow() {
       flash(b);
       setOpen(false);
     });
+  });
+
+  // RBW toggle (external parameter, no runs) sits beside the OVER THROW button.
+  const rbw = document.getElementById("rbw-btn");
+  rbw?.addEventListener("click", () => {
+    state.rbw = !state.rbw;
+    rbw.classList.toggle("active", state.rbw);
+    rbw.setAttribute("aria-pressed", String(state.rbw));
+    flash(rbw);
   });
 }
 
@@ -2350,6 +2428,9 @@ function wireCapture() {
     btn.textContent = active ? "End Capture" : "Start Capture";
     btn.classList.toggle("teal", !active);
     btn.classList.toggle("red", active);
+    // Drive the toolbar icon colours: while capturing, the record icon turns red
+    // and the stop icon turns black.
+    document.querySelector(".video-toolbar")?.classList.toggle("capturing", active);
   }
   let captureLabel = "";
   async function start() {

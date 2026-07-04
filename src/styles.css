@@ -514,6 +514,19 @@ a.home-main-btn {
   color: #fff;
 }
 
+/* While a capture is running: the record (camera) icon turns red and the stop
+   (monitor) icon turns black. */
+.video-toolbar.capturing .camera-icon {
+  background: rgba(211, 47, 47, 0.95);
+  border-color: rgba(239, 111, 94, 0.6);
+  color: #fff;
+}
+.video-toolbar.capturing .monitor-icon {
+  background: #05080e;
+  border-color: rgba(139, 167, 196, 0.32);
+  color: #fff;
+}
+
 .video-actions {
   display: grid;
   grid-template-columns: repeat(5, minmax(0, 1fr));
@@ -2031,9 +2044,63 @@ body.edit-mode .app { outline: 2px solid rgba(240, 199, 97, 0.5); outline-offset
 .events-grid .appeals-row { min-width: 0; }
 .events-grid .appeals-row .appeals-btn { flex: 1; }
 .events-grid .btn { width: 100%; height: 100%; }
-.keypad-row { flex: 0 0 auto; padding: 10px; }
+.keypad-row { flex: 0 0 auto; padding: 10px; display: flex; flex-direction: column; gap: 8px; }
 .keypad-row .keypad-grid { grid-template-rows: repeat(4, minmax(30px, 38px)); }
 .keypad-row .keypad-btn { padding: 6px; font-size: 14px; }
+
+/* OVER THROW + RBW sit in a small row above the scoring bar. */
+.keypad-top-row { display: flex; gap: 8px; }
+.keypad-top-row .keypad-top { flex: 1; padding: 10px; }
+#rbw-btn[aria-pressed="true"], #rbw-btn.active {
+  background: linear-gradient(180deg, #c2494f, #8a2732);
+  border-color: rgba(224, 99, 99, 0.6);
+}
+
+/* Horizontal scoring bar: Wicket (red) · extras (teal) · runs (green). Buttons
+   are grouped so a group never breaks across lines; only whole groups wrap. */
+.keypad-bar { display: flex; flex-wrap: wrap; gap: 8px; align-items: stretch; }
+.kb-group { display: flex; gap: 8px; min-width: 0; }
+.kb-group-ext, .kb-group-run { flex: 1 1 auto; }
+.keypad-row .keypad-bar .keypad-btn {
+  flex: 1 1 auto;
+  min-width: 46px;
+  padding: 12px 6px;
+  gap: 5px;
+}
+.keypad-btn .kb-caret { font-size: 10px; opacity: 0.85; }
+.keypad-btn.kb-wicket {
+  background: linear-gradient(180deg, #ef6f5e, #d9503f);
+  border-color: rgba(239, 111, 94, 0.5);
+  color: #fff; min-width: 92px; flex-grow: 0;
+}
+.keypad-btn.kb-ext {
+  background: linear-gradient(180deg, #45c2c2, #2f9c9c);
+  border-color: rgba(78, 200, 200, 0.45);
+  color: #052423;
+}
+.keypad-btn.kb-run {
+  background: linear-gradient(180deg, #82c740, #5fa22f);
+  border-color: rgba(127, 198, 63, 0.45);
+  color: #0a1f05;
+}
+
+/* Keypad dropdown menu (4 ▾ / 6 ▾ / ? ▾). */
+.keypad-menu { min-width: 160px; padding: 6px; }
+.keypad-menu .ctx-item { border-radius: 8px; }
+.keypad-menu .ctx-input-row {
+  display: flex; gap: 6px; padding: 6px 4px 2px; margin-top: 4px;
+  border-top: 1px solid var(--border, rgba(124, 157, 196, 0.18));
+}
+.keypad-menu .ctx-input {
+  flex: 1 1 auto; width: 100%; min-width: 0; padding: 8px 10px; border-radius: 8px;
+  border: 1px solid var(--border-strong, rgba(124, 157, 196, 0.35));
+  background: rgba(7, 14, 23, 0.92); color: var(--text, #eaf3ff);
+}
+.keypad-menu .ctx-add {
+  flex: 0 0 auto; width: auto; padding: 8px 14px; border-radius: 8px;
+  background: var(--accent, #2bbd96); color: #05121a; font-weight: 700;
+}
+.keypad-menu .ctx-add:hover { filter: brightness(1.08); }
 
 /* Pitch / wagon / grid cells */
 .cb-pitch, .cb-wagon, .cb-bowl, .cb-bat { display: flex; flex-direction: column; gap: 8px; min-height: 0; }

@@ -18,7 +18,7 @@
       <header class="header">
         <div class="header-left">
           <div class="header-back-row">
-            <a href="home.html" class="btn-back-nav">← Back</a>
+            <a href="prototype.html?screen=match-details" class="btn-back-nav">← Back</a>
           </div>
           <div class="score-top-row">
             <div class="score-block">
@@ -156,8 +156,8 @@
               aria-label="Camera preview"
             ></video>
             <div class="video-toolbar">
-              <span class="video-icon monitor-icon" title="Display">&#9635;</span>
-              <span class="video-icon camera-icon red-icon" title="Camera">&#9673;</span>
+              <span class="video-icon monitor-icon" title="Stop">&#9635;</span>
+              <span class="video-icon camera-icon" title="Record">&#9673;</span>
             </div>
           </div>
           <div class="video-actions">
@@ -197,8 +197,11 @@
           </div>
 
           <div class="keypad-panel panel keypad-row">
-            <button type="button" class="btn btn-block blue keypad-top" id="overthrow-btn" aria-expanded="false">OVER THROW</button>
-            <div class="keypad-grid" id="keypad"></div>
+            <div class="keypad-top-row">
+              <button type="button" class="btn blue keypad-top" id="overthrow-btn" aria-expanded="false">OVER THROW</button>
+              <button type="button" class="btn blue keypad-top" id="rbw-btn" aria-pressed="false">RBW</button>
+            </div>
+            <div class="keypad-bar" id="keypad"></div>
             <div class="overthrow-grid" id="overthrow-grid" hidden></div>
           </div>
         </div>
