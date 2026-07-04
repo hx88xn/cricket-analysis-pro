@@ -241,23 +241,8 @@
 
         <!-- Col 3 (row 2): wagon wheel + footwork radios -->
         <div class="cb-wagon">
-          <div class="footer-radios">
-            <label class="radio-pill"><input type="checkbox" data-tag="btn" /> BTN</label>
-            <label class="radio-pill"><input type="checkbox" data-tag="unc" /> UNC</label>
-            <div class="select-wrap">
-              <select class="dark-select">
-                <option>Select</option>
-                <option>Option A</option>
-                <option>Option B</option>
-              </select>
-            </div>
-            <label class="radio-pill"><input type="checkbox" data-tag="wtb" /> WTB</label>
-            <label class="radio-pill"><input type="checkbox" data-tag="rs" /> RS</label>
-            <span class="spacer"></span>
-            <label class="radio-pill"><input type="radio" name="footwork" data-footwork="ff" /> FF</label>
-            <label class="radio-pill"><input type="radio" name="footwork" data-footwork="bf" /> BF</label>
-            <label class="radio-pill"><input type="radio" name="footwork" data-footwork="sd" /> SD</label>
-            <label class="radio-pill"><input type="radio" name="footwork" data-footwork="crm" /> CRM</label>
+          <div class="wagon-toolbar">
+            <button type="button" class="in-air-btn" id="in-air-btn" aria-pressed="false" title="Shot played in the air">In Air</button>
           </div>
           <div class="field-map-wrap" id="field-map-wrap">
             <img
@@ -275,6 +260,12 @@
 
         <!-- Col 4 (row 2): Aggressive / Defensive bat grid -->
         <div class="cb-bat">
+          <div class="footer-radios footwork-row">
+            <label class="radio-pill"><input type="radio" name="footwork" data-footwork="ff" /> FF</label>
+            <label class="radio-pill"><input type="radio" name="footwork" data-footwork="bf" /> BF</label>
+            <label class="radio-pill"><input type="radio" name="footwork" data-footwork="sd" /> SD</label>
+            <label class="radio-pill"><input type="radio" name="footwork" data-footwork="crm" /> CRM</label>
+          </div>
           <div class="bat-panel panel">
             <div class="toggle-row">
               <button type="button" class="expand-arrow" id="bat-expand" title="Show more">&#9656;</button>

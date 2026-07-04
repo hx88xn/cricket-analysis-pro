@@ -132,6 +132,8 @@ const state = {
   // one). Both are recorded onto the ball when it is logged, then reset.
   tags: { btn: false, unc: false, wtb: false, rs: false },
   footwork: null,
+  inAir: false,       // "In Air" toggle beside the wagon wheel (recorded per ball)
+  pendingPlacement: null, // fielding placement chosen via left-click on the wagon wheel
   // RBW is an external parameter (generic flag, default 0). Like over-throw it
   // is recorded against the ball but adds no runs to the score.
   rbw: false,
@@ -621,14 +623,18 @@ function wireFieldMap() {
     removePreview();
     addWagonLine(p.x, p.y, runColor(state.pendingRuns || 0));
     showRegion(p.x, p.y);
-    hideRegionSoon();
+    // Left click draws the line, then offers the fielding-placement menu for
+    // the region it landed in.
+    openPlacementsMenu(e.clientX, e.clientY, p);
   });
 
-  // Right button: context menu for managing the lines.
+  // Right button: fielding events (Caught / Fumble / … → fielder) for the shot,
+  // using the placement chosen on the left click (or the region under cursor).
   wrap.addEventListener("contextmenu", (e) => {
     e.preventDefault();
     const p = clampToField(...posArgs(toPct(e)));
-    openWagonMenu(e.clientX, e.clientY, p);
+    const position = state.pendingPlacement || wagonRegion(p.x, p.y);
+    openFieldingEventsMenu(e.clientX, e.clientY, p, position);
   });
 }
 
@@ -722,8 +728,10 @@ function openFieldingEventsMenu(clientX, clientY, p, position) {
   setTimeout(() => document.addEventListener("mousedown", onDocDownForMenu, true), 0);
 }
 
-// Level 1: fielding positions for the clicked region.
-function openWagonMenu(clientX, clientY, p) {
+// Left-click placements: fielding positions for the region the line landed in.
+// Choosing one records it as the shot's placement (used by the right-click
+// fielding-events menu and stored on the ball).
+function openPlacementsMenu(clientX, clientY, p) {
   closeContextMenu();
   const region = wagonRegion(p.x, p.y);
   const positions = WAGON_POSITIONS[region] || WAGON_REGIONS.map((r) => r.replace(/\b\w/g, (c) => c.toUpperCase()));
@@ -733,13 +741,50 @@ function openWagonMenu(clientX, clientY, p) {
   positions.forEach((pos) => {
     const item = document.createElement("button");
     item.type = "button";
-    item.className = "ctx-item has-sub";
-    item.innerHTML = `<span class="ctx-label">${pos}</span><span class="ctx-arrow">&#8250;</span>`;
-    item.addEventListener("click", () => openFieldingEventsMenu(clientX, clientY, p, pos));
+    item.className = "ctx-item";
+    item.textContent = pos;
+    item.addEventListener("click", () => { recordPlacement(pos, region); closeContextMenu(); });
     menu.appendChild(item);
   });
   positionMenu(menu, clientX, clientY);
   setTimeout(() => document.addEventListener("mousedown", onDocDownForMenu, true), 0);
+}
+
+// Approximate on-field point for a named fielding placement so the wagon line
+// can be mapped to roughly where the ball was fielded. `region` fixes the base
+// direction (its 45° sector centre, 0° = straight behind the batsman); the
+// position name's modifiers nudge the angle toward/away from straight or square,
+// and the depth keyword sets how far out the point sits.
+//   depth: silly/short = close ring, normal = mid ring, deep/long/sweeper/cow = boundary
+function placementPoint(position, region) {
+  const sector = Math.max(0, WAGON_REGIONS.indexOf(region));
+  let angle = sector * 45 + 22.5;          // region centre
+  const toFront = sector < 4 ? 1 : -1;     // leg side (0-180) vs off side (180-360)
+  const n = position.toLowerCase();
+  if (n.includes("straight")) angle += 22 * toFront; // down the ground
+  if (n.includes("forward"))  angle += 15 * toFront; // in front of square
+  if (n.includes("backward")) angle -= 15 * toFront; // behind square
+  if (n.includes("fine"))     angle -= 15 * toFront; // finer (behind square)
+  if (n.includes("square"))   angle -=  8 * toFront; // squarer
+  let r = 180;                             // normal ring
+  if (n.includes("silly")) r = 70;
+  else if (n.includes("short")) r = 115;
+  else if (/deep|long|sweeper|cow corner/.test(n)) r = 270;
+  const a = (angle * Math.PI) / 180;
+  return clampToField(FIELD_OX + r * Math.sin(a), FIELD_OY - r * Math.cos(a));
+}
+
+function recordPlacement(position, region) {
+  state.pendingPlacement = position;
+  // Map the red line to the selected placement's direction + depth.
+  const pt = placementPoint(position, region);
+  addWagonLine(pt.x, pt.y, runColor(state.pendingRuns || 0));
+  const label = document.getElementById("wagon-region");
+  if (label) {
+    label.textContent = position;
+    clearTimeout(label._t);
+    label._t = setTimeout(() => { label.textContent = ""; }, 2600);
+  }
 }
 
 // Place a freshly-built root menu on screen, flipping up/left near the edges.
@@ -859,6 +904,8 @@ function logBall({ runs = 0, ext = 0, boundary = false, legal = true, bye = fals
   // also persist the coding context so the ball can be fully reviewed later
   logged.tags = { ...state.tags };
   logged.footwork = state.footwork;
+  logged.inAir = state.inAir;
+  logged.placement = state.pendingPlacement;
   logged.overthrow = overthrow;
   // RBW: external data only — no wicket, no added runs. Its value is the dialpad
   // number entered for this ball (when armed), otherwise 0.
@@ -922,6 +969,8 @@ function logBall({ runs = 0, ext = 0, boundary = false, legal = true, bye = fals
   state.bowlType = null; state.shotType = null;
   state.tags = { btn: false, unc: false, wtb: false, rs: false };
   state.footwork = null;
+  state.inAir = false;
+  state.pendingPlacement = null;
   state.rbw = false; // external param disarms after the ball
   fillKeypad();      // refresh the RBW highlight
   syncTagControls(); // clear the tag bar for the next ball
@@ -1820,7 +1869,7 @@ function matchEventBody(name) {
           ${["Mankading","Absent Hurt","Timed Out","Retired Hurt","Retired Out"].map((d)=>`<button class="pill-btn" data-dismiss>${d}</button>`).join("")}
         </div>
         <div class="me-form-narrow">
-          <label class="f-row"><span class="f-label">Player Name</span><select class="f-select" id="ow-player">${["PLAYER NAME", ...CANADA].map((o)=>`<option>${o}</option>`).join("")}</select></label>
+          <label class="f-row"><span class="f-label">Player Name</span><select class="f-select" id="ow-player">${["PLAYER NAME", state.striker, state.nonStriker].map((o)=>`<option>${o}</option>`).join("")}</select></label>
           <label class="f-row"><span class="f-label">Wicket No</span><input class="f-input" id="ow-wktno" value="${state.wkts + 1}"/></label>
           <button class="m-btn m-dark wide" >Browse Video</button>
         </div>
@@ -2046,6 +2095,12 @@ function wireTags() {
   document.querySelectorAll("input[data-footwork]").forEach((el) => {
     el.addEventListener("change", () => { if (el.checked) state.footwork = el.dataset.footwork; });
   });
+  const air = document.getElementById("in-air-btn");
+  air?.addEventListener("click", () => {
+    state.inAir = !state.inAir;
+    air.classList.toggle("active", state.inAir);
+    air.setAttribute("aria-pressed", String(state.inAir));
+  });
 }
 
 // ---- Quick "+" spec adders ------------------------------------------------
@@ -2115,6 +2170,8 @@ function syncTagControls() {
   document.querySelectorAll("input[data-footwork]").forEach((el) => {
     el.checked = state.footwork === el.dataset.footwork;
   });
+  const air = document.getElementById("in-air-btn");
+  if (air) { air.classList.toggle("active", state.inAir); air.setAttribute("aria-pressed", String(state.inAir)); }
 }
 
 // ---- Overlay routing ------------------------------------------------------

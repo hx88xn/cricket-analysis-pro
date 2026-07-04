@@ -2046,6 +2046,29 @@ body.edit-mode .app { outline: 2px solid rgba(240, 199, 97, 0.5); outline-offset
   box-shadow: var(--shadow-md);
 }
 .cb-wagon .footer-radios { flex: 0 0 auto; justify-content: center; }
+
+/* Thin toolbar above the wagon wheel holding the "In Air" toggle. Kept outside
+   the wheel so the wagon (red) line never draws over it. */
+.wagon-toolbar { flex: 0 0 auto; display: flex; align-items: center; padding: 2px; }
+.cb-bat .footwork-row { flex: 0 0 auto; justify-content: center; }
+
+/* Small "In Air" toggle button. */
+.in-air-btn {
+  padding: 5px 14px;
+  border-radius: 8px;
+  border: 1px solid var(--border-strong, rgba(124, 157, 196, 0.35));
+  background: rgba(12, 25, 40, 0.85);
+  color: #eaf3ff;
+  font: 700 12px "Sora", "Manrope", sans-serif;
+  letter-spacing: 0.04em;
+  cursor: pointer;
+}
+.in-air-btn:hover { background: rgba(20, 40, 62, 0.92); }
+.in-air-btn.active {
+  background: var(--accent, #2bbd96);
+  border-color: var(--accent, #2bbd96);
+  color: #05121a;
+}
 .cb-bowl .bowl-panel,
 .cb-bat .bat-panel {
   flex: 1;
