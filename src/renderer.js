@@ -167,7 +167,14 @@ const state = {
   pendingWagonLine: null,
   pitchInputs: [],    // current ball's pitch-map dots (saved + cleared per ball)
   fieldingEvents: [],
+  // Match Events records — each Save appends here and the screen's table below
+  // re-renders from it.
   otherWickets: [],   // dismissals recorded without a delivery (Other Wickets)
+  breaks: [],
+  powerPlays: [],
+  ballChanges: [],
+  revisedOvers: [],
+  revisedTargets: [],
 };
 
 function row(num, bowler, striker, nonstr, bowl, shot, runs, ext) {
@@ -937,6 +944,25 @@ function newBatsman() {
   state.bat.striker = { runs: 0, balls: 0, fours: 0, sixes: 0 };
 }
 
+// Record an Other-Wicket dismissal onto the current delivery: it appears in the
+// ball-by-ball log for the same ball and bumps the wicket count, but the ball is
+// not counted as a legal delivery (the over/ball counters are left untouched).
+function logOtherWicket(batsman, dismissal) {
+  pushHistory();
+  const ballNum = `${state.over}.${state.ball + 1}`;
+  state.log.push(row(ballNum, shortName(state.bowler), shortName(batsman),
+    shortName(state.nonStriker), state.bowlType || "", "", 0, "W"));
+  const logged = state.log[state.log.length - 1];
+  logged.wicket = true;
+  logged.otherWicket = true;
+  logged.dismissal = dismissal;
+  state.wkts += 1;
+  state.bowl.wkts += 1;
+  state.ballStarted = false;
+  setBallButton("Start Ball");
+  if (state.wkts < 10) newBatsman(); // 10th wicket = all out (no new batter)
+}
+
 function completeOver() {
   state.over += 1;
   state.ball = 0;
@@ -1152,10 +1178,10 @@ function renderLog() {
   if (!body) return;
   const start = Math.max(0, state.log.length - 30);
   body.innerHTML = state.log.slice(start).map((r, i) => `
-    <tr data-index="${start + i}" class="${r.marked ? "marked-ball" : ""}" title="${r.marked ? "Marked for edit — " : ""}Double-click to edit this ball">
+    <tr data-index="${start + i}" class="${r.marked ? "marked-ball" : ""} ${r.wicket ? "wkt-ball" : ""}" title="${r.marked ? "Marked for edit — " : ""}${r.wicket && r.dismissal ? `Wicket: ${r.dismissal} — ` : ""}Double-click to edit this ball">
       <td>${r.marked ? '<span class="mark-flag" title="Marked for edit">⚑</span>' : ""}${r.num}</td>
       <td>${r.bowler}</td><td>${r.striker}</td><td>${r.nonstr}</td>
-      <td>${r.bowl}</td><td>${r.shot}</td><td>${r.runs}</td><td>${r.ext}</td>
+      <td>${r.bowl}</td><td>${r.shot}</td><td>${r.runs}</td><td>${r.ext}${r.wicket && r.dismissal ? ` (${r.dismissal})` : ""}</td>
     </tr>`).join("");
   const wrap = body.closest(".table-wrap");
   if (wrap) wrap.scrollTop = wrap.scrollHeight;
@@ -1586,23 +1612,29 @@ function overlayMatchEvents(active = "Breaks") {
       owDismissal = b.textContent.trim();
     }));
     document.getElementById("ow-save")?.addEventListener("click", () => {
+      // A dismissal here still happens on a live delivery, so the ball must be
+      // started first (it is just not counted as a legal ball).
+      if (!state.ballStarted) { flash(document.getElementById("btn-ball")); toast("Ball not started"); return; }
+      if (state.wkts >= 10) { toast("Innings already has 10 wickets"); return; }
       const batsman = document.getElementById("ow-player")?.value;
       const wicketNo = Number(document.getElementById("ow-wktno")?.value) || state.wkts + 1;
       if (!owDismissal) { toast("Select a dismissal type"); return; }
       if (!batsman || batsman === "PLAYER NAME") { toast("Select a batsman"); return; }
-      // A wicket recorded here is not tied to a delivery: log the dismissal and
-      // bump the wicket count, leaving the over/ball counters and ball log alone.
       state.otherWickets.push({ dismissal: owDismissal, batsman, wicketNo, video: "" });
-      state.wkts += 1;
+      logOtherWicket(batsman, owDismissal); // reflect on the current ball + bump wkts
       render();
-      overlayMatchEvents("Other Wickets"); // refresh the table + next wicket no
-      toast("Wicket recorded (no ball)");
+      if (state.wkts >= 10) endInnings();               // 10th wicket → innings over
+      else overlayMatchEvents("Other Wickets");         // refresh table + next wkt no
+      toast("Wicket recorded");
     });
     document.getElementById("ow-delete")?.addEventListener("click", () => {
       // Remove the most recently saved Other Wicket and roll the count back.
       if (!state.otherWickets.length) { closeOverlay(); return; }
       state.otherWickets.pop();
       state.wkts = Math.max(0, state.wkts - 1);
+      // drop its matching ball-by-ball wicket entry, if present
+      const li = [...state.log].reverse().findIndex((r) => r.wicket && r.otherWicket);
+      if (li >= 0) state.log.splice(state.log.length - 1 - li, 1);
       render();
       overlayMatchEvents("Other Wickets");
       toast("Last Other Wicket removed");
@@ -1618,29 +1650,148 @@ function overlayMatchEvents(active = "Breaks") {
       closeOverlay();
     });
   }
+
+  // Simple list-backed screens: Save appends a record and the table re-renders;
+  // Delete removes the most recent one. `save` reads the form, `arr` is the store.
+  const val = (id) => document.getElementById(id)?.value?.trim() || "";
+  const listScreen = (arr, buildRecord, saveId, delId) => {
+    document.getElementById(saveId)?.addEventListener("click", () => {
+      const rec = buildRecord();
+      if (!rec) return; // buildRecord toasts + returns null when invalid
+      arr.push(rec);
+      overlayMatchEvents(active);
+      toast("Saved");
+    });
+    document.getElementById(delId)?.addEventListener("click", () => {
+      if (!arr.length) { closeOverlay(); return; }
+      arr.pop();
+      overlayMatchEvents(active);
+      toast("Last entry removed");
+    });
+  };
+
+  if (active === "Breaks") {
+    listScreen(state.breaks, () => ({
+      type: val("br-type") || "Break",
+      start: `${val("br-start-d")} ${val("br-start-t")}`.trim(),
+      end: `${val("br-end-d")} ${val("br-end-t")}`.trim(),
+      mins: val("br-dur"),
+    }), "br-save", "br-del");
+  }
+
+  if (active === "Power Play") {
+    listScreen(state.powerPlays, () => {
+      const type = val("pp-type");
+      if (!type || type === "Select") { toast("Select a power play"); return null; }
+      return { type, from: val("pp-from"), to: val("pp-to"), runs: state.runs, wkts: state.wkts };
+    }, "pp-save", "pp-del");
+  }
+
+  if (active === "Ball Change") {
+    let bcType = null;
+    root.querySelectorAll("[data-balltype]").forEach((b) => b.addEventListener("click", () => {
+      root.querySelectorAll("[data-balltype]").forEach((x) => x.classList.remove("active"));
+      b.classList.add("active");
+      bcType = b.textContent.trim();
+    }));
+    listScreen(state.ballChanges, () => {
+      if (!bcType) { toast("Select a ball type"); return null; }
+      return {
+        dt: `${val("bc-dt-d")} ${val("bc-dt-t")}`.trim(),
+        team: state.teamB, inns: state.innings,
+        runs: state.runs, overs: `${state.over}.${state.ball}`, wkts: state.wkts,
+        type: bcType, remarks: val("bc-remarks"),
+      };
+    }, "bc-save", "bc-del");
+  }
+
+  if (active === "Revised Overs" || active === "Revised Target") {
+    const store = active === "Revised Overs" ? state.revisedOvers : state.revisedTargets;
+    listScreen(store, () => {
+      const value = val("rv-val");
+      if (!value) { toast(`Enter the ${active.toLowerCase()}`); return null; }
+      return { value, innings: active === "Revised Overs" ? "1st Innings" : "2nd Innings", reason: val("rv-reason") };
+    }, "rv-save", "rv-del");
+  }
+
+  if (active === "Video Count Validation") {
+    document.getElementById("vcv-btn")?.addEventListener("click", refreshVideoCount);
+    refreshVideoCount();
+  }
+}
+
+// Compare balls coded against the real number of video files saved in this
+// match's recordings folder (counted by the main process).
+async function refreshVideoCount() {
+  const el = document.getElementById("vcv-result");
+  if (!el) return;
+  const balls = state.log.length;
+  let clips = null, note = "";
+  if (window.cricketApp?.countRecordings && state.recordingFolder) {
+    const res = await window.cricketApp.countRecordings(state.recordingFolder, state.innings);
+    if (res?.ok) clips = res.count;
+    else if (res?.reason === "no-root") note = "No recordings folder set — configure it in Configuration → Video.";
+    else note = "Recordings folder not found yet (no clips saved for this match).";
+  } else if (!state.recordingFolder) {
+    note = "No recording folder is set for this match.";
+  } else {
+    note = "Video counting is unavailable in this build.";
+  }
+  let status;
+  if (clips == null) status = `<p class="warn-line">⚠ ${note}</p>`;
+  else if (clips === balls) status = `<p class="ok-line">✓ Video count matches the ball-by-ball log.</p>`;
+  else status = `<p class="warn-line">⚠ Mismatch: ${balls} ball${balls === 1 ? "" : "s"} coded but ${clips} video clip${clips === 1 ? "" : "s"} found.</p>`;
+  const inn = state.innings === 2 ? "2nd Innings" : "1st Innings";
+  el.innerHTML = `<p><strong>${inn}</strong> — Balls coded: <strong>${balls}</strong> · Video clips: <strong>${clips == null ? "—" : clips}</strong></p>${status}`;
 }
 
 function matchEventTitle(name) {
   return name.toUpperCase();
 }
 
-function dateField(label, val = "28-Jan-2026", time = "21:49") {
+function dateField(label, val = "28-Jan-2026", time = "21:49", idBase = "") {
+  const dId = idBase ? `id="${idBase}-d"` : "";
+  const tId = idBase ? `id="${idBase}-t"` : "";
   return `<label class="f-row"><span class="f-label">${label}</span>
-    <span class="dt-pair"><input class="f-input dt-date" value="${val}"/><input class="f-input dt-time" value="${time}"/></span></label>`;
+    <span class="dt-pair"><input class="f-input dt-date" ${dId} value="${val}"/><input class="f-input dt-time" ${tId} value="${time}"/></span></label>`;
 }
 
 function tableHead(cols) {
   return `<table class="data-table grid-table"><thead><tr>${cols.map((c) => `<th>${c} <span class="th-filter">▾</span></th>`).join("")}</tr></thead><tbody></tbody></table>`;
 }
 
-function saveDeleteRow(extra = "") {
-  return `<div class="btn-row-modal center">${extra}<button class="m-btn m-green" data-close>Save</button><button class="m-btn m-red" data-close>Delete</button></div>`;
+function saveDeleteRow(extra = "", saveId = "", deleteId = "") {
+  const save = saveId ? `id="${saveId}"` : "data-close";
+  const del = deleteId ? `id="${deleteId}"` : "data-close";
+  return `<div class="btn-row-modal center">${extra}<button class="m-btn m-green" ${save}>Save</button><button class="m-btn m-red" ${del}>Delete</button></div>`;
 }
+
+// A Match Events data table with rows rendered from a saved-records array.
+function meTable(cols, rowsHtml) {
+  return `<table class="data-table grid-table"><thead><tr>${
+    cols.map((c) => `<th>${c} <span class="th-filter">▾</span></th>`).join("")
+  }</tr></thead><tbody>${rowsHtml}</tbody></table>`;
+}
+const cells = (arr) => arr.map((v) => `<td>${v === "" || v == null ? "—" : v}</td>`).join("");
 
 // Saved Other-Wickets rows (dismissal recorded without a delivery).
 function otherWicketsRows() {
   return state.otherWickets.map((w) =>
-    `<tr><td>${w.dismissal}</td><td>${w.batsman}</td><td>${w.wicketNo}</td><td>${w.video || "—"}</td></tr>`).join("");
+    `<tr>${cells([w.dismissal, w.batsman, w.wicketNo, w.video])}</tr>`).join("");
+}
+function breaksRows() {
+  return state.breaks.map((b) => `<tr>${cells([b.type, b.start, b.end, b.mins])}</tr>`).join("");
+}
+function powerPlaysRows() {
+  return state.powerPlays.map((p) => `<tr>${cells([p.type, p.from, p.to, p.runs, p.wkts])}</tr>`).join("");
+}
+function ballChangesRows() {
+  return state.ballChanges.map((b) =>
+    `<tr>${cells([b.dt, b.team, b.inns, b.runs, b.overs, b.wkts, b.type, b.remarks])}</tr>`).join("");
+}
+function revisedRows(kind) {
+  const arr = kind === "Revised Overs" ? state.revisedOvers : state.revisedTargets;
+  return arr.map((r) => `<tr>${cells([r.value, r.innings, r.reason])}</tr>`).join("");
 }
 
 function matchEventBody(name) {
@@ -1649,10 +1800,10 @@ function matchEventBody(name) {
       return `
         <div class="me-form">
           <div class="me-form-left">
-            ${dateField("Break Start Time")}
-            ${dateField("Break End Time", "28-Jan-2026", "00:00")}
-            <label class="f-row"><span class="f-label">Duration</span><input class="f-input"/></label>
-            <label class="f-row"><span class="f-label">Comments</span><input class="f-input" placeholder="Comments"/></label>
+            ${dateField("Break Start Time", "28-Jan-2026", "21:49", "br-start")}
+            ${dateField("Break End Time", "28-Jan-2026", "00:00", "br-end")}
+            <label class="f-row"><span class="f-label">Duration</span><input class="f-input" id="br-dur"/></label>
+            <label class="f-row"><span class="f-label">Comments</span><input class="f-input" id="br-type" placeholder="Break type / comments"/></label>
           </div>
           <div class="me-include-box">
             <p>Do You Want To Include This Breaks In Players Total Minutes Played</p>
@@ -1660,8 +1811,8 @@ function matchEventBody(name) {
             <label class="ck"><input type="checkbox" checked/> No</label>
           </div>
         </div>
-        ${saveDeleteRow()}
-        ${tableHead(["Break Type", "Started Time", "Ended Time", "Total Mins"])}`;
+        ${saveDeleteRow("", "br-save", "br-del")}
+        ${meTable(["Break Type", "Started Time", "Ended Time", "Total Mins"], breaksRows())}`;
     case "Other Wickets":
       return `
         <p class="me-note">Records a dismissal without a delivery — no ball is counted.</p>
@@ -1680,13 +1831,13 @@ function matchEventBody(name) {
         </table>`;
     case "Ball Change":
       return `
-        ${dateField("Ball Change Date/Time", "28-Jan-2026", "22:05")}
+        ${dateField("Ball Change Date/Time", "28-Jan-2026", "22:05", "bc-dt")}
         <div class="pill-grid wide-pills center">
-          ${["New Ball","Semi New Ball","Second New Ball","Old Ball"].map((d)=>`<button class="pill-btn">${d}</button>`).join("")}
+          ${["New Ball","Semi New Ball","Second New Ball","Old Ball"].map((d)=>`<button class="pill-btn" data-balltype>${d}</button>`).join("")}
         </div>
-        <label class="f-row"><span class="f-label">Remarks</span><textarea class="f-textarea yellow-area" placeholder="Remarks"></textarea></label>
-        ${saveDeleteRow()}
-        ${tableHead(["Ball Change Date/Time","Team Name","Inns #","Runs","Overs","Wkts","Ball Type","Remarks"])}`;
+        <label class="f-row"><span class="f-label">Remarks</span><textarea class="f-textarea yellow-area" id="bc-remarks" placeholder="Remarks"></textarea></label>
+        ${saveDeleteRow("", "bc-save", "bc-del")}
+        ${meTable(["Ball Change Date/Time","Team Name","Inns #","Runs","Overs","Wkts","Ball Type","Remarks"], ballChangesRows())}`;
     case "Match Results":
       return `
         <div class="me-results">
@@ -1726,9 +1877,10 @@ function matchEventBody(name) {
       return `
         <div class="me-form-narrow">
           <label class="f-row"><span class="f-label">Innings</span><span class="f-input f-static">${name === "Revised Overs" ? "1st Innings" : "2nd Innings"}</span></label>
-          <label class="f-row"><span class="f-label">${name === "Revised Overs" ? "Revised Overs" : "Revised Target"}</span><input class="f-input"/></label>
-          <label class="f-row"><span class="f-label">Reason</span><input class="f-input" placeholder="Reason"/></label>
-        </div>${saveDeleteRow()}`;
+          <label class="f-row"><span class="f-label">${name === "Revised Overs" ? "Revised Overs" : "Revised Target"}</span><input class="f-input" id="rv-val"/></label>
+          <label class="f-row"><span class="f-label">Reason</span><input class="f-input" id="rv-reason" placeholder="Reason"/></label>
+        </div>${saveDeleteRow("", "rv-save", "rv-del")}
+        ${meTable([name, "Innings", "Reason"], revisedRows(name))}`;
     case "Match Info Edit":
       return `
         <div class="me-form-narrow">
@@ -1742,9 +1894,8 @@ function matchEventBody(name) {
     case "Video Count Validation":
       return `
         <div class="confirm-box">
-          <p>Total balls coded: <strong>${state.log.length}</strong> · Video clips: <strong>${state.log.length}</strong></p>
-          <p class="ok-line">✓ Video count matches the ball-by-ball log.</p>
-          <div class="btn-row-modal center"><button class="m-btn m-green" data-close>Re-validate</button></div>
+          <div id="vcv-result"><p>Counting video clips…</p></div>
+          <div class="btn-row-modal center"><button class="m-btn m-green" id="vcv-btn">Re-validate</button></div>
         </div>`;
     default:
       return `<div class="confirm-box"><p>${name}</p></div>`;
@@ -1761,11 +1912,11 @@ function powerPlayOptions() {
 function powerPlayBody() {
   return `
     <div class="me-form-narrow">
-      ${selectEl("Power Play", powerPlayOptions()) }
-      <label class="f-row"><span class="f-label">From Over</span><input class="f-input" value="${state.over}"/></label>
-      <label class="f-row"><span class="f-label">To Over</span><input class="f-input"/></label>
-    </div>${saveDeleteRow()}
-    ${tableHead(["Power Play","From","To","Runs","Wkts"])}`;
+      <label class="f-row"><span class="f-label">Power Play</span><select class="f-select" id="pp-type">${["Select", ...powerPlayOptions()].map((o)=>`<option>${o}</option>`).join("")}</select></label>
+      <label class="f-row"><span class="f-label">From Over</span><input class="f-input" id="pp-from" value="${state.over}"/></label>
+      <label class="f-row"><span class="f-label">To Over</span><input class="f-input" id="pp-to"/></label>
+    </div>${saveDeleteRow("", "pp-save", "pp-del")}
+    ${meTable(["Power Play","From","To","Runs","Wkts"], powerPlaysRows())}`;
 }
 
 // ---- Segmented control helper ---------------------------------------------
@@ -2170,9 +2321,11 @@ function wireCapture() {
         const folder = state.recordingFolder || "";
         const prefix = state.recordingPrefix || "";
         const ts = new Date().toISOString().replace(/[:.]/g, "-").slice(0, 19);
+        // Always keep the INN<n> label in the filename so per-innings video
+        // validation can tell 1st-innings clips from 2nd.
         const name = prefix
           ? `${prefix}-${captureLabel}.webm`
-          : `cricket-capture-${ts}.webm`;
+          : `cricket-capture-${captureLabel}-${ts}.webm`;
         await window.cricketApp.saveRecording(buf, name, folder);
       };
       recorder.start(1000);

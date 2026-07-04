@@ -167,6 +167,29 @@ ipcMain.handle("save-recording", async (event, arrayBuffer, defaultName, subfold
   return { ok: true, filePath };
 });
 
+// Count the video files actually saved in a match's recordings subfolder, so the
+// Video Count Validation screen can compare real clips against balls coded.
+ipcMain.handle("recordings:count", async (_event, folderName, innings) => {
+  const cfg = loadConfig();
+  const root = (cfg.recordingsPath || "").trim();
+  if (!root) return { ok: false, reason: "no-root" };
+  const sub = safeSubpath(folderName);
+  const dir = sub ? path.join(root, sub) : root;
+  // When an innings is given, only count clips whose filename carries that
+  // innings' INN<n> label (see the capture filename in renderer.js).
+  const innTag = innings ? new RegExp(`INN${Number(innings)}\\b`, "i") : null;
+  try {
+    const entries = await fs.promises.readdir(dir, { withFileTypes: true });
+    const count = entries.filter((e) =>
+      e.isFile() &&
+      /\.(webm|mp4|mov|mkv|avi|m4v)$/i.test(e.name) &&
+      (!innTag || innTag.test(e.name))).length;
+    return { ok: true, count, dir };
+  } catch (e) {
+    return { ok: false, reason: "no-dir", error: String((e && e.message) || e) };
+  }
+});
+
 // ---- Database IPC ---------------------------------------------------------
 
 ipcMain.handle("db:teams", () => db.teams());

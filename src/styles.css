@@ -596,6 +596,11 @@ a.home-main-btn {
   box-shadow: inset 3px 0 0 var(--warning, #f0c761);
 }
 .ball-log tbody tr.marked-ball:hover { background: rgba(240, 199, 97, 0.2); }
+.ball-log tbody tr.wkt-ball {
+  background: rgba(224, 92, 92, 0.14);
+  box-shadow: inset 3px 0 0 var(--danger, #e05c5c);
+}
+.ball-log tbody tr.wkt-ball:hover { background: rgba(224, 92, 92, 0.22); }
 .mark-flag {
   color: var(--warning, #f0c761);
   margin-right: 5px;
@@ -1838,6 +1843,7 @@ body.edit-mode .app { outline: 2px solid rgba(240, 199, 97, 0.5); outline-offset
 
 .confirm-box { padding: 40px; text-align: center; font-size: 15px; color: var(--text-soft); }
 .confirm-box .ok-line { color: var(--success); }
+.confirm-box .warn-line { color: var(--warning, #f0c761); }
 
 /* Fielding two-column menu */
 .fielding-cols { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
