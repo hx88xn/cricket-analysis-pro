@@ -142,16 +142,20 @@ ipcMain.handle("save-recording", async (event, arrayBuffer, defaultName, subfold
   const sub = safeSubpath(subfolder);
 
   // If a recordings root is configured, save straight into it (inside the
-  // per-match subfolder when given) without prompting. Dialog only on failure.
+  // per-match subfolder when given) without prompting. The user has explicitly
+  // told us where to save, so on failure we surface the real error instead of
+  // silently popping the OS Save As dialog (which just looks like the configured
+  // path was ignored). The interactive dialog is only for the no-root case.
   if (root) {
+    const dir = sub ? path.join(root, sub) : root;
+    const filePath = path.join(dir, path.basename(baseName));
     try {
-      const dir = sub ? path.join(root, sub) : root;
       await fs.promises.mkdir(dir, { recursive: true });
-      const filePath = path.join(dir, path.basename(baseName));
       await fs.promises.writeFile(filePath, Buffer.from(arrayBuffer));
       return { ok: true, filePath, auto: true };
-    } catch {
-      /* fall through to the save dialog */
+    } catch (err) {
+      console.error("save-recording: could not write into configured root", filePath, err);
+      return { ok: false, error: String((err && err.message) || err), filePath };
     }
   }
 

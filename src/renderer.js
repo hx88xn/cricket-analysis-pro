@@ -2610,7 +2610,12 @@ function wireCapture() {
         const name = prefix
           ? `${prefix}-${captureLabel}.webm`
           : `cricket-capture-${captureLabel}-${ts}.webm`;
-        await window.cricketApp.saveRecording(buf, name, folder);
+        const res = await window.cricketApp.saveRecording(buf, name, folder);
+        // A configured recordings root failed to write (e.g. path too long or
+        // no permission) — tell the user rather than losing the clip silently.
+        if (res && res.ok === false && !res.canceled) {
+          alert(`Could not save recording to the configured folder:\n${res.filePath || ""}\n\n${res.error || "unknown error"}`);
+        }
       };
       recorder.start(1000);
       setUi(true);
