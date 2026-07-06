@@ -1570,6 +1570,8 @@ body.edit-mode .app { outline: 2px solid rgba(240, 199, 97, 0.5); outline-offset
   backdrop-filter: blur(3px);
 }
 .overlay-root[hidden] { display: none; }
+/* Secondary alert that must sit above an already-open overlay module. */
+.app-dialog { z-index: 220; }
 
 /* ---- Popup (in-game dialogs) -------------------------------------------- */
 .popup {

@@ -1752,11 +1752,15 @@ function renderRegMatches(root) {
   applyAutoPage(tableEl, size, () => renderRegMatches(root));
 }
 
-function renderMatchesTable(matches, withName) {
+// withName turns the Match Name into a clickable link that loads the row into
+// the registration form (registration only). withDelete adds a Delete column;
+// it defaults to withName so registration keeps both, but Match Details passes
+// withDelete=true on its own to get delete without the edit-into-form link.
+function renderMatchesTable(matches, withName, withDelete = withName) {
   const cols = ["Competition Name", "Match Name", "Match Type", "Team A", "Team B", "Status"];
-  if (withName) cols.push("Delete");
-  // last column is a fixed, narrow track for the delete button on registration
-  const grid = withName
+  if (withDelete) cols.push("Delete");
+  // last column is a fixed, narrow track for the delete button
+  const grid = withDelete
     ? `repeat(6, minmax(0, 1fr)) 110px`
     : `repeat(${cols.length}, minmax(0, 1fr))`;
   const head = cols.map((c) => `<span>${c}</span>`).join("");
@@ -1775,7 +1779,7 @@ function renderMatchesTable(matches, withName) {
           const nameCell = withName
             ? `<button class="row-link" data-edit="${m.id}">${esc(m.matchName)}</button>`
             : esc(m.matchName);
-          const deleteCell = withName
+          const deleteCell = withDelete
             ? `<span><button type="button" class="row-del-btn" data-del="${m.id}" title="Delete this match">Delete</button></span>`
             : "";
           return `<div class="table-row" style="grid-template-columns:${grid};">
@@ -2084,12 +2088,32 @@ function initMatchDetails(root) {
     })), searchEl.value, ["competitionName", "matchName", "matchType", "teamAName", "teamBName", "status"]);
     const meta = paginate(filtered, page, size);
     page = meta.page;
-    tableEl.innerHTML = renderMatchesTable(meta.slice, false) + pagerHtml(meta, "matches");
+    tableEl.innerHTML = renderMatchesTable(meta.slice, false, true) + pagerHtml(meta, "matches");
+    wireMatchDetailsDelete(tableEl, render);
     wirePager(tableEl, meta, (p) => { page = p; render(); });
     applyAutoPage(tableEl, size, render);
   }
 
   (async () => { tableEl._matches = (await dbCall("matches")) || []; render(); })();
+}
+
+// Wire the Delete buttons on the Match Details list. Unlike the registration
+// table this refreshes #md-table (via the passed render) after re-fetching, and
+// clears the registration form only if it happened to be editing the deleted match.
+function wireMatchDetailsDelete(tableEl, render) {
+  tableEl.querySelectorAll("[data-del]").forEach((btn) => {
+    btn.addEventListener("click", async () => {
+      const id = btn.getAttribute("data-del");
+      const m = (tableEl._matches || []).find((x) => x.id === id);
+      const label = m ? m.matchName : "this match";
+      if (!window.confirm(`Delete ${label}? This cannot be undone.`)) return;
+      await dbCall("deleteMatch", id);
+      if (reg.editingId === id) reg.editingId = null;
+      toast(`Deleted ${label}`);
+      tableEl._matches = (await dbCall("matches")) || [];
+      render();
+    });
+  });
 }
 
 // ===========================================================================

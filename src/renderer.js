@@ -120,6 +120,9 @@ const state = {
   battingCode: "CANA",
   teamA: "CANA",
   teamB: "OMN",
+  venue: "",          // ground name, set from the loaded match (Match Info Edit)
+  tossWonBy: "",      // team code that won the toss (Match Info Edit)
+  tossDecision: "",   // "Bat" or "Bowl" — what the toss winner elected to do
   runs: 49,
   wkts: 0,
   over: 4,
@@ -1029,11 +1032,15 @@ function logBall({ runs = 0, ext = 0, boundary = false, legal = true, bye = fals
   }
 
   const allOut = state.wkts >= 10;
+  let oversUp = false;
 
   if (legal && !allOut) {
     state.ball += 1;
     if (runs % 2 === 1) swapStrike();
-    if (state.ball >= 6) completeOver();
+    if (state.ball >= 6) {
+      completeOver();
+      if (state.over >= maxOvers()) oversUp = true; // reached the innings over limit
+    }
   } else if (!allOut) {
     // no-ball / wide: same striker, odd runs off the bat still rotate
     if (runs % 2 === 1) swapStrike();
@@ -1064,7 +1071,11 @@ function logBall({ runs = 0, ext = 0, boundary = false, legal = true, bye = fals
   document.querySelector("#keypad .keypad-btn.marked")?.classList.remove("marked"); // new ball starts unmarked
   render();
 
-  if (allOut) endInnings();
+  // 2nd innings: the chase is won the moment the target is reached — end the
+  // match ahead of the wickets/overs limits.
+  const targetReached = state.innings === 2 && state.runs >= chaseTarget();
+
+  if (allOut || oversUp || targetReached) endInnings();
 }
 
 function swapStrike() {
@@ -1144,6 +1155,52 @@ function logOtherWicket(batsman, dismissal) {
   if (state.wkts < 10) newBatsman(end); // 10th wicket = all out (no new batter)
 }
 
+// The maximum overs allowed for the current innings: the most recent saved
+// Revised Overs (rain/DLS reduction) if any, otherwise the match format's total
+// overs (20 for T20, 50 for ODI). The innings ends once this is reached.
+function maxOvers() {
+  const revO = state.revisedOvers?.[state.revisedOvers.length - 1];
+  return Number(revO?.value) || state.overs || 0;
+}
+
+// The runs the batting side needs to win the current (2nd) innings: a saved
+// Revised Target if any, otherwise 1st-innings total + 1 (state.target).
+function chaseTarget() {
+  const revT = state.revisedTargets?.[state.revisedTargets.length - 1];
+  return Number(revT?.value) || state.target || 0;
+}
+
+// Swap which side is batting and rebuild the batting order / bowler pool /
+// fielders / openers from the two loaded playing XIs (or the standalone demo
+// pools). Shared by the innings change and the pre-match toss (Match Info Edit).
+function swapBattingSides() {
+  if (state.battingTeam && state.bowlingTeam) {
+    [state.battingTeam, state.bowlingTeam] = [state.bowlingTeam, state.battingTeam];
+    const A = state.battingTeam, B = state.bowlingTeam;
+    state.battingCode = A.code;
+    state.teamA = A.code; state.teamB = B.code;
+    state.bowlPlayers = B.playingXIPlayers || [];
+    CANADA = namesOf(A.playingXIPlayers);
+    const pool = (B.playingXIPlayers || []).filter((p) => p.bowlingType);
+    OMAN_BOWLERS = namesOf(pool.length ? pool : B.playingXIPlayers);
+    FIELDERS = namesOf(B.playingXIPlayers);
+    const xi = A.playingXIPlayers || [];
+    state.striker = (xi[0] && xi[0].name.toUpperCase()) || "BATSMAN 1";
+    state.nonStriker = (xi[1] && xi[1].name.toUpperCase()) || "BATSMAN 2";
+    const fb = (B.playingXIPlayers || []).find((p) => p.bowlingType) || (B.playingXIPlayers || [])[0];
+    state.bowler = bowlerLabel(fb) || "BOWLER";
+  } else {
+    // standalone demo fallback: swap roles/codes and the player pools
+    [state.teamA, state.teamB] = [state.teamB, state.teamA];
+    [CANADA, OMAN_BOWLERS] = [OMAN_BOWLERS, CANADA];
+    FIELDERS = OMAN_BOWLERS;
+    state.battingCode = state.teamA;
+    state.striker = CANADA[0] || "BATSMAN 1";
+    state.nonStriker = CANADA[1] || "BATSMAN 2";
+    state.bowler = `${OMAN_BOWLERS[0] || "BOWLER"} -OS`;
+  }
+}
+
 function completeOver() {
   state.over += 1;
   state.ball = 0;
@@ -1169,6 +1226,10 @@ function endInnings() {
   if (state.matchOver) return;
   if (state.innings >= 2) {       // second innings finished → match over
     state.matchOver = true;
+    // lock the scoring controls now that no further deliveries are possible
+    setOverButton("Start Over");
+    setBallButton("Start Ball");
+    scheduleSave(); // persist the final state with a COMPLETED status
     openOverlay(popupShell("MATCH COMPLETE",
       `<div class="confirm-box"><p>Both innings complete.</p>
        <div class="btn-row-modal center"><button class="m-btn m-green" data-close>OK</button></div></div>`));
@@ -1180,31 +1241,7 @@ function endInnings() {
   state.target = state.runs + 1;
   state.innings = 2;
 
-  if (state.battingTeam && state.bowlingTeam) {
-    // proper swap using the loaded playing XIs
-    [state.battingTeam, state.bowlingTeam] = [state.bowlingTeam, state.battingTeam];
-    const A = state.battingTeam, B = state.bowlingTeam;
-    state.battingCode = A.code;
-    state.teamA = A.code; state.teamB = B.code;
-    CANADA = namesOf(A.playingXIPlayers);
-    const pool = (B.playingXIPlayers || []).filter((p) => p.bowlingType);
-    OMAN_BOWLERS = namesOf(pool.length ? pool : B.playingXIPlayers);
-    FIELDERS = namesOf(B.playingXIPlayers);
-    const xi = A.playingXIPlayers || [];
-    state.striker = (xi[0] && xi[0].name.toUpperCase()) || "BATSMAN 1";
-    state.nonStriker = (xi[1] && xi[1].name.toUpperCase()) || "BATSMAN 2";
-    const fb = (B.playingXIPlayers || []).find((p) => p.bowlingType) || (B.playingXIPlayers || [])[0];
-    state.bowler = bowlerLabel(fb) || "BOWLER";
-  } else {
-    // standalone demo fallback: swap roles/codes and the player pools
-    [state.teamA, state.teamB] = [state.teamB, state.teamA];
-    [CANADA, OMAN_BOWLERS] = [OMAN_BOWLERS, CANADA];
-    FIELDERS = OMAN_BOWLERS;
-    state.battingCode = state.teamA;
-    state.striker = CANADA[0] || "BATSMAN 1";
-    state.nonStriker = CANADA[1] || "BATSMAN 2";
-    state.bowler = `${OMAN_BOWLERS[0] || "BOWLER"} -OS`;
-  }
+  swapBattingSides();
 
   // reset the scoreboard for the new innings
   state.runs = 0; state.wkts = 0; state.over = 0; state.ball = 0;
@@ -1352,10 +1389,8 @@ function renderChaseRow() {
   if (state.innings !== 2) { row.hidden = true; return; }
   row.hidden = false;
 
-  const revT = state.revisedTargets?.[state.revisedTargets.length - 1];
-  const target = Number(revT?.value) || state.target || 0;
-  const revO = state.revisedOvers?.[state.revisedOvers.length - 1];
-  const totalOvers = Number(revO?.value) || state.overs || 0;
+  const target = chaseTarget();
+  const totalOvers = maxOvers();
 
   const ballsBowled = state.over * 6 + state.ball;
   const ballsRemaining = Math.max(0, totalOvers * 6 - ballsBowled);
@@ -1408,16 +1443,18 @@ function setOverButton(label) {
   b.textContent = label;
   b.classList.toggle("red", label === "End Over");
   b.classList.toggle("teal", label !== "End Over");
+  b.disabled = state.matchOver; // no more overs once the match is complete
   updateCaptureEnabled();
 }
 
 // Start Capture is only usable once a ball has been started (Start Ball pressed);
 // it captures the delivery. An in-progress capture stays enabled so it can
-// always be stopped, even after the ball is ended.
+// always be stopped, even after the ball is ended — but once the match is over
+// (and nothing is recording) it is locked out along with Start Ball/Start Over.
 function updateCaptureEnabled() {
   const cap = document.getElementById("btn-capture");
   if (!cap) return;
-  cap.disabled = !(state.ballStarted || state.capturing);
+  cap.disabled = !state.capturing && (state.matchOver || !state.ballStarted);
 }
 
 function setBallButton(label) {
@@ -1427,6 +1464,7 @@ function setBallButton(label) {
   const ending = label.startsWith("End Ball");
   b.classList.toggle("red", ending);
   b.classList.toggle("teal", !ending);
+  b.disabled = state.matchOver; // no more deliveries once the match is complete
   updateCaptureEnabled();
 }
 
@@ -1445,6 +1483,7 @@ function wireActionButtons() {
   const undoBtn = document.getElementById("btn-undo");
 
   over?.addEventListener("click", () => {
+    if (state.matchOver) return;                       // match complete — locked
     if (!state.overStarted) {
       state.overStarted = true;
       setOverButton("End Over");
@@ -1464,6 +1503,7 @@ function wireActionButtons() {
   });
 
   ball?.addEventListener("click", () => {
+    if (state.matchOver) return;                       // match complete — locked
     if (!state.overStarted) { flash(over); return; }   // start the over first
     if (!state.ballStarted) {
       // Start the ball — begin staging a fresh delivery.
@@ -1566,6 +1606,22 @@ function closeOverlay() {
   root.innerHTML = "";
 }
 
+// A styled, in-app alert that layers ABOVE the main overlay (which owns a single
+// root), so it can warn the user without tearing down the screen underneath.
+// Resolves when dismissed. Use in place of window.alert for a native-app feel.
+function appDialog(message, title = "NOT ALLOWED") {
+  const wrap = document.createElement("div");
+  wrap.className = "overlay-root app-dialog";
+  wrap.innerHTML = popupShell(title,
+    `<div class="confirm-box"><p>${message}</p>
+     <div class="btn-row-modal center"><button class="m-btn m-green" data-ok>OK</button></div></div>`);
+  const close = () => wrap.remove();
+  wrap.querySelectorAll("[data-ok], [data-close]").forEach((b) => b.addEventListener("click", close));
+  wrap.addEventListener("mousedown", (e) => { if (e.target === wrap) close(); });
+  document.body.appendChild(wrap);
+  wrap.querySelector("[data-ok]")?.focus();
+}
+
 function clockNow() {
   return new Date().toLocaleTimeString("en-GB", { hour12: false });
 }
@@ -1593,8 +1649,9 @@ function popupShell(title, bodyHtml, wide = false) {
     </div>`;
 }
 
-function selectEl(label, options, value = "Select", id = "") {
-  const opts = [value, ...options].map((o) => `<option>${o}</option>`).join("");
+function selectEl(label, options, value = "Select", id = "", selected = "") {
+  const opts = [value, ...options].map((o) =>
+    `<option${selected && o === selected ? " selected" : ""}>${o}</option>`).join("");
   return `<label class="f-row"><span class="f-label">${label}</span><select class="f-select"${id ? ` id="${id}"` : ""}>${opts}</select></label>`;
 }
 
@@ -1983,6 +2040,60 @@ function overlayMatchEvents(active = "Breaks") {
     }, "rv-save", "rv-del");
   }
 
+  if (active === "Match Info Edit") {
+    document.getElementById("mi-save")?.addEventListener("click", () => {
+      const toss = val("mi-toss"), elected = val("mi-elected");
+      const tossWonBy = toss && toss !== "Select" ? toss : "";
+      const tossDecision = elected && elected !== "Select" ? elected : "";
+
+      // Which side the selected toss implies should bat first (winner bats if
+      // they elected to Bat, otherwise the other side does).
+      let batFirst = "";
+      if (tossWonBy && tossDecision) {
+        const other = tossWonBy === state.teamA ? state.teamB : state.teamA;
+        batFirst = tossDecision === "Bat" ? tossWonBy : other;
+      }
+      const matchStarted = !(state.innings === 1 && state.over === 0 && state.ball === 0);
+
+      // Once the match is underway the toss (and therefore who bats/bowls) is
+      // locked — reject a selection that would flip the batting side.
+      if (matchStarted && batFirst && batFirst !== state.battingCode) {
+        appDialog("Batting/bowling and toss settings cannot be edited now — the match has already started.", "MATCH IN PROGRESS");
+        overlayMatchEvents("Match Info Edit"); // revert the form to the saved values
+        return;
+      }
+
+      state.tossWonBy = tossWonBy;
+      state.tossDecision = tossDecision;
+
+      // Editing Number of Overs sets the new match limit. Record it as a Revised
+      // Overs entry (the latest entry is what maxOvers() uses, so it becomes the
+      // new default) — but only when the value actually changes.
+      const newOvers = Number(val("mi-overs"));
+      if (newOvers > 0 && newOvers !== maxOvers()) {
+        state.revisedOvers.push({
+          value: String(newOvers),
+          innings: state.innings === 2 ? "2nd Innings" : "1st Innings",
+          reason: "Match Info Edit",
+        });
+        state.overs = newOvers; // keep the base format in sync
+      }
+      state.venue = val("mi-venue");
+
+      // Before the first ball the toss can still set who bats first.
+      if (!matchStarted && batFirst && batFirst !== state.battingCode) swapBattingSides();
+
+      scheduleSave();
+      closeOverlay();
+      toast("Match info saved");
+
+      // If the (possibly reduced) limit has already been reached, advance the
+      // innings (1st) or end the match (2nd) now, per the latest revised overs.
+      if (state.over >= maxOvers()) endInnings();
+      render();          // refresh anything that reads overs/team info
+    });
+  }
+
   if (active === "Video Count Validation") {
     document.getElementById("vcv-btn")?.addEventListener("click", refreshVideoCount);
     refreshVideoCount();
@@ -2153,11 +2264,11 @@ function matchEventBody(name) {
     case "Match Info Edit":
       return `
         <div class="me-form-narrow">
-          ${selectEl("Toss Won By", ["CANA","OMN"]) }
-          ${selectEl("Elected To", ["Bat","Bowl"]) }
-          <label class="f-row"><span class="f-label">Number of Overs</span><input class="f-input" value="${state.overs}"/></label>
-          <label class="f-row"><span class="f-label">Venue</span><input class="f-input" value="Al Amerat Cricket Ground"/></label>
-        </div>${saveDeleteRow()}`;
+          ${selectEl("Toss Won By", [state.teamA, state.teamB], "Select", "mi-toss", state.tossWonBy) }
+          ${selectEl("Elected To", ["Bat","Bowl"], "Select", "mi-elected", state.tossDecision) }
+          <label class="f-row"><span class="f-label">Number of Overs</span><input class="f-input" id="mi-overs" value="${maxOvers()}"/></label>
+          <label class="f-row"><span class="f-label">Venue</span><input class="f-input" id="mi-venue" value="${escAttr(state.venue)}"/></label>
+        </div>${saveDeleteRow("", "mi-save")}`;
     case "Batsman In / Out Time":
       return `${tableHead(["Batsman","In Time","Out Time","Mins","Balls"])}`;
     case "Video Count Validation":
@@ -2580,6 +2691,7 @@ function wireCapture() {
   }
   let captureLabel = "";
   async function start() {
+    if (state.matchOver) return;   // no new captures once the match is complete
     if (starting || (recorder && recorder.state === "recording")) return;
     starting = true;
     try {
@@ -2729,6 +2841,7 @@ function applyMatch(match) {
   state.teamA = A.code;
   state.teamB = B.code;
   state.battingCode = A.code;
+  state.venue = match.venueName || "";
 
   // batting order, bowlers and fielders come from the playing XIs
   CANADA = namesOf(A.playingXIPlayers);
@@ -2786,6 +2899,9 @@ function serializeState() {
     overRunsThisOver: state.overRunsThisOver, thisOver: state.thisOver,
     // innings/target/overs so a resumed 2nd innings still shows the chase panel
     innings: state.innings, target: state.target, overs: state.overs,
+    matchOver: state.matchOver, // keep a completed match locked when reopened
+    // Match Info Edit — toss + venue (venue may be edited away from the ground name)
+    tossWonBy: state.tossWonBy, tossDecision: state.tossDecision, venue: state.venue,
     // batting-order tracking so the right batsman comes in after a resume
     nextBatIndex: state.nextBatIndex, dismissed: state.dismissed,
     // Match Events — all persisted so they survive resume and reporting.
@@ -2801,7 +2917,8 @@ function scheduleSave() {
   clearTimeout(saveTimer);
   saveTimer = setTimeout(() => {
     window.cricketApp.db
-      .saveMatchState({ id: state.matchId, state: serializeState(), status: "RESUME" })
+      .saveMatchState({ id: state.matchId, state: serializeState(),
+        status: state.matchOver ? "COMPLETED" : "RESUME" })
       .catch((e) => console.error("save state failed", e));
   }, 600);
 }
