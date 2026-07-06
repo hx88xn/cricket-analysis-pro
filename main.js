@@ -194,6 +194,35 @@ ipcMain.handle("recordings:count", async (_event, folderName, innings) => {
   }
 });
 
+// Fetch the video clip saved for a specific ball so the coding screen's mini
+// player can play it back. Matches the ball's INN/OVER/BALL label within the
+// match folder and returns the file bytes (played as a blob: URL in the
+// renderer, since the recordings root is outside the app's file:// origin and
+// blocked by CSP). Only files under the configured root are ever read.
+ipcMain.handle("recordings:clip", async (_event, folderName, innings, over, ball) => {
+  const cfg = loadConfig();
+  const root = (cfg.recordingsPath || "").trim();
+  if (!root) return { ok: false, reason: "no-root" };
+  const sub = safeSubpath(folderName);
+  const dir = sub ? path.join(root, sub) : root;
+  const label = `INN${Number(innings)}-OVER${Number(over)}-BALL${Number(ball)}`;
+  try {
+    const entries = await fs.promises.readdir(dir);
+    // Exact label boundary so BALL1 doesn't also match BALL10/BALL11.
+    const rx = new RegExp(`${label}(?![0-9])`);
+    const name = entries.find((n) =>
+      rx.test(n) && /\.(webm|mp4|mov|mkv|avi|m4v)$/i.test(n));
+    if (!name) return { ok: false, reason: "not-found" };
+    const ext = path.extname(name).slice(1).toLowerCase();
+    const mime = ext === "mp4" || ext === "m4v" ? "video/mp4"
+      : ext === "mov" ? "video/quicktime" : ext === "webm" ? "video/webm" : `video/${ext}`;
+    const buf = await fs.promises.readFile(path.join(dir, name));
+    return { ok: true, name, mime, bytes: buf };
+  } catch (e) {
+    return { ok: false, reason: "no-dir", error: String((e && e.message) || e) };
+  }
+});
+
 // ---- Database IPC ---------------------------------------------------------
 
 ipcMain.handle("db:teams", () => db.teams());

@@ -478,7 +478,9 @@ a.home-main-btn {
   box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.02), var(--shadow-md);
 }
 
-.video-panel::before {
+/* The "Live Capture" badge only appears while a capture is actually running
+   (the .capturing class is toggled on the panel when Start Capture is clicked). */
+.video-panel.capturing::before {
   content: "Live Capture";
   position: absolute;
   top: 12px;

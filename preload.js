@@ -18,6 +18,8 @@ contextBridge.exposeInMainWorld("cricketApp", {
     ipcRenderer.invoke("recordings:ensure-folder", folderName),
   countRecordings: (folderName, innings) =>
     ipcRenderer.invoke("recordings:count", folderName, innings),
+  getBallClip: (folderName, innings, over, ball) =>
+    ipcRenderer.invoke("recordings:clip", folderName, innings, over, ball),
   db: {
     teams: () => ipcRenderer.invoke("db:teams"),
     players: (teamId) => ipcRenderer.invoke("db:players", teamId),

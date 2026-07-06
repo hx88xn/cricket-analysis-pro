@@ -193,6 +193,7 @@ const state = {
   matchStartTime: "", // clock time the 1st innings' first ball is bowled (editable)
   matchStartTs: 0,    // matching timestamp, for openers' minutes-at-crease calc
   openersRecorded: false, // guard: the current innings' two openers are logged
+  firstInningsBalls: 0, // 1st-innings legal-ball count, kept after the innings switch
 };
 
 function row(num, bowler, striker, nonstr, bowl, shot, runs, ext) {
@@ -550,6 +551,43 @@ function showBallInputs(index) {
   }
   const psvg = document.getElementById("pitch-overlay-svg");
   if (psvg) (r.pitch || []).forEach((p) => addPitchDot(psvg, p.x, p.y, p.kind || "pitch", true));
+
+  showBallVideo(r); // load this ball's saved clip into the mini player (if any)
+}
+
+// The mini player (#camera-preview) doubles as a clip player: when a logged
+// ball is selected, its saved recording is loaded here with playback controls.
+let ballClipUrl = null;
+async function showBallVideo(r) {
+  const video = document.getElementById("camera-preview");
+  if (!video || state.capturing) return; // never interrupt a live capture
+  const m = /^(\d+)\.(\d+)/.exec(String(r?.num || ""));
+  if (!m || !state.recordingFolder || !window.cricketApp?.getBallClip) { hideBallVideo(); return; }
+  try {
+    const res = await window.cricketApp.getBallClip(
+      state.recordingFolder, state.innings, Number(m[1]), Number(m[2]));
+    if (state.capturing) return;          // a capture may have started during await
+    if (!res?.ok || !res.bytes) { hideBallVideo(); return; }
+    if (ballClipUrl) URL.revokeObjectURL(ballClipUrl);
+    ballClipUrl = URL.createObjectURL(new Blob([res.bytes], { type: res.mime || "video/webm" }));
+    video.srcObject = null;
+    video.src = ballClipUrl;
+    video.muted = false;
+    video.controls = true;                // show play/scrub controls only now
+    video.load();
+  } catch (e) {
+    console.error("load ball clip failed", e);
+    hideBallVideo();
+  }
+}
+
+// Return the mini player to its idle (no-clip) state and hide the controls.
+function hideBallVideo() {
+  const video = document.getElementById("camera-preview");
+  if (!video) return;
+  video.controls = false;
+  if (ballClipUrl) { URL.revokeObjectURL(ballClipUrl); ballClipUrl = null; }
+  if (!state.capturing) { video.removeAttribute("src"); video.muted = true; video.load(); }
 }
 
 function nearestWagonLine(x, y) {
@@ -1270,6 +1308,7 @@ function endInnings() {
   // Target for the chase = 1st-innings total + 1 (before the score is reset
   // below). A saved Revised Target, if any, overrides it.
   state.target = state.runs + 1;
+  state.firstInningsBalls = state.log.length; // keep for video-count validation
   state.innings = 2;
 
   swapBattingSides();
@@ -2165,24 +2204,37 @@ function overlayMatchEvents(active = "Breaks") {
 async function refreshVideoCount() {
   const el = document.getElementById("vcv-result");
   if (!el) return;
-  const balls = state.log.length;
-  let clips = null, note = "";
-  if (window.cricketApp?.countRecordings && state.recordingFolder) {
-    const res = await window.cricketApp.countRecordings(state.recordingFolder, state.innings);
-    if (res?.ok) clips = res.count;
-    else if (res?.reason === "no-root") note = "No recordings folder set — configure it in Configuration → Video.";
-    else note = "Recordings folder not found yet (no clips saved for this match).";
-  } else if (!state.recordingFolder) {
-    note = "No recording folder is set for this match.";
-  } else {
-    note = "Video counting is unavailable in this build.";
+
+  // Balls coded per innings. state.log holds only the current innings, so the
+  // 1st-innings total is taken from the snapshot captured at the innings switch.
+  const balls1 = state.innings === 1 ? state.log.length : state.firstInningsBalls;
+  const balls2 = state.innings === 2 ? state.log.length : 0;
+
+  if (!state.recordingFolder) {
+    el.innerHTML = `<p class="warn-line">⚠ No recording folder is set for this match.</p>`;
+    return;
   }
-  let status;
-  if (clips == null) status = `<p class="warn-line">⚠ ${note}</p>`;
-  else if (clips === balls) status = `<p class="ok-line">✓ Video count matches the ball-by-ball log.</p>`;
-  else status = `<p class="warn-line">⚠ Mismatch: ${balls} ball${balls === 1 ? "" : "s"} coded but ${clips} video clip${clips === 1 ? "" : "s"} found.</p>`;
-  const inn = state.innings === 2 ? "2nd Innings" : "1st Innings";
-  el.innerHTML = `<p><strong>${inn}</strong> — Balls coded: <strong>${balls}</strong> · Video clips: <strong>${clips == null ? "—" : clips}</strong></p>${status}`;
+  if (!window.cricketApp?.countRecordings) {
+    el.innerHTML = `<p class="warn-line">⚠ Video counting is unavailable in this build.</p>`;
+    return;
+  }
+
+  // Clips are matched to an innings by the INN<n> label in each filename.
+  const countFor = async (inn) => {
+    const res = await window.cricketApp.countRecordings(state.recordingFolder, inn);
+    return res?.ok ? res.count : null;
+  };
+  const [clips1, clips2] = await Promise.all([countFor(1), countFor(2)]);
+
+  const line = (label, balls, clips) => {
+    let status;
+    if (clips == null) status = `<span class="warn-line">⚠ folder not found yet</span>`;
+    else if (clips === balls) status = `<span class="ok-line">✓ matches</span>`;
+    else status = `<span class="warn-line">⚠ mismatch</span>`;
+    return `<p><strong>${label}</strong> — Balls coded: <strong>${balls}</strong> · Video clips: <strong>${clips == null ? "—" : clips}</strong> &nbsp; ${status}</p>`;
+  };
+
+  el.innerHTML = line("1st Innings", balls1, clips1) + line("2nd Innings", balls2, clips2);
 }
 
 function matchEventTitle(name) {
@@ -2736,6 +2788,7 @@ function wireCapture() {
       btn.textContent = active ? "Start Capture" : "End Capture";
       btn.classList.toggle("teal", active);
       btn.classList.toggle("red", !active);
+      document.querySelector(".video-panel")?.classList.toggle("capturing", !active);
       state.capturing = !active;
       updateCaptureEnabled();
     });
@@ -2751,6 +2804,8 @@ function wireCapture() {
     // Drive the toolbar icon colours: while capturing, the record icon turns red
     // and the stop icon turns black.
     document.querySelector(".video-toolbar")?.classList.toggle("capturing", active);
+    // Show the "Live Capture" badge only while a capture is running.
+    document.querySelector(".video-panel")?.classList.toggle("capturing", active);
     state.capturing = active;      // keeps the button enabled while recording
     updateCaptureEnabled();
   }
@@ -2760,8 +2815,12 @@ function wireCapture() {
     if (starting || (recorder && recorder.state === "recording")) return;
     starting = true;
     try {
+      // Drop any clip that was loaded for review before switching to live capture.
+      videoEl.controls = false; videoEl.removeAttribute("src");
+      if (ballClipUrl) { URL.revokeObjectURL(ballClipUrl); ballClipUrl = null; }
       stream = await getCaptureStream();
       videoEl.srcObject = stream;
+      videoEl.muted = true;
       chunks.length = 0;
       // label the clip by where it begins: innings / over / ball (next ball)
       captureLabel = `INN${state.innings}-OVER${state.over}-BALL${state.ball + 1}`;
@@ -2980,6 +3039,7 @@ function serializeState() {
     // Batsman in/out timing + the (editable) match start time.
     batTimes: state.batTimes, matchStartTime: state.matchStartTime,
     matchStartTs: state.matchStartTs, openersRecorded: state.openersRecorded,
+    firstInningsBalls: state.firstInningsBalls,
   };
 }
 function scheduleSave() {
