@@ -189,7 +189,10 @@ const state = {
   revisedTargets: [],
   penalties: [],
   matchResult: null,  // Match Results form (single record)
-  batTimes: [],       // { batsman, inTime, outTime, mins, balls } per batsman spell
+  batTimes: [],       // { batsman, inTime, outTime, mins, balls, innings, opener } per batsman spell
+  matchStartTime: "", // clock time the 1st innings' first ball is bowled (editable)
+  matchStartTs: 0,    // matching timestamp, for openers' minutes-at-crease calc
+  openersRecorded: false, // guard: the current innings' two openers are logged
 };
 
 function row(num, bowler, striker, nonstr, bowl, shot, runs, ext) {
@@ -957,6 +960,7 @@ function shortName(name) {
 
 function logBall({ runs = 0, ext = 0, boundary = false, legal = true, bye = false, wicket = false, extLabel = "", overthrow = 0, rbw = 0, outBatsman = null, dismissal = "" }) {
   if (!ballInputAllowed()) return; // over + ball must be started first
+  recordOpeners();                 // first ball of the innings → log the openers
   pushHistory();
 
   const ballNum = legal ? `${state.over}.${state.ball + 1}` : `${state.over}.${state.ball + 1}+`;
@@ -1112,10 +1116,36 @@ function newBatsman(end = "striker") {
 // ---- Batsman in / out timing ----------------------------------------------
 // A record is opened when a batsman walks in and closed (out time, minutes,
 // balls) when they are dismissed. Surfaced on the Batsman In / Out Time screen.
-function markBatsmanIn(name) {
+function markBatsmanIn(name, inTime = clockNow(), inTs = Date.now(), opener = false) {
   if (!name || name === "NEW BATSMAN") return;
-  state.batTimes.push({ batsman: name, inTime: clockNow(), inTs: Date.now(), outTime: "", mins: "", balls: "" });
+  state.batTimes.push({ batsman: name, inTime, inTs, outTime: "", mins: "", balls: "",
+    innings: state.innings, opener });
   scheduleSave();
+}
+
+// Record both opening batsmen's walk-in at the start of an innings. The 1st
+// innings establishes the (editable) match start time; the 2nd uses the live
+// clock. Guarded so it runs once per innings (on the first delivery).
+function recordOpeners() {
+  if (state.openersRecorded) return;
+  if (state.innings === 1 && !state.matchStartTime) {
+    state.matchStartTime = clockNow();
+    state.matchStartTs = Date.now();
+  }
+  const inTime = state.innings === 1 ? state.matchStartTime : clockNow();
+  const inTs = state.innings === 1 ? (state.matchStartTs || Date.now()) : Date.now();
+  markBatsmanIn(state.striker, inTime, inTs, true);
+  markBatsmanIn(state.nonStriker, inTime, inTs, true);
+  state.openersRecorded = true;
+}
+
+// Parse a "HH:MM" / "HH:MM:SS" clock string into today's timestamp (0 if bad).
+function parseClock(s) {
+  const m = /^(\d{1,2}):(\d{2})(?::(\d{2}))?$/.exec(String(s).trim());
+  if (!m) return 0;
+  const d = new Date();
+  d.setHours(+m[1], +m[2], +(m[3] || 0), 0);
+  return d.getTime();
 }
 
 function markBatsmanOut(name, balls) {
@@ -1253,6 +1283,7 @@ function endInnings() {
   state.bowl = { spell: 1, balls: 0, runs: 0, mdns: 0, wkts: 0 };
   state.log = []; state.overRunsThisOver = 0; state.thisOver = []; state.history = [];
   state.bowlEnd = "FAR END";
+  state.openersRecorded = false; // 2nd-innings openers recorded on its first ball
   state.overStarted = false; state.ballStarted = false;
   setOverButton("Start Over"); setBallButton("Start Ball");
   clearWagonLines(); state.pendingWagonLine = null; state.lastWagon = null;
@@ -2080,6 +2111,19 @@ function overlayMatchEvents(active = "Breaks") {
       }
       state.venue = val("mi-venue");
 
+      // Match start time: update it and reflect it on the 1st-innings openers'
+      // recorded walk-in (they share this time). Also refresh the timestamp so
+      // minutes-at-crease stay accurate.
+      const startTime = val("mi-start");
+      if (startTime && startTime !== state.matchStartTime) {
+        state.matchStartTime = startTime;
+        const ts = parseClock(startTime);
+        if (ts) state.matchStartTs = ts;
+        state.batTimes.forEach((r) => {
+          if (r.opener && r.innings === 1) { r.inTime = startTime; if (ts) r.inTs = ts; }
+        });
+      }
+
       // Before the first ball the toss can still set who bats first.
       if (!matchStarted && batFirst && batFirst !== state.battingCode) swapBattingSides();
 
@@ -2172,6 +2216,10 @@ function ballChangesRows() {
 function revisedRows(kind) {
   const arr = kind === "Revised Overs" ? state.revisedOvers : state.revisedTargets;
   return arr.map((r) => `<tr>${cells([r.value, r.innings, r.reason])}</tr>`).join("");
+}
+function batTimeRows() {
+  return state.batTimes.map((r) =>
+    `<tr>${cells([r.batsman, r.inTime, r.outTime, r.mins, r.balls])}</tr>`).join("");
 }
 
 function matchEventBody(name) {
@@ -2267,10 +2315,11 @@ function matchEventBody(name) {
           ${selectEl("Toss Won By", [state.teamA, state.teamB], "Select", "mi-toss", state.tossWonBy) }
           ${selectEl("Elected To", ["Bat","Bowl"], "Select", "mi-elected", state.tossDecision) }
           <label class="f-row"><span class="f-label">Number of Overs</span><input class="f-input" id="mi-overs" value="${maxOvers()}"/></label>
+          <label class="f-row"><span class="f-label">Match Start Time</span><input class="f-input" id="mi-start" value="${escAttr(state.matchStartTime)}" placeholder="HH:MM:SS"/></label>
           <label class="f-row"><span class="f-label">Venue</span><input class="f-input" id="mi-venue" value="${escAttr(state.venue)}"/></label>
         </div>${saveDeleteRow("", "mi-save")}`;
     case "Batsman In / Out Time":
-      return `${tableHead(["Batsman","In Time","Out Time","Mins","Balls"])}`;
+      return meTable(["Batsman","In Time","Out Time","Mins","Balls"], batTimeRows());
     case "Video Count Validation":
       return `
         <div class="confirm-box">
@@ -2883,6 +2932,8 @@ function applyMatch(match) {
   state.breaks = []; state.otherWickets = []; state.powerPlays = [];
   state.ballChanges = []; state.revisedOvers = []; state.revisedTargets = [];
   state.penalties = []; state.fieldingEvents = []; state.matchResult = null;
+  state.batTimes = []; state.matchStartTime = ""; state.matchStartTs = 0;
+  state.openersRecorded = false;
 }
 
 // ---- persistence (debounced) ----------------------------------------------
@@ -2910,6 +2961,9 @@ function serializeState() {
     revisedOvers: state.revisedOvers, revisedTargets: state.revisedTargets,
     penalties: state.penalties, fieldingEvents: state.fieldingEvents,
     matchResult: state.matchResult,
+    // Batsman in/out timing + the (editable) match start time.
+    batTimes: state.batTimes, matchStartTime: state.matchStartTime,
+    matchStartTs: state.matchStartTs, openersRecorded: state.openersRecorded,
   };
 }
 function scheduleSave() {
