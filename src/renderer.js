@@ -687,7 +687,8 @@ function onDocDownForMenu(e) {
 
 function recordFieldingEvent(position, event, fielder, p) {
   state.fieldingEvents = state.fieldingEvents || [];
-  state.fieldingEvents.push({ position, event, fielder, x: p?.x, y: p?.y, ball: state.log.length });
+  state.fieldingEvents.push({ position, event, fielder, netRunsSaved: "",
+    over: `${state.over}.${state.ball}`, x: p?.x, y: p?.y, ball: state.log.length });
   scheduleSave(); // persist fielding events to the DB
   const label = document.getElementById("wagon-region");
   if (label) {
@@ -1711,31 +1712,45 @@ function overlayAppeals() {
 
 // ---- Fielding Events (two-column menu) ------------------------------------
 
+// Recorded fielding-event rows for the table (from the overlay Save and from the
+// wagon-wheel right-click menu — both share over/event/fielder/netRunsSaved).
+function fieldingRows() {
+  return state.fieldingEvents.map((f) =>
+    `<tr>${cells([f.over, f.event, f.fielder, f.netRunsSaved])}</tr>`).join("");
+}
+
 function overlayFielding() {
-  const fielders = FIELDERS.map((f) => `<button class="menu-item" data-fielder>${f}</button>`).join("");
-  const events = FIELDING_EVENTS.map((e) => `<button class="menu-item" data-event>${e} <span class="menu-arrow">›</span></button>`).join("");
+  const v = (id) => document.getElementById(id)?.value?.trim() || "";
   const body = `
-    <div class="fielding-cols">
-      <div class="menu-col"><div class="menu-col-head">Fielder</div>${fielders}</div>
-      <div class="menu-col"><div class="menu-col-head">Event</div>${events}</div>
+    <div class="me-form-narrow">
+      ${selectEl("Fielding Event", FIELDING_EVENTS, "Select", "fe-event")}
+      ${selectEl("Fielder Name", FIELDERS, "Select", "fe-fielder")}
+      <label class="f-row"><span class="f-label">Net Runs Saved</span><input class="f-input" id="fe-nrs" type="number" placeholder="0"/></label>
     </div>
-    <div class="fielding-picked" id="fielding-picked">Select a fielder and an event…</div>
-    <div class="btn-row-modal"><button class="m-btn m-green" data-close>Save</button></div>`;
+    ${saveDeleteRow(`<button class="m-btn m-yellow" id="fe-clear">Clear</button>`, "fe-save", "fe-del")}
+    ${meTable(["Over", "Fielding Events", "Fielder Name", "Net Runs Saved"], fieldingRows())}`;
   openOverlay(popupShell("FIELDING EVENTS", body, true));
-  const root = overlayRoot();
-  let picked = { fielder: null, event: null };
-  const update = () => {
-    document.getElementById("fielding-picked").textContent =
-      `${picked.fielder || "—"}  ·  ${picked.event || "—"}`;
-  };
-  root.querySelectorAll("[data-fielder]").forEach((b) => b.addEventListener("click", () => {
-    root.querySelectorAll("[data-fielder]").forEach((x) => x.classList.remove("active"));
-    b.classList.add("active"); picked.fielder = b.textContent.trim(); update();
-  }));
-  root.querySelectorAll("[data-event]").forEach((b) => b.addEventListener("click", () => {
-    root.querySelectorAll("[data-event]").forEach((x) => x.classList.remove("active"));
-    b.classList.add("active"); picked.event = b.textContent.replace("›", "").trim(); update();
-  }));
+
+  document.getElementById("fe-save")?.addEventListener("click", () => {
+    const event = v("fe-event"), fielder = v("fe-fielder");
+    if (!event || event === "Select") { toast("Select a fielding event"); return; }
+    if (!fielder || fielder === "Select") { toast("Select a fielder"); return; }
+    state.fieldingEvents.push({
+      event, fielder, netRunsSaved: v("fe-nrs"),
+      over: `${state.over}.${state.ball}`, ball: state.log.length,
+    });
+    scheduleSave();          // persist to the DB (match_state json)
+    overlayFielding();       // re-render so the new row shows in the table
+    toast("Fielding event saved");
+  });
+  document.getElementById("fe-clear")?.addEventListener("click", overlayFielding);
+  document.getElementById("fe-del")?.addEventListener("click", () => {
+    if (!state.fieldingEvents.length) { closeOverlay(); return; }
+    state.fieldingEvents.pop();
+    scheduleSave();
+    overlayFielding();
+    toast("Last fielding event removed");
+  });
 }
 
 // ---- Remarks --------------------------------------------------------------
@@ -2033,6 +2048,7 @@ function overlayMatchEvents(active = "Breaks") {
       start: `${val("br-start-d")} ${val("br-start-t")}`.trim(),
       end: `${val("br-end-d")} ${val("br-end-t")}`.trim(),
       mins: val("br-dur"),
+      includeInMinutes: document.querySelector('input[name="br-include"]:checked')?.value || "No",
     }), "br-save", "br-del");
   }
 
@@ -2235,8 +2251,8 @@ function matchEventBody(name) {
           </div>
           <div class="me-include-box">
             <p>Do You Want To Include This Breaks In Players Total Minutes Played</p>
-            <label class="ck"><input type="checkbox"/> Yes</label>
-            <label class="ck"><input type="checkbox" checked/> No</label>
+            <label class="ck"><input type="radio" name="br-include" value="Yes"/> Yes</label>
+            <label class="ck"><input type="radio" name="br-include" value="No" checked/> No</label>
           </div>
         </div>
         ${saveDeleteRow("", "br-save", "br-del")}
