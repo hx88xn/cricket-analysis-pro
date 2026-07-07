@@ -1985,7 +1985,7 @@ async function initMatchRegistration(root) {
     if (!reg.A.teamId) missing.push("Team A");
     if (!reg.B.teamId) missing.push("Team B");
     if (!val("#rg-ump1")) missing.push("Umpire 1");
-    if (!val("#rg-ump2")) missing.push("Umpire 2");
+    // Umpire 2 and 3 are optional.
     if (!reg.A.captainId) missing.push("Team A Captain");
     if (!reg.A.keeperId) missing.push("Team A Wicket Keeper");
     if (!reg.B.captainId) missing.push("Team B Captain");
@@ -1995,6 +1995,9 @@ async function initMatchRegistration(root) {
     if (missing.length) return toast(`Required: ${missing.join(", ")}`, true);
 
     if (reg.A.teamId === reg.B.teamId) return toast("Team A and Team B must differ", true);
+    // The same official can't stand as more than one umpire.
+    const rgUmps = [val("#rg-ump1"), val("#rg-ump2"), val("#rg-ump3")].filter(Boolean);
+    if (new Set(rgUmps).size !== rgUmps.length) return toast("Each umpire must be a different person", true);
     // A match may only be created for teams participating in the selected competition.
     if (comp && Array.isArray(comp.teamIds) && comp.teamIds.length) {
       const allowed = new Set(comp.teamIds);
@@ -2297,6 +2300,9 @@ async function initFixtures(root) {
     if (!awayId) missing.push("Away Team");
     if (missing.length) return toast(`Required: ${missing.join(", ")}`, true);
     if (homeId === awayId) return toast("Home and Away teams must differ", true);
+    // The same official can't stand as more than one umpire.
+    const fxUmps = [q("#fx-ump1").value, q("#fx-ump2").value, q("#fx-ump3").value].filter(Boolean);
+    if (new Set(fxUmps).size !== fxUmps.length) return toast("Each umpire must be a different person", true);
 
     const matchDate = `${isoToDMY(dateVal)} ${timeVal}`;
     const name = q("#fx-name").value.trim()
