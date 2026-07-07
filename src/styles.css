@@ -1638,8 +1638,16 @@ body.edit-mode .app { outline: 2px solid rgba(240, 199, 97, 0.5); outline-offset
 .f-textarea { resize: vertical; min-height: 64px; }
 .f-textarea.tall { min-height: 120px; }
 .f-textarea.yellow-area { border-color: rgba(240, 199, 97, 0.6); color: var(--warning); }
-.grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 12px 18px; }
+/* minmax(0, 1fr) — not the default minmax(auto, 1fr) — so each column can shrink
+   below its <select>'s intrinsic width instead of forcing the row to overflow
+   the popup and clip the right column on a narrow window. */
+.grid-2 { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 12px 18px; }
 .grid-2 .f-label { width: 120px; }
+/* On a narrow overlay the two-column select rows get cramped — stack them so the
+   controls stay comfortably wide and nothing is cut off. */
+@media (max-width: 720px) {
+  .grid-2 { grid-template-columns: 1fr; }
+}
 .narrow-row { max-width: 360px; }
 
 .seg-row { display: flex; align-items: center; gap: 14px; }
