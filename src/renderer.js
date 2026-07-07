@@ -558,6 +558,51 @@ function showBallInputs(index) {
 // The mini player (#camera-preview) doubles as a clip player: when a logged
 // ball is selected, its saved recording is loaded here with playback controls.
 let ballClipUrl = null;
+
+// Live camera preview kept hot in the video container. The stream from the
+// device chosen in video settings is always shown; recording (Start Capture)
+// just attaches a MediaRecorder to this same stream — see wireCapture().
+let previewStream = null;
+let previewDeviceId = null; // device the current preview stream was opened with
+
+// Attach the live preview stream to the video element (idle, muted, no
+// controls). No-op if the preview isn't running yet.
+function showLivePreview(video) {
+  if (!video || !previewStream || !previewStream.active) return;
+  video.removeAttribute("src");
+  video.srcObject = previewStream;
+  video.muted = true;
+  video.controls = false;
+  video.play?.().catch(() => { /* autoplay may be deferred; harmless */ });
+}
+
+// Open (or re-open) the live preview from the configured camera device and show
+// it. Safe to call repeatedly; it only re-acquires when the device changed or
+// the stream died, and never interrupts an in-progress recording.
+async function startPreview() {
+  if (state.capturing) return; // don't disturb the stream while recording
+  let cfg = {};
+  try { cfg = (await window.cricketApp?.getConfig?.()) || {}; } catch { /* ignore */ }
+  const wantDevice = cfg.cameraDeviceId || "";
+  if (previewStream && previewStream.active && previewDeviceId === wantDevice) {
+    // already previewing the right device — just make sure it's on screen
+    if (!document.getElementById("camera-preview")?.src) {
+      showLivePreview(document.getElementById("camera-preview"));
+    }
+    return;
+  }
+  // switching devices (or first start): drop the old stream
+  previewStream?.getTracks().forEach((t) => t.stop());
+  previewStream = null;
+  try {
+    previewStream = await getCaptureStream();
+    previewDeviceId = wantDevice;
+    const video = document.getElementById("camera-preview");
+    if (!video?.src) showLivePreview(video); // don't clobber a clip under review
+  } catch (err) {
+    console.warn("live preview unavailable", err);
+  }
+}
 async function showBallVideo(r) {
   const video = document.getElementById("camera-preview");
   if (!video || state.capturing) return; // never interrupt a live capture
@@ -587,7 +632,13 @@ function hideBallVideo() {
   if (!video) return;
   video.controls = false;
   if (ballClipUrl) { URL.revokeObjectURL(ballClipUrl); ballClipUrl = null; }
-  if (!state.capturing) { video.removeAttribute("src"); video.muted = true; video.load(); }
+  if (!state.capturing) {
+    video.removeAttribute("src");
+    video.muted = true;
+    // Return to the live camera feed rather than a blank player.
+    if (previewStream && previewStream.active) showLivePreview(video);
+    else video.load();
+  }
 }
 
 function nearestWagonLine(x, y) {
@@ -2604,10 +2655,7 @@ function matchEventBody(name) {
 }
 
 function powerPlayOptions() {
-  // ≤20 overs → T20 has a single powerplay; otherwise ODI has three.
-  return state.overs <= 20
-    ? ["PP1 (1-6)", "Batting PP", "Bowling PP"]
-    : ["PP1 (1-10)", "PP2 (11-40)", "PP3 (41-50)", "Batting PP", "Bowling PP"];
+  return ["PP1", "PP2", "PP3"];
 }
 
 function powerPlayBody() {
@@ -3000,10 +3048,11 @@ function wireCapture() {
       state.capturing = !active;
       updateCaptureEnabled();
     });
+    startPreview(); // still show the live camera feed even without a save bridge
     return;
   }
 
-  let stream = null, recorder = null, starting = false;
+  let recorder = null, starting = false;
   const chunks = [];
   function setUi(active) {
     btn.textContent = active ? "End Capture" : "Start Capture";
@@ -3023,22 +3072,25 @@ function wireCapture() {
     if (starting || (recorder && recorder.state === "recording")) return;
     starting = true;
     try {
-      // Drop any clip that was loaded for review before switching to live capture.
+      // Drop any clip that was loaded for review, then show the live feed.
       videoEl.controls = false; videoEl.removeAttribute("src");
       if (ballClipUrl) { URL.revokeObjectURL(ballClipUrl); ballClipUrl = null; }
-      stream = await getCaptureStream();
-      videoEl.srcObject = stream;
-      videoEl.muted = true;
+      // The preview is normally already running; open it now if it isn't.
+      if (!previewStream || !previewStream.active) await startPreview();
+      if (!previewStream || !previewStream.active) throw new Error("No camera available");
+      showLivePreview(videoEl);
       chunks.length = 0;
       // label the clip by where it begins: innings / over / ball (next ball)
       captureLabel = `INN${state.innings}-OVER${state.over}-BALL${state.ball + 1}`;
       const mime = pickRecorderMime();
-      recorder = new MediaRecorder(stream, mime ? { mimeType: mime } : {});
+      // Record the same live preview stream; leave it running when we stop so the
+      // preview never goes dark between captures.
+      recorder = new MediaRecorder(previewStream, mime ? { mimeType: mime } : {});
       recorder.ondataavailable = (e) => { if (e.data && e.data.size > 0) chunks.push(e.data); };
       recorder.onstop = async () => {
         setUi(false);
-        stream?.getTracks().forEach((t) => t.stop()); stream = null;
-        videoEl.srcObject = null;
+        // Keep the preview stream alive — just re-show it (recording detached).
+        showLivePreview(videoEl);
         const r = recorder; recorder = null;
         if (!chunks.length) return;
         const blob = new Blob(chunks, { type: r.mimeType || "video/webm" });
@@ -3064,8 +3116,8 @@ function wireCapture() {
       recorder.start(1000);
       setUi(true);
     } catch (err) {
-      stream?.getTracks().forEach((t) => t.stop()); stream = null;
-      videoEl.srcObject = null; recorder = null; setUi(false);
+      // Leave the live preview stream intact; only the recording failed.
+      recorder = null; setUi(false);
       alert(`Could not start camera: ${err.message || err}`);
     } finally { starting = false; }
   }
@@ -3073,6 +3125,12 @@ function wireCapture() {
     if (recorder && recorder.state === "recording") recorder.stop();
     else start();
   });
+
+  // Kick off the always-on live preview, and re-check the configured device
+  // whenever the coding window regains focus (the user may have changed it in
+  // video settings). startPreview() is a no-op while a recording is running.
+  startPreview();
+  window.addEventListener("focus", () => { startPreview(); });
 }
 
 // ===========================================================================
