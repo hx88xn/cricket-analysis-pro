@@ -1299,9 +1299,10 @@ function endInnings() {
     setOverButton("Start Over");
     setBallButton("Start Ball");
     scheduleSave(); // persist the final state with a COMPLETED status
-    openOverlay(popupShell("MATCH COMPLETE",
-      `<div class="confirm-box"><p>Both innings complete.</p>
-       <div class="btn-row-modal center"><button class="m-btn m-green" data-close>OK</button></div></div>`));
+    render();
+    // Both innings are done — go straight to the Match Results screen so the
+    // scorer can record the result, awards and points.
+    overlayMatchEvents("Match Results");
     return;
   }
 
@@ -1792,6 +1793,161 @@ function overlayFielding() {
   });
 }
 
+// ---- Movie Organiser ------------------------------------------------------
+// Browse the saved per-ball clips for an innings, pick which to keep, trim each
+// (set IN/OUT while it plays), then merge + export the lot to one movie file.
+const movieOrg = { innings: 1, clips: [], trims: {}, keep: {}, current: null, clipUrl: null };
+
+function movieOrganiserBody() {
+  const opt = (n) => `<option value="${n}"${movieOrg.innings === n ? " selected" : ""}>${n}</option>`;
+  return `
+    <div class="movie-org">
+      <label class="f-row narrow-row"><span class="f-label">Innings No</span>
+        <select class="f-select" id="mo-innings">${opt(1)}${opt(2)}</select></label>
+      <div class="movie-layout">
+        <div class="movie-table" id="mo-list"><p class="me-muted">Loading clips…</p></div>
+        <div class="movie-player">
+          <video id="mo-video" class="movie-screen" controls playsinline></video>
+          <div class="movie-trim">
+            <button class="m-btn m-green" id="mo-in">Set IN</button>
+            <button class="m-btn m-green" id="mo-out">Set OUT</button>
+            <button class="m-btn m-yellow" id="mo-cleartrim">Clear</button>
+          </div>
+          <div class="trim-label" id="mo-trimlabel">No clip selected</div>
+        </div>
+      </div>
+      <div class="btn-row-modal center">
+        <span class="mo-status" id="mo-status"></span>
+        <button class="m-btn m-green" id="mo-export">Merge &amp; Export Movie</button>
+      </div>
+    </div>`;
+}
+
+function moFmt(s) {
+  if (s == null || s === "") return "—";
+  const n = Number(s), m = Math.floor(n / 60), sec = (n % 60).toFixed(1);
+  return `${m}:${sec.padStart(4, "0")}`;
+}
+
+function movieClipRows() {
+  if (!movieOrg.clips.length) return `<p class="me-muted">No clips found for this innings.</p>`;
+  const rows = movieOrg.clips.map((c) => {
+    const keep = movieOrg.keep[c.name] !== false;
+    const t = movieOrg.trims[c.name];
+    const trimTxt = t ? `${moFmt(t.in)}–${moFmt(t.out)}` : "full";
+    const over = c.over != null ? `${c.over}.${c.ball}` : "—";
+    const sel = movieOrg.current === c.name ? " selected" : "";
+    return `<tr data-name="${escAttr(c.name)}" class="mo-row${sel}">
+      <td><input type="checkbox" class="mo-keep" ${keep ? "checked" : ""}/></td>
+      <td>${over}</td><td class="mo-trimcell">${trimTxt}</td></tr>`;
+  }).join("");
+  return `<table class="data-table grid-table"><thead><tr><th>Keep</th><th>Over</th><th>Trim</th></tr></thead><tbody>${rows}</tbody></table>`;
+}
+
+async function loadMovieClips() {
+  const listEl = document.getElementById("mo-list");
+  if (!listEl) return;
+  if (!state.recordingFolder || !window.cricketApp?.listRecordings) {
+    listEl.innerHTML = `<p class="me-muted">No recordings folder is set for this match.</p>`;
+    return;
+  }
+  const res = await window.cricketApp.listRecordings(state.recordingFolder, movieOrg.innings);
+  movieOrg.clips = res?.ok ? res.clips : [];
+  listEl.innerHTML = movieClipRows();
+  listEl.querySelectorAll(".mo-row").forEach((tr) => {
+    const name = tr.getAttribute("data-name");
+    tr.querySelector(".mo-keep")?.addEventListener("change", (e) => { movieOrg.keep[name] = e.target.checked; });
+    tr.addEventListener("click", (e) => { if (!e.target.closest(".mo-keep")) loadMovieClip(name); });
+  });
+}
+
+async function loadMovieClip(name) {
+  const video = document.getElementById("mo-video");
+  if (!video || !window.cricketApp?.getClipBytes) return;
+  movieOrg.current = name;
+  document.querySelectorAll("#mo-list .mo-row").forEach((tr) =>
+    tr.classList.toggle("selected", tr.getAttribute("data-name") === name));
+  moUpdateTrimLabel();
+  const res = await window.cricketApp.getClipBytes(state.recordingFolder, name);
+  if (!res?.ok || !res.bytes) { toast("Could not load clip"); return; }
+  if (movieOrg.clipUrl) URL.revokeObjectURL(movieOrg.clipUrl);
+  movieOrg.clipUrl = URL.createObjectURL(new Blob([res.bytes], { type: res.mime || "video/webm" }));
+  video.src = movieOrg.clipUrl;
+  video.load();
+}
+
+function moUpdateTrimLabel() {
+  const el = document.getElementById("mo-trimlabel");
+  if (!el) return;
+  if (!movieOrg.current) { el.textContent = "No clip selected"; return; }
+  const t = movieOrg.trims[movieOrg.current];
+  el.textContent = t ? `IN ${moFmt(t.in)}  ·  OUT ${moFmt(t.out)}` : "Full clip (no trim set)";
+}
+
+function moRefreshRow() {
+  document.querySelectorAll("#mo-list .mo-row").forEach((tr) => {
+    if (tr.getAttribute("data-name") !== movieOrg.current) return;
+    const t = movieOrg.trims[movieOrg.current];
+    const cell = tr.querySelector(".mo-trimcell");
+    if (cell) cell.textContent = t ? `${moFmt(t.in)}–${moFmt(t.out)}` : "full";
+  });
+}
+
+function wireMovieOrganiser() {
+  loadMovieClips();
+  const vid = () => document.getElementById("mo-video");
+  document.getElementById("mo-innings")?.addEventListener("change", (e) => {
+    movieOrg.innings = Number(e.target.value) || 1;
+    movieOrg.current = null;
+    const v = vid(); if (v) { v.removeAttribute("src"); v.load(); }
+    moUpdateTrimLabel();
+    loadMovieClips();
+  });
+  document.getElementById("mo-in")?.addEventListener("click", () => {
+    if (!movieOrg.current) { toast("Select a clip first"); return; }
+    const t = (movieOrg.trims[movieOrg.current] ||= { in: 0, out: "" });
+    t.in = Number(vid().currentTime.toFixed(2));
+    if (t.out !== "" && Number(t.out) <= t.in) t.out = "";
+    moRefreshRow(); moUpdateTrimLabel();
+  });
+  document.getElementById("mo-out")?.addEventListener("click", () => {
+    if (!movieOrg.current) { toast("Select a clip first"); return; }
+    const t = (movieOrg.trims[movieOrg.current] ||= { in: 0, out: "" });
+    t.out = Number(vid().currentTime.toFixed(2));
+    moRefreshRow(); moUpdateTrimLabel();
+  });
+  document.getElementById("mo-cleartrim")?.addEventListener("click", () => {
+    if (!movieOrg.current) return;
+    delete movieOrg.trims[movieOrg.current];
+    moRefreshRow(); moUpdateTrimLabel();
+  });
+  document.getElementById("mo-export")?.addEventListener("click", exportMovie);
+}
+
+async function exportMovie() {
+  const status = document.getElementById("mo-status");
+  const btn = document.getElementById("mo-export");
+  if (!window.cricketApp?.exportMovie) { toast("Export is unavailable in this build"); return; }
+  // Kept clips, in over/ball order (the list order), each with its trim.
+  const segments = movieOrg.clips
+    .filter((c) => movieOrg.keep[c.name] !== false)
+    .map((c) => ({ name: c.name, in: movieOrg.trims[c.name]?.in ?? 0, out: movieOrg.trims[c.name]?.out ?? "" }));
+  if (!segments.length) { toast("Tick at least one clip to keep"); return; }
+  const def = `${state.recordingPrefix || "match"}-INN${movieOrg.innings}-movie.mp4`;
+  if (btn) btn.disabled = true;
+  if (status) status.textContent = `Exporting ${segments.length} clip${segments.length === 1 ? "" : "s"}… this can take a while.`;
+  try {
+    const res = await window.cricketApp.exportMovie(state.recordingFolder, segments, def);
+    if (res?.ok) { if (status) status.textContent = `✓ Saved to ${res.filePath}`; toast("Movie exported"); }
+    else if (res?.canceled) { if (status) status.textContent = ""; }
+    else { if (status) status.textContent = `⚠ Export failed: ${res?.error || res?.reason || "unknown error"}`; }
+  } catch (e) {
+    if (status) status.textContent = `⚠ Export failed: ${e.message || e}`;
+  } finally {
+    if (btn) btn.disabled = false;
+  }
+}
+
 // ---- Remarks --------------------------------------------------------------
 
 function overlayRemarks() {
@@ -1983,6 +2139,10 @@ function overlayScorecard() {
 
 // ---- Match Events module (full screen, left nav) --------------------------
 
+// True while the scorer is editing an already-saved result (shows the form
+// instead of the read-only view). Reset whenever the Match Results screen is
+// opened fresh from the menu.
+let editingMatchResult = false;
 function overlayMatchEvents(active = "Breaks") {
   // Revised Overs applies only in the 1st innings, Revised Target only in the
   // 2nd — disable the one that doesn't apply to the current innings.
@@ -1994,6 +2154,7 @@ function overlayMatchEvents(active = "Breaks") {
   openOverlay(moduleShell(matchEventTitle(active), nav, matchEventBody(active)));
   const root = overlayRoot();
   root.querySelectorAll("[data-nav]").forEach((b) => b.addEventListener("click", () => {
+    editingMatchResult = false; // deliberate navigation resets edit mode
     overlayMatchEvents(b.getAttribute("data-nav"));
   }));
   wireSeg();
@@ -2053,10 +2214,21 @@ function overlayMatchEvents(active = "Breaks") {
         bestBowler: pick("mr-best-bowl"),
         bestAllRounder: pick("mr-best-ar"),
         mvp: pick("mr-mvp"),
+        pointsOmn: pick("mr-pts-omn"),
+        pointsCana: pick("mr-pts-cana"),
       };
       scheduleSave();
-      closeOverlay();
       toast("Match result saved");
+      // Now that a result exists, re-render as the read-only view of the saved
+      // values instead of the form.
+      editingMatchResult = false;
+      overlayMatchEvents("Match Results");
+    });
+    // "Edit" on the read-only view flips back to the form, pre-filled from the
+    // saved result.
+    document.getElementById("mr-edit")?.addEventListener("click", () => {
+      editingMatchResult = true;
+      overlayMatchEvents("Match Results");
     });
   }
 
@@ -2193,6 +2365,8 @@ function overlayMatchEvents(active = "Breaks") {
     });
   }
 
+  if (active === "Movie Organiser") wireMovieOrganiser();
+
   if (active === "Video Count Validation") {
     document.getElementById("vcv-btn")?.addEventListener("click", refreshVideoCount);
     refreshVideoCount();
@@ -2290,6 +2464,61 @@ function batTimeRows() {
     `<tr>${cells([r.batsman, r.inTime, r.outTime, r.mins, r.balls])}</tr>`).join("");
 }
 
+// The Match Results entry form. `r` (the saved result, if any) pre-fills every
+// field so an edit starts from the stored values loaded from the DB.
+function matchResultsForm(r = null) {
+  const v = r || {};
+  const resultOpts = ["Select","Win","Loss","Tie","No Result","Abandoned"]
+    .map((o)=>`<option${v.resultType === o ? " selected" : ""}>${o}</option>`).join("");
+  return `
+    <div class="me-results">
+      <div class="me-results-left">
+        <label class="f-row"><span class="f-label">Result Type <span class="req">*</span></span><select class="f-select" id="mr-result">${resultOpts}</select></label>
+        ${selectEl("Team", ["OMN","CANA"], "Select", "mr-team", v.team)}
+        <label class="f-row"><span class="f-label">Comments <span class="req">*</span></span><input class="f-input" id="mr-comments" placeholder="Comments" value="${esc(v.comments || "")}"/></label>
+        ${selectEl("Man Of The Match", [...CANADA, ...OMAN_BOWLERS], "Select", "mr-motm", v.manOfMatch)}
+        ${selectEl("Man Of The Series", [...CANADA, ...OMAN_BOWLERS], "Select", "mr-mots", v.manOfSeries)}
+        ${selectEl("Best Batsman", CANADA, "Select", "mr-best-bat", v.bestBatsman)}
+        ${selectEl("Best Bowler", OMAN_BOWLERS, "Select", "mr-best-bowl", v.bestBowler)}
+        ${selectEl("Best All Rounder", CANADA, "Select", "mr-best-ar", v.bestAllRounder)}
+        ${selectEl("Most Valuable Player", CANADA, "Select", "mr-mvp", v.mvp)}
+      </div>
+      <div class="me-results-right">
+        <div class="points-head">POINTS</div>
+        <div class="points-row"><input class="f-input" value="OMN" disabled/><input class="f-input" id="mr-pts-omn" placeholder="Point" value="${esc(v.pointsOmn || "")}"/></div>
+        <div class="points-row"><input class="f-input" value="CANA" disabled/><input class="f-input" id="mr-pts-cana" placeholder="Point" value="${esc(v.pointsCana || "")}"/></div>
+      </div>
+    </div>
+    <div class="btn-row-modal center"><button class="m-btn m-green" id="mr-done">Done</button><button class="m-btn m-red" data-close>Revert</button></div>`;
+}
+
+// Read-only view of a saved result, shown after Done and whenever a completed
+// match is reopened. Every field is read straight from the stored record.
+function matchResultsView(r) {
+  const row = (label, value) =>
+    `<label class="f-row"><span class="f-label">${label}</span><span class="f-input f-static">${esc(value || "—")}</span></label>`;
+  return `
+    <div class="me-results">
+      <div class="me-results-left">
+        ${row("Result Type", r.resultType)}
+        ${row("Team", r.team)}
+        ${row("Comments", r.comments)}
+        ${row("Man Of The Match", r.manOfMatch)}
+        ${row("Man Of The Series", r.manOfSeries)}
+        ${row("Best Batsman", r.bestBatsman)}
+        ${row("Best Bowler", r.bestBowler)}
+        ${row("Best All Rounder", r.bestAllRounder)}
+        ${row("Most Valuable Player", r.mvp)}
+      </div>
+      <div class="me-results-right">
+        <div class="points-head">POINTS</div>
+        <div class="points-row"><input class="f-input" value="OMN" disabled/><input class="f-input f-static" value="${esc(r.pointsOmn || "—")}" disabled/></div>
+        <div class="points-row"><input class="f-input" value="CANA" disabled/><input class="f-input f-static" value="${esc(r.pointsCana || "—")}" disabled/></div>
+      </div>
+    </div>
+    <div class="btn-row-modal center"><button class="m-btn m-green" id="mr-edit">Edit</button></div>`;
+}
+
 function matchEventBody(name) {
   switch (name) {
     case "Breaks":
@@ -2335,37 +2564,12 @@ function matchEventBody(name) {
         ${saveDeleteRow("", "bc-save", "bc-del")}
         ${meTable(["Ball Change Date/Time","Team Name","Inns #","Runs","Overs","Wkts","Ball Type","Remarks"], ballChangesRows())}`;
     case "Match Results":
-      return `
-        <div class="me-results">
-          <div class="me-results-left">
-            <label class="f-row"><span class="f-label">Result Type <span class="req">*</span></span><select class="f-select" id="mr-result">${["Select","Win","Loss","Tie","No Result","Abandoned"].map((o)=>`<option>${o}</option>`).join("")}</select></label>
-            ${selectEl("Team", ["OMN","CANA"], "Select", "mr-team") }
-            <label class="f-row"><span class="f-label">Comments <span class="req">*</span></span><input class="f-input" id="mr-comments" placeholder="Comments"/></label>
-            ${selectEl("Man Of The Match", [...CANADA, ...OMAN_BOWLERS], "Select", "mr-motm")}
-            ${selectEl("Man Of The Series", [...CANADA, ...OMAN_BOWLERS], "Select", "mr-mots")}
-            ${selectEl("Best Batsman", CANADA, "Select", "mr-best-bat")}
-            ${selectEl("Best Bowler", OMAN_BOWLERS, "Select", "mr-best-bowl")}
-            ${selectEl("Best All Rounder", CANADA, "Select", "mr-best-ar")}
-            ${selectEl("Most Valuable Player", CANADA, "Select", "mr-mvp")}
-          </div>
-          <div class="me-results-right">
-            <div class="points-head">POINTS</div>
-            <div class="points-row"><input class="f-input" value="OMN"/><input class="f-input" placeholder="Point"/></div>
-            <div class="points-row"><input class="f-input" value="CANA"/><input class="f-input" placeholder="Point"/></div>
-          </div>
-        </div>
-        <div class="btn-row-modal center"><button class="m-btn m-green" id="mr-done">Done</button><button class="m-btn m-red" data-close>Revert</button></div>`;
+      // Once a result has been saved (in this match or loaded from the DB on a
+      // resume), show it read-only; the form is only for entering/editing.
+      if (state.matchResult && !editingMatchResult) return matchResultsView(state.matchResult);
+      return matchResultsForm(state.matchResult);
     case "Movie Organiser":
-      return `
-        <label class="f-row narrow-row"><span class="f-label">Innings No</span><select class="f-select"><option>1</option><option>2</option></select></label>
-        <div class="movie-layout">
-          <div class="movie-table">${tableHead(["Over","Bowler","Striker","Non-St","Bowl Ty","Shot Ty","Runs","Ext","IsWkt"])}</div>
-          <div class="movie-player">
-            <div class="movie-screen">▶</div>
-            <div class="movie-controls">▶ ◼ ◀◀ ▶▶</div>
-            <div class="movie-trim"><button class="m-btn m-green">Trim IN</button><button class="m-btn m-green">Trim OUT</button></div>
-          </div>
-        </div>`;
+      return movieOrganiserBody();
     case "Power Play":
       return powerPlayBody();
     case "Revised Overs":
@@ -2431,6 +2635,10 @@ function wireSeg() {
 
 const fieldVal = (id) => document.getElementById(id)?.value ?? "";
 const escAttr = (v) => String(v).replace(/"/g, "&quot;");
+// Full HTML escape for user-entered text placed into markup (comments etc.).
+const esc = (v) => String(v)
+  .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
+  .replace(/"/g, "&quot;");
 
 // Numeric run value carried by an extras cell ("0", "WD", "WD1", "LB", 2 …).
 function extNum(ext) {

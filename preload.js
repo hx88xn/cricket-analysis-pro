@@ -20,6 +20,12 @@ contextBridge.exposeInMainWorld("cricketApp", {
     ipcRenderer.invoke("recordings:count", folderName, innings),
   getBallClip: (folderName, innings, over, ball) =>
     ipcRenderer.invoke("recordings:clip", folderName, innings, over, ball),
+  listRecordings: (folderName, innings) =>
+    ipcRenderer.invoke("recordings:list", folderName, innings),
+  getClipBytes: (folderName, name) =>
+    ipcRenderer.invoke("recordings:clipBytes", folderName, name),
+  exportMovie: (folderName, segments, defaultName) =>
+    ipcRenderer.invoke("movie:export", folderName, segments, defaultName),
   db: {
     teams: () => ipcRenderer.invoke("db:teams"),
     players: (teamId) => ipcRenderer.invoke("db:players", teamId),

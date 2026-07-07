@@ -1,7 +1,37 @@
 const { app, BrowserWindow, ipcMain, dialog, Menu, screen } = require("electron");
 const path = require("path");
 const fs = require("fs");
+const os = require("os");
+const { execFile } = require("child_process");
 const db = require("./src/db");
+
+// Locate ffmpeg/ffprobe: prefer common install paths (a packaged app's PATH may
+// not include Homebrew), else fall back to a bare PATH lookup.
+function findBinary(name) {
+  for (const c of [`/opt/homebrew/bin/${name}`, `/usr/local/bin/${name}`, `/usr/bin/${name}`]) {
+    try { if (fs.existsSync(c)) return c; } catch { /* ignore */ }
+  }
+  return name;
+}
+const FFMPEG = findBinary("ffmpeg");
+const FFPROBE = findBinary("ffprobe");
+
+function run(bin, args) {
+  return new Promise((resolve, reject) => {
+    execFile(bin, args, { maxBuffer: 64 * 1024 * 1024 }, (err, stdout, stderr) => {
+      if (err) reject(new Error(stderr || err.message));
+      else resolve({ stdout, stderr });
+    });
+  });
+}
+
+async function hasAudioStream(file) {
+  try {
+    const { stdout } = await run(FFPROBE,
+      ["-v", "error", "-select_streams", "a", "-show_entries", "stream=index", "-of", "csv=p=0", file]);
+    return stdout.trim().length > 0;
+  } catch { return false; }
+}
 
 if (process.env.ELECTRON_DOCKER === "1") {
   app.commandLine.appendSwitch("no-sandbox");
@@ -220,6 +250,108 @@ ipcMain.handle("recordings:clip", async (_event, folderName, innings, over, ball
     return { ok: true, name, mime, bytes: buf };
   } catch (e) {
     return { ok: false, reason: "no-dir", error: String((e && e.message) || e) };
+  }
+});
+
+// List the saved clips for a match (optionally one innings), sorted by over/ball,
+// for the Movie Organiser. Parses the OVER/BALL label out of each filename.
+ipcMain.handle("recordings:list", async (_event, folderName, innings) => {
+  const cfg = loadConfig();
+  const root = (cfg.recordingsPath || "").trim();
+  if (!root) return { ok: false, reason: "no-root" };
+  const sub = safeSubpath(folderName);
+  const dir = sub ? path.join(root, sub) : root;
+  const innTag = innings ? new RegExp(`INN${Number(innings)}(?![0-9])`, "i") : null;
+  try {
+    const entries = await fs.promises.readdir(dir);
+    const clips = entries
+      .filter((n) => /\.(webm|mp4|mov|mkv|avi|m4v)$/i.test(n) && (!innTag || innTag.test(n)))
+      .map((n) => {
+        const m = /OVER(\d+)-BALL(\d+)/i.exec(n);
+        return { name: n, over: m ? Number(m[1]) : null, ball: m ? Number(m[2]) : null };
+      })
+      .sort((a, b) => (a.over - b.over) || (a.ball - b.ball) || a.name.localeCompare(b.name));
+    return { ok: true, clips, dir };
+  } catch (e) {
+    return { ok: false, reason: "no-dir", error: String((e && e.message) || e) };
+  }
+});
+
+// Read a clip's bytes by filename (for the Movie Organiser's preview player).
+ipcMain.handle("recordings:clipBytes", async (_event, folderName, name) => {
+  const cfg = loadConfig();
+  const root = (cfg.recordingsPath || "").trim();
+  if (!root) return { ok: false, reason: "no-root" };
+  const sub = safeSubpath(folderName);
+  const dir = sub ? path.join(root, sub) : root;
+  try {
+    // path.basename strips any directory parts so the read can't escape dir,
+    // while keeping the extension (unlike safeSegment, which drops the dot).
+    const buf = await fs.promises.readFile(path.join(dir, path.basename(String(name || ""))));
+    const ext = path.extname(name).slice(1).toLowerCase();
+    const mime = ext === "mp4" || ext === "m4v" ? "video/mp4"
+      : ext === "mov" ? "video/quicktime" : ext === "webm" ? "video/webm" : `video/${ext}`;
+    return { ok: true, mime, bytes: buf };
+  } catch (e) {
+    return { ok: false, reason: "read-failed", error: String((e && e.message) || e) };
+  }
+});
+
+// Trim each selected clip to its in/out points, normalise them to a common
+// format, concatenate into one movie, and save it where the user chooses.
+ipcMain.handle("movie:export", async (event, folderName, segments, defaultName) => {
+  const win = BrowserWindow.fromWebContents(event.sender);
+  const cfg = loadConfig();
+  const root = (cfg.recordingsPath || "").trim();
+  if (!root) return { ok: false, reason: "no-root" };
+  if (!Array.isArray(segments) || !segments.length) return { ok: false, reason: "no-clips" };
+  const sub = safeSubpath(folderName);
+  const dir = sub ? path.join(root, sub) : root;
+
+  const { filePath, canceled } = await dialog.showSaveDialog(win, {
+    defaultPath: defaultName || "match-movie.mp4",
+    filters: [{ name: "MP4 video", extensions: ["mp4"] }],
+  });
+  if (canceled || !filePath) return { ok: false, canceled: true };
+
+  // Every segment is normalised to 1280x720 / 30fps / H.264 + AAC so the parts
+  // can be concatenated with a plain stream copy.
+  const VF = "scale=1280:720:force_original_aspect_ratio=decrease,pad=1280:720:(ow-iw)/2:(oh-ih)/2,setsar=1,fps=30";
+  const work = await fs.promises.mkdtemp(path.join(os.tmpdir(), "cricmovie-"));
+  try {
+    const parts = [];
+    for (let i = 0; i < segments.length; i++) {
+      const seg = segments[i] || {};
+      const inFile = path.join(dir, path.basename(String(seg.name || "")));
+      if (!fs.existsSync(inFile)) continue;
+      const out = path.join(work, `part${String(i).padStart(3, "0")}.mp4`);
+      const inSec = Number(seg.in) > 0 ? Number(seg.in) : 0;
+      const outSec = seg.out != null && seg.out !== "" ? Number(seg.out) : null;
+      const trim = [];
+      if (inSec > 0) trim.push("-ss", String(inSec));
+      if (outSec != null && outSec > inSec) trim.push("-t", String(outSec - inSec));
+      const audio = await hasAudioStream(inFile);
+      const args = audio
+        ? ["-y", ...trim, "-i", inFile, "-vf", VF, "-c:v", "libx264", "-preset", "veryfast",
+           "-pix_fmt", "yuv420p", "-c:a", "aac", "-ar", "48000", "-ac", "2", "-b:a", "128k", out]
+        : ["-y", ...trim, "-i", inFile, "-f", "lavfi", "-i", "anullsrc=channel_layout=stereo:sample_rate=48000",
+           "-vf", VF, "-map", "0:v:0", "-map", "1:a:0", "-shortest", "-c:v", "libx264", "-preset", "veryfast",
+           "-pix_fmt", "yuv420p", "-c:a", "aac", "-b:a", "128k", out];
+      await run(FFMPEG, args);
+      parts.push(out);
+    }
+    if (!parts.length) return { ok: false, reason: "no-valid-clips" };
+    const listFile = path.join(work, "list.txt");
+    await fs.promises.writeFile(listFile,
+      parts.map((p) => `file '${p.replace(/'/g, "'\\''")}'`).join("\n"));
+    const finalTmp = path.join(work, "movie.mp4");
+    await run(FFMPEG, ["-y", "-f", "concat", "-safe", "0", "-i", listFile, "-c", "copy", finalTmp]);
+    await fs.promises.copyFile(finalTmp, filePath);
+    return { ok: true, filePath, count: parts.length };
+  } catch (e) {
+    return { ok: false, reason: "ffmpeg-failed", error: String((e && e.message) || e) };
+  } finally {
+    try { await fs.promises.rm(work, { recursive: true, force: true }); } catch { /* ignore */ }
   }
 });
 
