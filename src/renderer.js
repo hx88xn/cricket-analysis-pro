@@ -2265,8 +2265,11 @@ function overlayMatchEvents(active = "Breaks") {
         bestBowler: pick("mr-best-bowl"),
         bestAllRounder: pick("mr-best-ar"),
         mvp: pick("mr-mvp"),
-        pointsOmn: pick("mr-pts-omn"),
-        pointsCana: pick("mr-pts-cana"),
+        // One {team, value} per real side, read from the dynamic point inputs.
+        points: [...document.querySelectorAll("[id^='mr-pts-']")].map((el) => ({
+          team: el.getAttribute("data-team") || "",
+          value: el.value.trim(),
+        })),
       };
       scheduleSave();
       toast("Match result saved");
@@ -2515,29 +2518,52 @@ function batTimeRows() {
     `<tr>${cells([r.batsman, r.inTime, r.outTime, r.mins, r.balls])}</tr>`).join("");
 }
 
+// The two real teams for this match and their full playing XIs, taken live from
+// the loaded match (state.battingTeam / state.bowlingTeam). Falls back to the
+// current name pools for the standalone demo. Order-independent — both sides are
+// always included, so Match Results is never tied to hardcoded OMN/CANA.
+function matchResultTeams() {
+  const bt = state.battingTeam, wt = state.bowlingTeam;
+  const codeA = (bt && bt.code) || state.teamA || "";
+  const codeB = (wt && wt.code) || state.teamB || "";
+  const playersA = bt ? namesOf(bt.playingXIPlayers) : [...CANADA];
+  const playersB = wt ? namesOf(wt.playingXIPlayers) : [...OMAN_BOWLERS];
+  return {
+    codes: [codeA, codeB].filter(Boolean),
+    players: [...playersA, ...playersB],
+  };
+}
+
+// Look up a saved per-team point value (points is an array of {team, value}).
+function savedPoint(r, code) {
+  return (r?.points || []).find((p) => p.team === code)?.value || "";
+}
+
 // The Match Results entry form. `r` (the saved result, if any) pre-fills every
 // field so an edit starts from the stored values loaded from the DB.
 function matchResultsForm(r = null) {
   const v = r || {};
+  const { codes, players } = matchResultTeams();
   const resultOpts = ["Select","Win","Loss","Tie","No Result","Abandoned"]
     .map((o)=>`<option${v.resultType === o ? " selected" : ""}>${o}</option>`).join("");
+  const pointsRows = codes.map((code, i) =>
+    `<div class="points-row"><input class="f-input" value="${esc(code)}" disabled/><input class="f-input" id="mr-pts-${i}" data-team="${esc(code)}" placeholder="Point" value="${esc(savedPoint(v, code))}"/></div>`).join("");
   return `
     <div class="me-results">
       <div class="me-results-left">
         <label class="f-row"><span class="f-label">Result Type <span class="req">*</span></span><select class="f-select" id="mr-result">${resultOpts}</select></label>
-        ${selectEl("Team", ["OMN","CANA"], "Select", "mr-team", v.team)}
+        ${selectEl("Team", codes, "Select", "mr-team", v.team)}
         <label class="f-row"><span class="f-label">Comments <span class="req">*</span></span><input class="f-input" id="mr-comments" placeholder="Comments" value="${esc(v.comments || "")}"/></label>
-        ${selectEl("Man Of The Match", [...CANADA, ...OMAN_BOWLERS], "Select", "mr-motm", v.manOfMatch)}
-        ${selectEl("Man Of The Series", [...CANADA, ...OMAN_BOWLERS], "Select", "mr-mots", v.manOfSeries)}
-        ${selectEl("Best Batsman", CANADA, "Select", "mr-best-bat", v.bestBatsman)}
-        ${selectEl("Best Bowler", OMAN_BOWLERS, "Select", "mr-best-bowl", v.bestBowler)}
-        ${selectEl("Best All Rounder", CANADA, "Select", "mr-best-ar", v.bestAllRounder)}
-        ${selectEl("Most Valuable Player", CANADA, "Select", "mr-mvp", v.mvp)}
+        ${selectEl("Man Of The Match", players, "Select", "mr-motm", v.manOfMatch)}
+        ${selectEl("Man Of The Series", players, "Select", "mr-mots", v.manOfSeries)}
+        ${selectEl("Best Batsman", players, "Select", "mr-best-bat", v.bestBatsman)}
+        ${selectEl("Best Bowler", players, "Select", "mr-best-bowl", v.bestBowler)}
+        ${selectEl("Best All Rounder", players, "Select", "mr-best-ar", v.bestAllRounder)}
+        ${selectEl("Most Valuable Player", players, "Select", "mr-mvp", v.mvp)}
       </div>
       <div class="me-results-right">
         <div class="points-head">POINTS</div>
-        <div class="points-row"><input class="f-input" value="OMN" disabled/><input class="f-input" id="mr-pts-omn" placeholder="Point" value="${esc(v.pointsOmn || "")}"/></div>
-        <div class="points-row"><input class="f-input" value="CANA" disabled/><input class="f-input" id="mr-pts-cana" placeholder="Point" value="${esc(v.pointsCana || "")}"/></div>
+        ${pointsRows}
       </div>
     </div>
     <div class="btn-row-modal center"><button class="m-btn m-green" id="mr-done">Done</button><button class="m-btn m-red" data-close>Revert</button></div>`;
@@ -2548,6 +2574,8 @@ function matchResultsForm(r = null) {
 function matchResultsView(r) {
   const row = (label, value) =>
     `<label class="f-row"><span class="f-label">${label}</span><span class="f-input f-static">${esc(value || "—")}</span></label>`;
+  const pointsRows = (r.points || []).map((p) =>
+    `<div class="points-row"><input class="f-input" value="${esc(p.team)}" disabled/><input class="f-input f-static" value="${esc(p.value || "—")}" disabled/></div>`).join("");
   return `
     <div class="me-results">
       <div class="me-results-left">
@@ -2563,8 +2591,7 @@ function matchResultsView(r) {
       </div>
       <div class="me-results-right">
         <div class="points-head">POINTS</div>
-        <div class="points-row"><input class="f-input" value="OMN" disabled/><input class="f-input f-static" value="${esc(r.pointsOmn || "—")}" disabled/></div>
-        <div class="points-row"><input class="f-input" value="CANA" disabled/><input class="f-input f-static" value="${esc(r.pointsCana || "—")}" disabled/></div>
+        ${pointsRows}
       </div>
     </div>
     <div class="btn-row-modal center"><button class="m-btn m-green" id="mr-edit">Edit</button></div>`;
