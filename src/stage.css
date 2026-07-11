@@ -16,14 +16,11 @@ html {
   width: 100%;
   height: 100%;
   margin: 0;
-  /* The scaled <body> never exceeds the window width (stage.js fits both
-     dimensions and letterboxes horizontally when height is the constraint), so a
-     horizontal bar is never wanted. Vertically, allow scrolling so screens whose
-     CONTENT is taller than the 1080 design (e.g. long Reports) can be reached
-     instead of being clipped; the standard 1080-tall screens fit exactly and
-     show no bar. */
-  overflow-x: hidden;
-  overflow-y: auto;
+  /* The app never scrolls at page level: stage.js always scales the whole
+     design canvas — grown to the content when a screen is taller than the
+     window — to fit inside the window, letterboxing when needed. Hidden (not
+     auto) so no rounding edge case can ever flash a scrollbar. */
+  overflow: hidden;
   background: #050b14;
   /* Hidden until stage.js applies the scale, so the unscaled (full-1920) frame
      never paints. stage.js reveals it on the first fit. */

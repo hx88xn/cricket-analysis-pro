@@ -500,6 +500,21 @@ ipcMain.handle("db:export", async (event) => {
   }
 });
 
+// Toggle a window's fullscreen state. On Windows, entering fullscreen straight
+// from a maximized window can silently no-op or leave the taskbar on top, so
+// drop out of maximized first; restore it when leaving fullscreen.
+function toggleFullScreen(win) {
+  if (!win) return;
+  const entering = !win.isFullScreen();
+  if (entering && win.isMaximized()) win.unmaximize();
+  win.setFullScreen(entering);
+  if (!entering) win.maximize();
+}
+
+ipcMain.handle("window:toggle-fullscreen", (event) => {
+  toggleFullScreen(BrowserWindow.fromWebContents(event.sender));
+});
+
 function createWindow() {
   // Create the window already at the full work-area size so the renderer's first
   // layout happens at the final dimensions — no open-then-maximize resize that
@@ -527,15 +542,17 @@ function createWindow() {
   win.once("ready-to-show", () => win.show());
 
   // Fullscreen toggle for Windows/Linux. macOS gets it natively via the green
-  // traffic-light button, but with autoHideMenuBar there is no visible control
-  // on Windows — so bind F11 (and Alt+Enter) directly, independent of any menu.
+  // traffic-light button, but there is no menu (and so no visible control) on
+  // Windows — bind F11 (and Alt+Enter) here. stage.js carries a renderer-side
+  // F11 fallback through the window:toggle-fullscreen IPC for events this hook
+  // misses; the preventDefault below keeps the two from double-toggling.
   win.webContents.on("before-input-event", (event, input) => {
     if (input.type !== "keyDown") return;
     const f11 = input.key === "F11";
     const altEnter = input.alt && input.key === "Enter";
     if (f11 || altEnter) {
       event.preventDefault();
-      win.setFullScreen(!win.isFullScreen());
+      toggleFullScreen(win);
     }
   });
 

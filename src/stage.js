@@ -72,21 +72,23 @@
     }
 
     // Height the window offers in design px at the width-filling scale (floor,
-    // not ceil: rounding up would re-create a 1px scrollbar from float noise).
+    // not ceil: rounding up would push the canvas 1px past the window from
+    // float noise alone).
     var winH = Math.floor(h / scale);
-    if (winH < MIN_DESIGN_H) {
-      // Window is far shorter than 16:9: shrink uniformly to the compression
-      // floor and centre horizontally instead of crushing the layout. Fit to
-      // h-1 so rounding can never tip the scaled height 1px past the window
-      // (which would re-create a scrollbar).
-      scale = (h - 1) / MIN_DESIGN_H;
-      winH = MIN_DESIGN_H;
-    }
 
-    // The design canvas is the window height (cqh layouts reflow to fill or
-    // compress into it), grown when the CONTENT is genuinely taller (e.g. long
-    // Reports) — that overflow scrolls, not clips.
-    var designH = Math.max(contentH, winH);
+    // The canvas: the window height (cqh layouts reflow to fill or compress
+    // into it), never compressed below the floor, and never smaller than the
+    // content (nothing may clip).
+    var canvasH = Math.max(winH < MIN_DESIGN_H ? MIN_DESIGN_H : winH, contentH);
+    if (canvasH > winH) {
+      // The app NEVER page-scrolls: when the canvas is taller than the window
+      // at the width-filling scale (content taller than the window, or the
+      // compression floor kicked in), shrink uniformly so the whole canvas is
+      // visible and centre it between side letterbox bars. Fit to h-1 so
+      // rounding can never tip the scaled height 1px past the window.
+      scale = (h - 1) / canvasH;
+    }
+    var designH = canvasH;
     document.body.style.height = designH + "px";
 
     state.scale = scale;
@@ -114,6 +116,18 @@
       fit();
     });
   }
+
+  // Renderer-side fullscreen toggle. The main process also handles F11 in
+  // before-input-event and prevents default there, so when that path works
+  // this listener never sees the key — it only fires if the main-process hook
+  // missed the event (seen on some Windows setups).
+  window.addEventListener("keydown", function (e) {
+    if (e.key !== "F11") return;
+    e.preventDefault();
+    if (window.cricketApp && window.cricketApp.toggleFullscreen) {
+      window.cricketApp.toggleFullscreen();
+    }
+  });
 
   window.addEventListener("resize", scheduleFit);
   window.addEventListener("scroll", syncScroll, { passive: true });
