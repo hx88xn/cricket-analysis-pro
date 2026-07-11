@@ -17,6 +17,12 @@
   // which is what code that appends fixed-position overlays to <body> needs.
   var state = { scale: 1, offsetX: 0, offsetY: 0 };
 
+  // Current stage scale, for code that needs to convert window px to design px
+  // (e.g. row-budget maths in prototype.js). Falls back to 1 before first fit.
+  window.stageScale = function () {
+    return state.scale || 1;
+  };
+
   // Map a window/viewport point to design-space px inside the scaled body.
   window.stageFromWindow = function (x, y) {
     return {
@@ -40,7 +46,11 @@
     if (!document.body) return;
     var w = window.innerWidth;
     var h = window.innerHeight;
-    var scale = w / DESIGN_W;
+    // Fit BOTH dimensions, not just width. On Windows the taskbar + title bar
+    // shrink the viewport below 16:9, so a width-only scale left the 1080-tall
+    // design overflowing vertically (permanent scrollbar). Height-constrained
+    // windows letterbox left/right instead (centred below).
+    var scale = Math.min(w / DESIGN_W, h / DESIGN_H);
 
     // Measure the natural content height (in design px) free of our own height
     // feedback: with `container-type: size` on <body>, height:auto collapses the
@@ -52,13 +62,18 @@
     // Grow the design canvas to the tallest of: the 1080 design, the actual
     // content, and the window mapped back into design space (so short pages
     // still fill the window). Anything beyond the window scrolls, not clips.
-    var designH = Math.max(DESIGN_H, contentH, Math.ceil(h / scale));
+    // floor, not ceil: when the fit is height-constrained h/scale is DESIGN_H
+    // plus float noise, and rounding up would re-create a 1px scrollbar.
+    var designH = Math.max(DESIGN_H, contentH, Math.floor(h / scale));
     document.body.style.height = designH + "px";
 
     state.scale = scale;
-    state.offsetX = 0;
+    // Centre the design when the window is wider than the scaled canvas
+    // (height-constrained fit); the html background fills the side bars.
+    state.offsetX = Math.max(0, (w - DESIGN_W * scale) / 2);
     syncScroll();
-    document.body.style.transform = "scale(" + scale + ")";
+    document.body.style.transform =
+      "translate(" + state.offsetX + "px, 0) scale(" + scale + ")";
 
     // Reveal once the very first scale is applied so the unscaled frame is
     // never shown (paired with `html { visibility: hidden }` in stage.css).

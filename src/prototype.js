@@ -84,7 +84,9 @@ const PAGE_SIZE = 8; // fallback before the frame can be measured
 function fitPageSize(tableEl, reserve = 112) {
   const w = window.innerWidth || 1920;
   const h = window.innerHeight || 1080;
-  const scale = w / 1920;
+  const scale = typeof window.stageScale === "function"
+    ? window.stageScale()
+    : w / 1920;
   const designH = Math.floor(h / scale);
   const row = tableEl.querySelector(".table-row");
   if (!row) return null; // nothing rendered yet → caller keeps its fallback

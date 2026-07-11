@@ -16,11 +16,12 @@ html {
   width: 100%;
   height: 100%;
   margin: 0;
-  /* The scaled <body> fills the width exactly, so a horizontal bar is never
-     wanted. Vertically, allow scrolling so screens taller than the window (e.g.
-     Reports, Match Registration) can be reached instead of being clipped — the
-     old `overflow: hidden` cut off everything below the fold, which showed up on
-     Windows where DPI scaling + the taskbar/title bar shrink the usable height. */
+  /* The scaled <body> never exceeds the window width (stage.js fits both
+     dimensions and letterboxes horizontally when height is the constraint), so a
+     horizontal bar is never wanted. Vertically, allow scrolling so screens whose
+     CONTENT is taller than the 1080 design (e.g. long Reports) can be reached
+     instead of being clipped; the standard 1080-tall screens fit exactly and
+     show no bar. */
   overflow-x: hidden;
   overflow-y: auto;
   background: #050b14;

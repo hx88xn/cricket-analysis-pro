@@ -508,8 +508,11 @@ function createWindow() {
   const win = new BrowserWindow({
     width,
     height,
-    minWidth: 1360,
-    minHeight: 820,
+    // Keep mins below small Windows laptop screens (1366x768 minus taskbar):
+    // the renderer scale-to-fits any size, so a forced-too-tall window would
+    // only clip against the screen edge.
+    minWidth: 1024,
+    minHeight: 640,
     backgroundColor: "#050b14",
     autoHideMenuBar: true, // hide the File/Edit/View strip on Windows/Linux
     icon: path.join(__dirname, "src", "assets", "app-icon.png"),
@@ -523,6 +526,19 @@ function createWindow() {
 
   win.maximize();
   win.once("ready-to-show", () => win.show());
+
+  // Fullscreen toggle for Windows/Linux. macOS gets it natively via the green
+  // traffic-light button, but with autoHideMenuBar there is no visible control
+  // on Windows — so bind F11 (and Alt+Enter) directly, independent of any menu.
+  win.webContents.on("before-input-event", (event, input) => {
+    if (input.type !== "keyDown") return;
+    const f11 = input.key === "F11";
+    const altEnter = input.alt && input.key === "Enter";
+    if (f11 || altEnter) {
+      event.preventDefault();
+      win.setFullScreen(!win.isFullScreen());
+    }
+  });
 
   // Dev affordance: CAP_START="prototype.html?screen=match-registration" jumps
   // straight to a screen so individual flows can be inspected in isolation.
