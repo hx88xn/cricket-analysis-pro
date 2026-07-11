@@ -514,7 +514,6 @@ function createWindow() {
     minWidth: 1024,
     minHeight: 640,
     backgroundColor: "#050b14",
-    autoHideMenuBar: true, // hide the File/Edit/View strip on Windows/Linux
     icon: path.join(__dirname, "src", "assets", "app-icon.png"),
     show: false,
     webPreferences: {
@@ -595,6 +594,11 @@ function healDefaultDemoDb() {
 }
 
 app.whenReady().then(() => {
+  // Remove the File/Edit/View menu strip entirely on Windows/Linux (it also
+  // frees its row of screen height). macOS keeps the default menu — it lives in
+  // the system bar, not the window, and supplies Copy/Paste/Quit shortcuts.
+  // Fullscreen stays reachable via the F11/Alt+Enter handler in createWindow.
+  if (process.platform !== "darwin") Menu.setApplicationMenu(null);
   // Only seed the demo dataset (sample teams, players, competitions) in dev so
   // those flows are easy to inspect. A packaged build starts empty — schema +
   // Masters option lists only — so a fresh install isn't pre-filled with sample

@@ -42,29 +42,51 @@
     state.offsetY = -scrollTop();
   }
 
+  // How far the 1080 design may compress vertically before we stop filling the
+  // window width and letterbox instead. Layouts are authored in cqh units, so
+  // they reflow (not distort) down to this height; ~85% keeps every realistic
+  // maximized-Windows viewport (taskbar + title bar eat 60-90px of a 16:9
+  // screen at any DPI) filling the full width with no scrollbar. Only far
+  // shorter windows — ultrawide monitors, tiny manual resizes — letterbox.
+  var MIN_DESIGN_H = 920;
+
   function fit() {
     if (!document.body) return;
     var w = window.innerWidth;
     var h = window.innerHeight;
-    // Fit BOTH dimensions, not just width. On Windows the taskbar + title bar
-    // shrink the viewport below 16:9, so a width-only scale left the 1080-tall
-    // design overflowing vertically (permanent scrollbar). Height-constrained
-    // windows letterbox left/right instead (centred below).
-    var scale = Math.min(w / DESIGN_W, h / DESIGN_H);
+    var scale = w / DESIGN_W;
 
     // Measure the natural content height (in design px) free of our own height
     // feedback: with `container-type: size` on <body>, height:auto collapses the
     // size-query container so the inner shell's 100cqh min-heights resolve to 0
-    // and the body reports just its content's height.
+    // and the children report just their content's height. Measured per child
+    // (offsetTop/offsetHeight are pre-transform, i.e. design px) rather than via
+    // body.scrollHeight, which never reports below the window height and so
+    // would smuggle window px into this design-px calculation.
     document.body.style.height = "auto";
-    var contentH = document.body.scrollHeight;
+    var contentH = 0;
+    for (var el = document.body.firstElementChild; el; el = el.nextElementSibling) {
+      if (getComputedStyle(el).position === "fixed") continue; // viewport-anchored overlays
+      var bottom = el.offsetTop + el.offsetHeight;
+      if (bottom > contentH) contentH = bottom;
+    }
 
-    // Grow the design canvas to the tallest of: the 1080 design, the actual
-    // content, and the window mapped back into design space (so short pages
-    // still fill the window). Anything beyond the window scrolls, not clips.
-    // floor, not ceil: when the fit is height-constrained h/scale is DESIGN_H
-    // plus float noise, and rounding up would re-create a 1px scrollbar.
-    var designH = Math.max(DESIGN_H, contentH, Math.floor(h / scale));
+    // Height the window offers in design px at the width-filling scale (floor,
+    // not ceil: rounding up would re-create a 1px scrollbar from float noise).
+    var winH = Math.floor(h / scale);
+    if (winH < MIN_DESIGN_H) {
+      // Window is far shorter than 16:9: shrink uniformly to the compression
+      // floor and centre horizontally instead of crushing the layout. Fit to
+      // h-1 so rounding can never tip the scaled height 1px past the window
+      // (which would re-create a scrollbar).
+      scale = (h - 1) / MIN_DESIGN_H;
+      winH = MIN_DESIGN_H;
+    }
+
+    // The design canvas is the window height (cqh layouts reflow to fill or
+    // compress into it), grown when the CONTENT is genuinely taller (e.g. long
+    // Reports) — that overflow scrolls, not clips.
+    var designH = Math.max(contentH, winH);
     document.body.style.height = designH + "px";
 
     state.scale = scale;

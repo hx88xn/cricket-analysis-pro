@@ -36,6 +36,14 @@ body {
      to fill the window by stage.js. */
   width: 1920px;
   height: 1080px;
+  /* The stage owns the body height (stage.js sets it inline every fit).
+     legacy.css min-heights must not win — body { min-height: 100% } and, worse,
+     .cap-bg { min-height: 100cqh } (a CLASS on <body>, so it outranks this
+     element selector without !important; and cqh on the body itself falls back
+     to the VIEWPORT since body has no ancestor container). Either one would
+     stretch the body past a design canvas that is shorter than the window
+     (letterboxed fit) and bring back a scrollbar. */
+  min-height: 0 !important;
   margin: 0;
   container-type: size;
   transform-origin: top left;
