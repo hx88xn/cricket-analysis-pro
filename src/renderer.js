@@ -1497,6 +1497,26 @@ function updateFieldOrientation() {
   if (pitch) pitch.src = mirrored ? "assets/pitch-map-flipped.png" : "assets/pitch-map.png";
 }
 
+// Batting styles can be edited in the masters (player editor) while this
+// screen is open, so re-pull them from the DB whenever the window regains
+// focus and re-orient the wagon wheel / pitch map if the striker's changed.
+async function refreshBattingStyles() {
+  const team = state.battingTeam;
+  if (!team?.playingXIPlayers?.length || !window.cricketApp?.db?.players) return;
+  try {
+    const teamId = team.id || team.playingXIPlayers[0].teamId;
+    const fresh = new Map((await window.cricketApp.db.players(teamId) || []).map((p) => [p.id, p]));
+    team.playingXIPlayers.forEach((p) => {
+      const f = fresh.get(p.id);
+      if (f) { p.battingStyle = f.battingStyle; p.battingStyleCode = f.battingStyleCode; }
+    });
+    updateFieldOrientation();
+  } catch (e) {
+    console.error("refresh batting styles failed", e);
+  }
+}
+window.addEventListener("focus", refreshBattingStyles);
+
 function render() {
   updateFieldOrientation(); // striker may have changed (swap / wicket / new over)
   setText("bat-team-code", state.battingCode);
@@ -3365,6 +3385,9 @@ function serializeState() {
     batTimes: state.batTimes, matchStartTime: state.matchStartTime,
     matchStartTs: state.matchStartTs, openersRecorded: state.openersRecorded,
     firstInningsBalls: state.firstInningsBalls,
+    // Recent undo stack — without this, a resumed match shows logged balls but
+    // undo refuses ("nothing to undo"). Capped to keep the debounced save light.
+    history: (state.history || []).slice(-10),
   };
 }
 function scheduleSave() {
