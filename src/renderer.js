@@ -44,11 +44,12 @@ let SHOT_TYPES = {
 };
 
 // The scoring bar: a single horizontal row of Wicket ▾ (red) · extras Pen/W/NB/
-// LB/B (teal) · runs 0/1/2/3/4▾/6▾/?▾ (green). The ▾ buttons open a small menu:
+// LB/B (teal) · runs 0/1/2/3/B4▾/B6▾/?▾ (green).
 //   Wicket ▾ → the Wickets overlay
-//   4 ▾ / 6 ▾ → Boundary vs Ran for that value
+//   B4 / B6 → stage a boundary 4/6 directly; the ▾ caret or a double-click
+//              opens the "Ran" alternative (runs taken along the ground)
 //   ? ▾ → quick 5/7/8 plus a custom run entry (0–99, excluding the bar numbers)
-// RBW and Over Throw live in the small row above the bar.
+// Over Throw (0–6) and RBW (−3…+3) are picked from the Events grid buttons.
 function getKeypadKeys() {
   return [
     { label: "Wicket", type: "wicket", cls: "kb-wicket", caret: true, group: "wicket" },
@@ -61,8 +62,8 @@ function getKeypadKeys() {
     { label: "1", type: "run", val: 1, cls: "kb-run", group: "run" },
     { label: "2", type: "run", val: 2, cls: "kb-run", group: "run" },
     { label: "3", type: "run", val: 3, cls: "kb-run", group: "run" },
-    { label: "4", type: "run4", val: 4, cls: "kb-run", caret: true, group: "run" },
-    { label: "6", type: "run6", val: 6, cls: "kb-run", caret: true, group: "run" },
+    { label: "B4", type: "run4", val: 4, cls: "kb-run", caret: true, group: "run" },
+    { label: "B6", type: "run6", val: 6, cls: "kb-run", caret: true, group: "run" },
     { label: "?", type: "other", cls: "kb-run", caret: true, group: "run" },
   ];
 }
@@ -140,9 +141,9 @@ const state = {
   footwork: null,
   inAir: false,       // "In Air" toggle beside the wagon wheel (recorded per ball)
   pendingPlacement: null, // fielding placement chosen via left-click on the wagon wheel
-  // RBW is an external parameter (generic flag, default 0). Like over-throw it
-  // is recorded against the ball but adds no runs to the score.
-  rbw: false,
+  // Appeals toggle (events grid): armed/disarmed per ball, double-click opens
+  // the Appeals popup. Purely a flag — adds nothing to the score.
+  appeals: false,
   striker: "RAVINDERPAL SINGH",
   nonStriker: "SAAD BIN ZAFAR",
   bowler: "JITEN RAMANANDI -L FAST",
@@ -242,6 +243,10 @@ function renderBatGrid() {
   syncExpandArrow("bat-expand", more.length > 0, state.shotExpanded);
 }
 
+// A toggle button's group value: its data-value when the visible label is an
+// abbreviation (Agg/Def → Aggressive/Defensive), otherwise its text.
+function toggleValue(btn) { return btn.dataset.value || btn.textContent.trim(); }
+
 // Programmatically select a value in a bowl/shot grid: switch the Fast/Spin or
 // Aggressive/Defensive group, flip to the extended page if the value lives there,
 // re-render, then highlight the matching cell. Used by the LI "copy last" toggle.
@@ -259,7 +264,7 @@ function applyBowlType(name) {
     state.pace = grp;
     state.bowlExpanded = idx >= GRID_PAGE;
     document.querySelectorAll('.toggle[data-group="pace"]').forEach((b) =>
-      b.classList.toggle("active", b.textContent.trim() === grp));
+      b.classList.toggle("active", toggleValue(b) === grp));
     renderBowlGrid();
     selectGridButton("bowl-grid", name);
     state.bowlType = name;
@@ -276,7 +281,7 @@ function applyShotType(name) {
     state.style = grp;
     state.shotExpanded = idx >= GRID_PAGE;
     document.querySelectorAll('.toggle[data-group="style"]').forEach((b) =>
-      b.classList.toggle("active", b.textContent.trim() === grp));
+      b.classList.toggle("active", toggleValue(b) === grp));
     renderBatGrid();
     selectGridButton("bat-grid", name);
     state.shotType = name;
@@ -332,6 +337,10 @@ function fillKeypad() {
       b.classList.add("disabled");
     } else {
       b.addEventListener("click", (e) => handleKeypad(k, b, e));
+      // B4/B6: double-click offers the "Ran" alternative (same menu as the caret)
+      if (k.type === "run4" || k.type === "run6") {
+        b.addEventListener("dblclick", () => openRunVariantMenu(b, k.val));
+      }
     }
     g.appendChild(b);
   });
@@ -346,8 +355,8 @@ function wireToggles() {
       const g = btn.getAttribute("data-group");
       document.querySelectorAll(`.toggle[data-group="${g}"]`).forEach((t) => t.classList.remove("active"));
       btn.classList.add("active");
-      if (g === "pace") { state.pace = btn.textContent.trim(); state.bowlExpanded = false; renderBowlGrid(); }
-      if (g === "style") { state.style = btn.textContent.trim(); state.shotExpanded = false; renderBatGrid(); }
+      if (g === "pace") { state.pace = toggleValue(btn); state.bowlExpanded = false; renderBowlGrid(); }
+      if (g === "style") { state.style = toggleValue(btn); state.shotExpanded = false; renderBatGrid(); }
     });
   });
 
@@ -462,6 +471,8 @@ function wagonRegion(x, y) {
   if (Math.hypot(dx, dy) < 32) return "";      // too close to the batsman
   let a = (Math.atan2(dx, -dy) * 180) / Math.PI; // 0 = straight up, clockwise
   if (a < 0) a += 360;
+  // on the mirrored (right-hander) field the sectors swap sides
+  if (state.fieldMirrored) a = (360 - a) % 360;
   return WAGON_REGIONS[Math.floor(a / 45) % 8];
 }
 
@@ -886,7 +897,8 @@ function placementPoint(position, region) {
   else if (n.includes("short")) r = 115;
   else if (/deep|long|sweeper|cow corner/.test(n)) r = 270;
   const a = (angle * Math.PI) / 180;
-  return clampToField(FIELD_OX + r * Math.sin(a), FIELD_OY - r * Math.cos(a));
+  const sign = state.fieldMirrored ? -1 : 1; // mirrored field: reflect across the pitch
+  return clampToField(FIELD_OX + sign * r * Math.sin(a), FIELD_OY - r * Math.cos(a));
 }
 
 function recordPlacement(position, region) {
@@ -934,9 +946,14 @@ function handleKeypad(k, btn, e) {
     return;
   }
   if (k.type === "run4" || k.type === "run6") {
-    // The ▾ opens Boundary vs Ran for that value (the tiny caret is hard to hit,
-    // so the whole button opens the menu).
-    openRunVariantMenu(btn, k.val);
+    // B4 / B6 stage a boundary 4/6 directly. The ▾ caret (or a double-click,
+    // wired in fillKeypad) opens the "Ran" alternative instead.
+    if (e?.target?.closest(".kb-caret")) {
+      openRunVariantMenu(btn, k.val);
+      return;
+    }
+    stageRun(k.val, true);
+    flash(btn);
     return;
   }
   if (k.type === "other") {
@@ -945,8 +962,6 @@ function handleKeypad(k, btn, e) {
     return;
   }
   if (k.type === "run") {
-    // When RBW is armed, the dialpad number is captured as RBW external data
-    // (no wicket, no extra runs — the runs still score as a normal delivery).
     stageRun(k.val, false);
   } else if (k.type === "ext") {
     handleExtra(k.ext);
@@ -957,18 +972,17 @@ function handleKeypad(k, btn, e) {
 // Stage a plain run value (boundary flag distinguishes a hit-to-the-rope 4/6
 // from one run along the ground, which affects the batter's 4s/6s tally).
 function stageRun(val, boundary) {
-  stageDelivery({ runs: val, ext: 0, boundary, legal: true, rbw: state.rbw ? val : 0 }, { type: "run", val });
+  stageDelivery({ runs: val, ext: 0, boundary, legal: true }, { type: "run", val });
 }
 
-// 4 ▾ / 6 ▾ : choose whether the boundary was hit to the rope or run along it.
+// B4 ▾ / B6 ▾ : the button itself stages a boundary, so the menu only offers
+// the "Ran" alternative (4/6 run along the ground, no boundary credit).
 function openRunVariantMenu(btn, val) {
   openKeypadMenu(btn, (menu) => {
-    [[`Boundary ${val}`, true], [`Ran ${val}`, false]].forEach(([label, boundary]) => {
-      const b = document.createElement("button");
-      b.type = "button"; b.className = "ctx-item"; b.textContent = label;
-      b.addEventListener("click", () => { stageRun(val, boundary); closeContextMenu(); flash(btn); });
-      menu.appendChild(b);
-    });
+    const b = document.createElement("button");
+    b.type = "button"; b.className = "ctx-item"; b.textContent = `Ran ${val}`;
+    b.addEventListener("click", () => { stageRun(val, false); closeContextMenu(); flash(btn); });
+    menu.appendChild(b);
   });
 }
 
@@ -1081,9 +1095,10 @@ function logBall({ runs = 0, ext = 0, boundary = false, legal = true, bye = fals
   logged.inAir = state.inAir;
   logged.placement = state.pendingPlacement;
   logged.overthrow = overthrow;
-  // RBW: external data only — no wicket, no added runs. Its value is the dialpad
-  // number entered for this ball (when armed), otherwise 0.
+  // RBW: external data only — no wicket, no added runs. Its value (−3…+3) is
+  // picked from the events-grid RBW button, otherwise 0.
   logged.rbw = rbw;
+  logged.appeals = state.appeals;
   logged.pace = state.pace;
   logged.style = state.style;
 
@@ -1158,8 +1173,8 @@ function logBall({ runs = 0, ext = 0, boundary = false, legal = true, bye = fals
   state.footwork = null;
   state.inAir = false;
   state.pendingPlacement = null;
-  state.rbw = false; // external param disarms after the ball
-  fillKeypad();      // refresh the RBW highlight
+  setAppeals(false); // appeals toggle disarms after the ball
+  fillKeypad();
   syncTagControls(); // clear the tag bar for the next ball
   document.querySelectorAll("#bowl-grid .selected, #bat-grid .selected").forEach((x) => x.classList.remove("selected"));
   document.querySelector("#keypad .keypad-btn.marked")?.classList.remove("marked"); // new ball starts unmarked
@@ -1439,9 +1454,13 @@ function pushHistory() {
 
 function undo() {
   const prev = state.history.pop();
-  // Nothing to undo: flash the button so the click always gives feedback rather
-  // than silently doing nothing (which reads as "the button isn't working").
-  if (!prev) { flash(document.getElementById("btn-undo")); return; }
+  // Nothing to undo: flash the button and say why, rather than silently doing
+  // nothing (which reads as "the button isn't working").
+  if (!prev) {
+    flash(document.getElementById("btn-undo"));
+    toast("Nothing to undo — no ball has been recorded yet");
+    return;
+  }
   Object.assign(state, JSON.parse(prev));
   // Undo discards any half-staged delivery for the restored ball.
   state.pending = null;
@@ -1458,7 +1477,28 @@ function undo() {
 
 function setText(id, txt) { const el = document.getElementById(id); if (el) el.textContent = txt; }
 
+// ---- Field orientation (striker handedness) --------------------------------
+// The stock field-map / pitch-map images show the left-hander's view; for a
+// right-handed striker the mirrored variants are swapped in (labels re-drawn
+// readable, see assets/*-flipped.png) and the wagon sector math is reflected.
+function strikerLeftHanded() {
+  const xi = state.battingTeam?.playingXIPlayers || [];
+  const p = xi.find((q) => (q.name || "").toUpperCase() === (state.striker || "").toUpperCase());
+  return /^l/i.test(p?.battingStyleCode || p?.battingStyle || "");
+}
+
+function updateFieldOrientation() {
+  const mirrored = !strikerLeftHanded();
+  if (state.fieldMirrored === mirrored) return;
+  state.fieldMirrored = mirrored;
+  const field = document.querySelector(".field-map-img");
+  if (field) field.src = mirrored ? "assets/field-map-flipped.png" : "assets/field-map.png";
+  const pitch = document.querySelector(".pitch-map-img");
+  if (pitch) pitch.src = mirrored ? "assets/pitch-map-flipped.png" : "assets/pitch-map.png";
+}
+
 function render() {
+  updateFieldOrientation(); // striker may have changed (swap / wicket / new over)
   setText("bat-team-code", state.battingCode);
   setText("team-a-label", state.teamA);
   setText("team-b-label", state.teamB);
@@ -1643,55 +1683,47 @@ function wireActionButtons() {
 
   undoBtn?.addEventListener("click", undo);
   document.getElementById("swap-bat")?.addEventListener("click", () => { swapStrike(); render(); });
-  wireOverthrow();
+  wireEventPickers();
 }
 
-// Over-throw: the button toggles a 1–12 run picker. Numbers are laid out
-// column-major (1-4 / 5-8 / 9-12) to match the reference keypad, so the grid
-// is filled row by row as 1,5,9 · 2,6,10 · 3,7,11 · 4,8,12.
-function wireOverthrow() {
-  const btn = document.getElementById("overthrow-btn");
-  const grid = document.getElementById("overthrow-grid");
-  if (!btn || !grid) return;
-
-  const order = [];
-  for (let row = 0; row < 4; row++) {
-    for (let col = 0; col < 3; col++) order.push(col * 4 + row + 1);
-  }
-  grid.innerHTML = order
-    .map((n) => `<button type="button" class="overthrow-btn" data-ot="${n}">${n}</button>`)
-    .join("");
-
-  const keypad = document.getElementById("keypad");
-  const setOpen = (open) => {
-    grid.hidden = !open;
-    if (keypad) keypad.hidden = open; // overthrow picker takes the keypad's place
-    btn.classList.toggle("active", open);
-    btn.setAttribute("aria-expanded", String(open));
-  };
-
-  btn.addEventListener("click", () => setOpen(grid.hidden));
-
-  grid.querySelectorAll("[data-ot]").forEach((b) => {
-    b.addEventListener("click", () => {
-      // Over-throw is an external parameter — it is recorded against the ball
-      // but does NOT add runs to the score (the delivery's runs are entered on
-      // the keypad as usual). Staged onto the current ball, committed on End Ball.
-      const overthrow = Number(b.getAttribute("data-ot")) || 0;
-      stageDelivery({ overthrow });
-      flash(b);
-      setOpen(false);
+// Small value picker anchored to an events-grid button. Both over-throw and
+// RBW are external parameters — recorded against the ball but adding no runs
+// to the score. Staged onto the current ball, committed on End Ball.
+function openValuePickerMenu(btn, values, onPick) {
+  openKeypadMenu(btn, (menu) => {
+    values.forEach((n) => {
+      const b = document.createElement("button");
+      b.type = "button"; b.className = "ctx-item";
+      b.textContent = n > 0 ? `+${n}` : String(n);
+      b.addEventListener("click", () => { onPick(n); closeContextMenu(); flash(btn); });
+      menu.appendChild(b);
     });
   });
+}
 
-  // RBW toggle (external parameter, no runs) sits beside the OVER THROW button.
-  const rbw = document.getElementById("rbw-btn");
-  rbw?.addEventListener("click", () => {
-    state.rbw = !state.rbw;
-    rbw.classList.toggle("active", state.rbw);
-    rbw.setAttribute("aria-pressed", String(state.rbw));
-    flash(rbw);
+function setAppeals(on) {
+  state.appeals = on;
+  const btn = document.getElementById("btn-appeals");
+  if (btn) { btn.classList.toggle("active", on); btn.setAttribute("aria-pressed", String(on)); }
+}
+
+// Events-grid controls: Overthrow opens a 0–6 picker, RBW a −3…+3 picker.
+// Appeals is a toggle (armed / disarmed per ball); double-clicking it opens
+// the Appeals popup.
+function wireEventPickers() {
+  const ot = document.getElementById("btn-overthrow");
+  ot?.addEventListener("click", () => {
+    openValuePickerMenu(ot, [0, 1, 2, 3, 4, 5, 6], (overthrow) => stageDelivery({ overthrow }));
   });
+
+  const rbw = document.getElementById("btn-rbw");
+  rbw?.addEventListener("click", () => {
+    openValuePickerMenu(rbw, [-3, -2, -1, 0, 1, 2, 3], (v) => stageDelivery({ rbw: v }));
+  });
+
+  const appeals = document.getElementById("btn-appeals");
+  appeals?.addEventListener("click", () => { setAppeals(!state.appeals); flash(appeals); });
+  appeals?.addEventListener("dblclick", () => overlayAppeals());
 }
 
 function flash(el) {
@@ -2942,11 +2974,11 @@ const SHORTCUT_TARGETS = {
   startBall: () => document.getElementById("btn-ball"),
   startCapture: () => document.getElementById("btn-capture"),
   bowlingCompute: () => document.querySelector('[data-overlay="bowlcompute"]'),
-  appeals: () => document.querySelector('[data-overlay="appeals"]'),
+  appeals: () => document.getElementById("btn-appeals"),
   fieldingEvents: () => document.querySelector('[data-overlay="fielding"]'),
   matchEvents: () => document.querySelector('[data-overlay="matchevents"]'),
   remarks: () => document.querySelector('[data-overlay="remarks"]'),
-  wickets: () => document.querySelector('[data-overlay="wickets"]'),
+  wickets: () => document.querySelector("#keypad .kb-wicket"),
   editMode: () => document.getElementById("btn-editmode"),
   // Browse Video only exists inside the capture overlay, so resolve it by label
   // among the currently visible buttons.
@@ -3350,9 +3382,9 @@ function scheduleSave() {
 
 function syncToggles() {
   document.querySelectorAll('.toggle[data-group="pace"]').forEach((b) =>
-    b.classList.toggle("active", b.textContent.trim() === state.pace));
+    b.classList.toggle("active", toggleValue(b) === state.pace));
   document.querySelectorAll('.toggle[data-group="style"]').forEach((b) =>
-    b.classList.toggle("active", b.textContent.trim() === state.style));
+    b.classList.toggle("active", toggleValue(b) === state.style));
 }
 
 async function boot() {

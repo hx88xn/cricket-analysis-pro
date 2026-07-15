@@ -179,21 +179,17 @@
               <label class="radio-pill"><input type="radio" name="ds" /> DS</label>
               <label class="radio-pill"><input type="radio" name="ds" id="radio-li" checked /> LI</label>
               <span class="events-head-spacer"></span>
+              <button type="button" class="btn btn-block blue sm" data-overlay="matchevents">Match Events</button>
               <button type="button" class="btn btn-block blue sm" id="btn-editmode">Edit Mode</button>
             </div>
             <div class="events-grid mid-actions">
-              <div class="appeals-row">
-                <input type="checkbox" class="appeals-check" />
-                <button type="button" class="btn btn-block blue sm appeals-btn" data-overlay="appeals">Appeals</button>
-              </div>
-              <button type="button" class="btn btn-block blue sm" data-overlay="matchevents">Match Events</button>
+              <button type="button" class="btn btn-block blue sm appeals-btn" id="btn-appeals" aria-pressed="false">Appeals</button>
               <button type="button" class="btn btn-block blue sm" data-overlay="remarks">Remarks</button>
               <button type="button" class="btn btn-block blue sm" data-overlay="penalty">Penalty</button>
-              <button type="button" class="btn btn-block blue sm" data-overlay="wickets">Wickets</button>
               <button type="button" class="btn btn-block blue sm" data-tag="pm">Play and Miss</button>
               <button type="button" class="btn btn-block blue sm" data-tag="edge">Edge</button>
-              <button type="button" class="btn btn-block blue sm" data-tag="overthrow">Overthrow</button>
-              <button type="button" class="btn btn-block blue sm" data-tag="rbw">RBW</button>
+              <button type="button" class="btn btn-block blue sm" id="btn-overthrow">Overthrow</button>
+              <button type="button" class="btn btn-block blue sm" id="btn-rbw" aria-pressed="false">RBW</button>
               <button type="button" class="btn btn-block blue sm" data-tag="freehit">Free Hit</button>
               <button type="button" class="btn btn-block blue sm" data-tag="keymoment">Key Moment</button>
               <button type="button" class="btn btn-block blue sm" data-tag="bowlvar">Bowling Variations</button>
@@ -201,12 +197,7 @@
           </div>
 
           <div class="keypad-panel panel keypad-row">
-            <div class="keypad-top-row">
-              <button type="button" class="btn blue keypad-top" id="overthrow-btn" aria-expanded="false">OVER THROW</button>
-              <button type="button" class="btn blue keypad-top" id="rbw-btn" aria-pressed="false">RBW</button>
-            </div>
             <div class="keypad-bar" id="keypad"></div>
-            <div class="overthrow-grid" id="overthrow-grid" hidden></div>
           </div>
         </div>
 
@@ -278,8 +269,8 @@
             <div class="toggle-row">
               <button type="button" class="expand-arrow" id="bat-expand" title="Show more">&#9656;</button>
               <button type="button" class="plus-btn">+</button>
-              <button type="button" class="toggle active" data-group="style">Aggressive</button>
-              <button type="button" class="toggle" data-group="style">Defensive</button>
+              <button type="button" class="toggle active" data-group="style" data-value="Aggressive">Agg</button>
+              <button type="button" class="toggle" data-group="style" data-value="Defensive">Def</button>
               <label class="mph-label distance-label">6's Distance <input type="text" class="tiny-input" value="" placeholder="—" /></label>
             </div>
             <div class="btn-grid cols-3" id="bat-grid"></div>

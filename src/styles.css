@@ -669,13 +669,6 @@ a.home-main-btn {
   gap: 10px;
 }
 
-.appeals-row {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-
-.appeals-check,
 .pitch-radio input,
 .pitch-radio-inline input,
 .radio-pill input {
@@ -956,10 +949,6 @@ a.home-main-btn {
   min-width: 0;
 }
 
-.keypad-top {
-  padding: 12px;
-}
-
 .keypad-grid {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -1009,53 +998,10 @@ a.home-main-btn {
   pointer-events: none;
 }
 
-/* Over-throw run picker (toggled open by the OVER THROW button) */
-.keypad-top.active {
-  background: linear-gradient(180deg, #2f76b7, #15446c);
-  border-color: rgba(103, 177, 236, 0.6);
-  box-shadow: inset 0 0 0 1px rgba(133, 196, 255, 0.35);
-}
-
-.overthrow-grid {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  grid-template-rows: repeat(4, minmax(0, 1fr));
-  gap: 8px;
-  flex: 1;
-  min-height: 0;
-}
-
 /* an explicit display: grid would otherwise beat the UA [hidden] rule, so the
-   keypad / overthrow picker would never actually hide when toggled */
-.keypad-grid[hidden],
-.overthrow-grid[hidden] {
+   keypad would never actually hide when toggled */
+.keypad-grid[hidden] {
   display: none;
-}
-
-.overthrow-btn {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  border-radius: 14px;
-  border: 1px solid rgba(103, 177, 236, 0.28);
-  background: linear-gradient(180deg, #1f5e95 0%, #1a4f7e 100%);
-  color: #fff;
-  font-family: "Sora", "Manrope", sans-serif;
-  font-size: clamp(13px, 1.8cqh, 18px);
-  font-weight: 700;
-  cursor: pointer;
-  transition: background 0.16s ease, transform 0.12s ease, border-color 0.16s ease;
-}
-
-.overthrow-btn:hover {
-  background: linear-gradient(180deg, #2671b0 0%, #1d5990 100%);
-  border-color: rgba(133, 196, 255, 0.55);
-  transform: translateY(-1px);
-}
-
-.overthrow-btn.flash {
-  background: var(--warning);
-  color: #1a1407;
 }
 
 .screen-body {
@@ -2067,7 +2013,7 @@ video.movie-screen { width: 100%; height: auto; object-fit: contain; }
   color: var(--warning); background: rgba(6, 12, 20, 0.6); padding: 6px 10px; border-radius: 8px;
 }
 .events-head-spacer { flex: 1; }
-.events-head #btn-editmode { width: auto; flex: 0 0 auto; padding: 8px 14px; }
+.events-head .btn { width: auto; flex: 0 0 auto; padding: 8px 14px; }
 .events-grid {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
@@ -2077,17 +2023,13 @@ video.movie-screen { width: 100%; height: auto; object-fit: contain; }
   min-height: 0;
   overflow: auto;
 }
-.events-grid .appeals-row { min-width: 0; }
-.events-grid .appeals-row .appeals-btn { flex: 1; }
 .events-grid .btn { width: 100%; height: 100%; }
 .keypad-row { flex: 0 0 auto; padding: 10px; display: flex; flex-direction: column; gap: 8px; }
 .keypad-row .keypad-grid { grid-template-rows: repeat(4, minmax(30px, 38px)); }
 .keypad-row .keypad-btn { padding: 6px; font-size: 14px; }
 
-/* OVER THROW + RBW sit in a small row above the scoring bar. */
-.keypad-top-row { display: flex; gap: 8px; }
-.keypad-top-row .keypad-top { flex: 1; padding: 10px; }
-#rbw-btn[aria-pressed="true"], #rbw-btn.active {
+/* Armed events-grid toggle (Appeals) */
+.events-grid .btn.active {
   background: linear-gradient(180deg, #c2494f, #8a2732);
   border-color: rgba(224, 99, 99, 0.6);
 }
