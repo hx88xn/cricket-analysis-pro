@@ -111,6 +111,7 @@ async function loadForm() {
   const cfg = await window.cricketApp.getConfig();
   recordingsInput.value = cfg.recordingsPath || "";
   setRadio("op-mode", cfg.operationMode || "Offline");
+  setRadio("end-ball-mode", cfg.endBallMode || "manual");
   const shortcuts = cfg.shortcuts || {};
   shortcutInputs.forEach((input) => {
     input.value = shortcuts[input.dataset.shortcut] || "";
@@ -442,7 +443,8 @@ form.addEventListener("submit", async (e) => {
       if (val && !val.endsWith("…")) shortcuts[input.dataset.shortcut] = val;
     });
     const operationMode = (document.querySelector('input[name="op-mode"]:checked') || {}).value || "Offline";
-    await window.cricketApp.setConfig({ shortcuts, operationMode, ...videoConfigPayload() });
+    const endBallMode = (document.querySelector('input[name="end-ball-mode"]:checked') || {}).value || "manual";
+    await window.cricketApp.setConfig({ shortcuts, operationMode, endBallMode, ...videoConfigPayload() });
     setStatus("Settings saved.");
   } catch (err) {
     console.error(err);

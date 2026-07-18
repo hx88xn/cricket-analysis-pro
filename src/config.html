@@ -27,6 +27,7 @@
         <button type="button" class="config-tab" data-tab="shortcut" role="tab" aria-selected="false">Shortcut</button>
         <button type="button" class="config-tab" data-tab="application" role="tab" aria-selected="false">Application</button>
         <button type="button" class="config-tab" data-tab="video" role="tab" aria-selected="false">Video</button>
+        <button type="button" class="config-tab" data-tab="coding" role="tab" aria-selected="false">Coding Preferences</button>
       </div>
 
       <form class="config-form" id="config-form">
@@ -133,6 +134,18 @@
 
               <p class="config-hint" id="vid-note"></p>
             </div>
+          </div>
+        </div>
+
+        <!-- Coding Preferences -->
+        <div class="config-panel" data-panel="coding" role="tabpanel" hidden>
+          <div class="config-field">
+            <label class="config-label">End Ball</label>
+            <div class="vid-inline">
+              <label class="vid-check"><input type="radio" name="end-ball-mode" value="manual" checked /> Manual — press End Ball to commit each delivery</label>
+              <label class="vid-check"><input type="radio" name="end-ball-mode" value="auto" /> Auto — the ball commits as soon as a run is entered</label>
+            </div>
+            <p class="config-hint">In <strong>Auto</strong>, entering a run (keypad or keyboard: 0, 1, 2, 3, B4, B6, …) ends the ball immediately — no End Ball press needed. Extras and wickets still wait for End Ball so runs can be combined on the same delivery. Saved with <strong>Save settings</strong>.</p>
           </div>
         </div>
 

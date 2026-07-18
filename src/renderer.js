@@ -585,6 +585,9 @@ function showLivePreview(video) {
   video.muted = true;
   video.controls = false;
   video.play?.().catch(() => { /* autoplay may be deferred; harmless */ });
+  // back on the live camera — the loaded-video ✕ no longer applies
+  const x = document.getElementById("btn-video-close");
+  if (x) x.hidden = true;
 }
 
 // Open (or re-open) the live preview from the configured camera device and show
@@ -1005,6 +1008,19 @@ function handleKeypad(k, btn, e) {
 // from one run along the ground, which affects the batter's 4s/6s tally).
 function stageRun(val, boundary) {
   stageDelivery({ runs: val, ext: 0, boundary, legal: true }, { type: "run", val });
+  // Auto End Ball (Configuration → Coding Preferences): entering a run commits
+  // the delivery immediately. Extras/wickets still stage until End Ball so runs
+  // can be combined on the same ball.
+  if (state.endBallMode === "auto" && state.ballStarted && state.pending) commitBall();
+}
+
+// The End Ball preference lives in config.json; re-read on focus so a change
+// made on the Configuration screen applies without reopening the coding screen.
+async function loadCodingPrefs() {
+  try {
+    const cfg = (await window.cricketApp?.getConfig?.()) || {};
+    state.endBallMode = cfg.endBallMode || "manual";
+  } catch { /* keep the current mode */ }
 }
 
 // B4 ▾ / B6 ▾ : the button itself stages a boundary, so the menu only offers
@@ -1230,32 +1246,76 @@ function logBall({ runs = 0, ext = 0, boundary = false, legal = true, bye = fals
 function swapStrike() {
   [state.striker, state.nonStriker] = [state.nonStriker, state.striker];
   [state.bat.striker, state.bat.nonStriker] = [state.bat.nonStriker, state.bat.striker];
+  // an empty slot awaiting the incoming batsman moves with the swap
+  if (state.pendingBatsman === "striker") state.pendingBatsman = "nonStriker";
+  else if (state.pendingBatsman === "nonStriker") state.pendingBatsman = "striker";
 }
 
-// Next batsman down the order: the next player in the batting line-up who is
-// not already at the crease and has not been dismissed this innings.
-function nextBatsmanName() {
-  while (state.nextBatIndex < CANADA.length) {
-    const name = CANADA[state.nextBatIndex++];
-    if (name && name !== state.striker && name !== state.nonStriker
-        && !state.dismissed.includes(name)) return name;
-  }
-  return "NEW BATSMAN";
-}
-
-// Bring the next batsman in at the given end (the one that just fell). Defaults
-// to the striker's end (bowled/caught/lbw); pass "nonStriker" for a non-striker
-// run-out so the correct player is replaced.
+// A wicket empties the fallen batsman's slot (the end that just fell) and shows
+// a dropdown of the remaining batting order there; scoring resumes once the
+// incoming batsman is picked (see pickNewBatsman / renderNameSlot).
 function newBatsman(end = "striker") {
-  const name = nextBatsmanName();
   if (end === "nonStriker") {
-    state.nonStriker = name;
+    state.nonStriker = "";
     state.bat.nonStriker = { runs: 0, balls: 0, fours: 0, sixes: 0 };
   } else {
-    state.striker = name;
+    state.striker = "";
     state.bat.striker = { runs: 0, balls: 0, fours: 0, sixes: 0 };
   }
+  state.pendingBatsman = end;
+}
+
+// Batting-order players still available to come in.
+function availableBatsmen() {
+  return CANADA.filter((n) => n && n !== state.striker && n !== state.nonStriker
+    && !state.dismissed.includes(n));
+}
+
+function pickNewBatsman(name) {
+  const end = state.pendingBatsman;
+  if (!end || !name) return;
+  if (end === "nonStriker") state.nonStriker = name;
+  else state.striker = name;
+  // keep the down-the-order pointer past the chosen batsman
+  const i = CANADA.indexOf(name);
+  if (i >= 0 && i >= state.nextBatIndex) state.nextBatIndex = i + 1;
+  state.pendingBatsman = null;
   markBatsmanIn(name);
+  render();
+}
+
+// Bowlers offered for a new over: the second-last bowler first (the one most
+// likely to alternate back in), then the rest of the pool. The bowler who just
+// finished is excluded — no consecutive overs.
+function nextBowlerOptions() {
+  const plain = (b) => String(b || "").split(" -")[0];
+  const hist = state.bowlerHistory || [];
+  const last = plain(hist[hist.length - 1]);
+  const secondLast = plain(hist[hist.length - 2]);
+  const pool = OMAN_BOWLERS.filter((n) => n && n !== last);
+  if (secondLast && pool.includes(secondLast)) {
+    return [secondLast, ...pool.filter((n) => n !== secondLast)];
+  }
+  return pool.length ? pool : OMAN_BOWLERS.slice();
+}
+
+function pickNewBowler(name) {
+  if (!name) return;
+  state.bowler = `${name} -OS`;
+  state.pendingBowler = false;
+  render();
+}
+
+// Show a plain name in a scoreboard slot, or — while a replacement is pending —
+// a dropdown to pick it. The dropdown is kept across renders once built.
+function renderNameSlot(id, name, pending, options, onPick) {
+  const el = document.getElementById(id);
+  if (!el) return;
+  if (!pending) { el.textContent = name; return; }
+  if (el.querySelector("select")) return;
+  el.innerHTML = `<select class="sg-select"><option value="">Select…</option>${
+    options.map((o) => `<option>${esc(o)}</option>`).join("")}</select>`;
+  el.querySelector("select").addEventListener("change", (e) => onPick(e.target.value));
 }
 
 // ---- Batsman in / out timing ----------------------------------------------
@@ -1383,10 +1443,13 @@ function completeOver() {
   state.thisOver = [];
   swapStrike();
   state.bowlEnd = state.bowlEnd === "FAR END" ? "NEAR END" : "FAR END";
-  // rotate bowler
-  const idx = OMAN_BOWLERS.indexOf(state.bowler.split(" -")[0]);
-  const nb = OMAN_BOWLERS[(idx + 1) % OMAN_BOWLERS.length] || state.bowler;
-  state.bowler = `${nb} -OS`;
+  // The over's bowler goes into the history and the slot empties into a
+  // dropdown for the next over (second-last bowler listed first — see
+  // nextBowlerOptions). Start Over stays blocked until one is picked.
+  state.bowlerHistory = state.bowlerHistory || [];
+  state.bowlerHistory.push(state.bowler);
+  state.bowler = "";
+  state.pendingBowler = true;
   state.bowl = { spell: state.bowl.spell + 1, balls: 0, runs: 0, mdns: 0, wkts: 0 };
   // a fresh over must be started, and each ball within it
   state.overStarted = false;
@@ -1431,6 +1494,7 @@ function endInnings() {
   state.bowl = { spell: 1, balls: 0, runs: 0, mdns: 0, wkts: 0 };
   state.log = []; state.overRunsThisOver = 0; state.thisOver = []; state.history = [];
   expandedOvers.clear(); // over numbers restart with the new innings
+  state.pendingBatsman = null; state.pendingBowler = false; state.bowlerHistory = [];
   state.bowlEnd = "FAR END";
   state.openersRecorded = false; // 2nd-innings openers recorded on its first ball
   state.overStarted = false; state.ballStarted = false;
@@ -1490,6 +1554,9 @@ function pushHistory() {
     overStarted: state.overStarted, ballStarted: state.ballStarted,
     // batting-order tracking so undoing a wicket restores the fallen batsman
     nextBatIndex: state.nextBatIndex, dismissed: state.dismissed,
+    // pending batsman/bowler dropdowns + bowler history follow the undo too
+    pendingBatsman: state.pendingBatsman || null, pendingBowler: !!state.pendingBowler,
+    bowlerHistory: state.bowlerHistory || [],
   }));
   if (state.history.length > 60) state.history.shift();
 }
@@ -1570,10 +1637,10 @@ function render() {
   const rr = oversFloat > 0 ? (state.runs / oversFloat).toFixed(2) : "0.00";
   setText("runrate-value", rr);
   renderChaseRow();
-  setText("name-striker", state.striker);
-  setText("name-nonstriker", state.nonStriker);
+  renderNameSlot("name-striker", state.striker, state.pendingBatsman === "striker", availableBatsmen(), pickNewBatsman);
+  renderNameSlot("name-nonstriker", state.nonStriker, state.pendingBatsman === "nonStriker", availableBatsmen(), pickNewBatsman);
   setText("name-bowlend", state.bowlEnd);
-  setText("name-bowler", state.bowler);
+  renderNameSlot("name-bowler", state.bowler, !!state.pendingBowler, nextBowlerOptions(), pickNewBowler);
 
   // batting stats
   const sb = state.bat.striker, nb = state.bat.nonStriker;
@@ -1791,6 +1858,11 @@ function wireActionButtons() {
   over?.addEventListener("click", () => {
     if (state.matchOver) return;                       // match complete — locked
     if (!state.overStarted) {
+      if (state.pendingBowler) {
+        toast("Select the next bowler first");
+        flash(document.getElementById("name-bowler"));
+        return;
+      }
       state.overStarted = true;
       setOverButton("End Over");
     } else {
@@ -1830,6 +1902,11 @@ function wireActionButtons() {
   ball?.addEventListener("click", () => {
     if (state.matchOver) return;                       // match complete — locked
     if (!state.overStarted) { flash(over); return; }   // start the over first
+    if (!state.ballStarted && state.pendingBatsman) {
+      toast("Select the incoming batsman first");
+      flash(document.getElementById(state.pendingBatsman === "nonStriker" ? "name-nonstriker" : "name-striker"));
+      return;
+    }
     if (!state.ballStarted) {
       // Start the ball — begin staging a fresh delivery.
       state.ballStarted = true;
@@ -3209,6 +3286,7 @@ function overlayRunChoice(val) {
 function wireLoadSavedVideo() {
   const btn = document.getElementById("btn-ls");
   const videoEl = document.getElementById("camera-preview");
+  const closeBtn = document.getElementById("btn-video-close");
   if (!btn || !videoEl || !window.cricketApp?.pickVideo) return;
   btn.addEventListener("click", async () => {
     const res = await window.cricketApp.pickVideo();
@@ -3220,7 +3298,17 @@ function wireLoadSavedVideo() {
     videoEl.src = ballClipUrl;
     videoEl.controls = true;
     videoEl.play?.().catch(() => {});
+    if (closeBtn) closeBtn.hidden = false; // ✕ returns to the live camera
     toast(`Playing ${res.name || "video"}`);
+  });
+  // ✕ removes the loaded video and switches back to the realtime camera.
+  closeBtn?.addEventListener("click", () => {
+    if (ballClipUrl) { URL.revokeObjectURL(ballClipUrl); ballClipUrl = null; }
+    videoEl.removeAttribute("src");
+    videoEl.controls = false;
+    closeBtn.hidden = true;
+    showLivePreview(videoEl); // reattach immediately if the stream is still hot
+    startPreview();           // otherwise reacquire the configured camera
   });
 }
 
@@ -3614,6 +3702,7 @@ function applyMatch(match) {
   state.bowl = { spell: 1, balls: 0, runs: 0, mdns: 0, wkts: 0 };
   state.log = [];
   expandedOvers.clear();
+  state.pendingBatsman = null; state.pendingBowler = false; state.bowlerHistory = [];
   state.overRunsThisOver = 0;
   state.thisOver = [];
   state.history = [];
@@ -3661,6 +3750,9 @@ function serializeState() {
     matchStartTs: state.matchStartTs, openersRecorded: state.openersRecorded,
     firstInningsBalls: state.firstInningsBalls,
     prevInningsLog: state.prevInningsLog, // 1st-innings balls stay editable in Edit Mode
+    // pending batsman/bowler dropdowns + bowler rotation history
+    pendingBatsman: state.pendingBatsman || null, pendingBowler: !!state.pendingBowler,
+    bowlerHistory: state.bowlerHistory || [],
     // Recent undo stack — without this, a resumed match shows logged balls but
     // undo refuses ("nothing to undo"). Capped to keep the debounced save light.
     history: (state.history || []).slice(-10),
@@ -3709,6 +3801,8 @@ async function boot() {
   wireVideoToolbar();
   wireRunKeys();
   wireLoadSavedVideo();
+  loadCodingPrefs();
+  window.addEventListener("focus", loadCodingPrefs);
   updateCaptureEnabled(); // Start Capture stays disabled until a ball is started
   wireShortcuts();
 
