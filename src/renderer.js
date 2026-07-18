@@ -217,6 +217,14 @@ function fillGrid(containerId, labels, group) {
       b.classList.add("selected");
       if (group === "bowl") state.bowlType = text;
       if (group === "bat") state.shotType = text;
+      // Editing a saved ball: the pick rewrites that ball's stored type.
+      const er = editingBallRow();
+      if (er) {
+        if (group === "bowl") { er.bowl = text; er.pace = state.pace; }
+        else { er.shot = text; er.style = state.style; }
+        renderLog(true);
+        scheduleSave();
+      }
     });
     el.appendChild(b);
   });
@@ -407,6 +415,16 @@ function wirePitchMap() {
     const x = ((e.clientX - r.left) / r.width) * 100;
     const y = ((e.clientY - r.top) / r.height) * 100;
     if (x < 0 || x > 100 || y < 0 || y > 100) return;
+    // Editing a saved ball: clicks rebuild that ball's pitch/height pair.
+    const er = editingBallRow();
+    if (er) {
+      const dots = (er.pitch || []).length >= 2 ? [] : (er.pitch || []).slice();
+      dots.push({ x, y, kind: dots.length === 0 ? "pitch" : "height" });
+      er.pitch = dots;
+      drawBallReview(er);
+      scheduleSave();
+      return;
+    }
     clearReview();        // leave review mode when placing a live dot
     state.pitchInputs ||= [];
     // First click = pitch (bounce) point; second = height (stump-passing) point;
@@ -531,21 +549,9 @@ function clearReview() {
     .forEach((el) => el.remove());
 }
 
-function showBallInputs(index) {
+// Redraw a ball's stored wagon line + pitch dots as review elements.
+function drawBallReview(r) {
   clearReview();
-  const r = state.log[index];
-  if (!r) return;
-
-  // Restore the full coding context that was selected for this ball: bowl/shot
-  // type (which also restores pace/style and the correct grid page), and the
-  // BTN/UNC/WTB/RS + footwork tags. The wagon line and pitch dots are redrawn
-  // below as review elements.
-  if (r.bowl) applyBowlType(r.bowl); else { document.querySelectorAll("#bowl-grid .selected").forEach((x) => x.classList.remove("selected")); }
-  if (r.shot) applyShotType(r.shot); else { document.querySelectorAll("#bat-grid .selected").forEach((x) => x.classList.remove("selected")); }
-  state.tags = { btn: false, unc: false, wtb: false, rs: false, ...(r.tags || {}) };
-  state.footwork = r.footwork || null;
-  syncTagControls();
-
   const wsvg = document.getElementById("wagon-overlay");
   if (wsvg && r.wagon) {
     const color = runColor(Number(r.runs) || 0);
@@ -562,8 +568,76 @@ function showBallInputs(index) {
   }
   const psvg = document.getElementById("pitch-overlay-svg");
   if (psvg) (r.pitch || []).forEach((p) => addPitchDot(psvg, p.x, p.y, p.kind || "pitch", true));
+}
 
+function showBallInputs(index) {
+  clearReview();
+  const r = state.log[index];
+  if (!r) return;
+
+  // Restore the full coding context that was selected for this ball: bowl/shot
+  // type (which also restores pace/style and the correct grid page), and the
+  // BTN/UNC/WTB/RS + footwork tags. The wagon line and pitch dots are redrawn
+  // below as review elements.
+  if (r.bowl) applyBowlType(r.bowl); else { document.querySelectorAll("#bowl-grid .selected").forEach((x) => x.classList.remove("selected")); }
+  if (r.shot) applyShotType(r.shot); else { document.querySelectorAll("#bat-grid .selected").forEach((x) => x.classList.remove("selected")); }
+  state.tags = { btn: false, unc: false, wtb: false, rs: false, ...(r.tags || {}) };
+  state.footwork = r.footwork || null;
+  syncTagControls();
+
+  drawBallReview(r);
   showBallVideo(r); // load this ball's saved clip into the mini player (if any)
+}
+
+// ---- Edit a saved ball's on-screen inputs ---------------------------------
+// Entered from the EDIT BALL overlay ("Edit On-Screen Inputs"): the wagon
+// wheel, pitch map, bowl/shot grids and the tag bar all write into the saved
+// ball instead of the live delivery, until Done Editing (the Edit Mode button).
+let editingBall = null; // { log, index } while active
+
+function editingBallRow() {
+  return editingBall ? editingBall.log[editingBall.index] : null;
+}
+
+function enterBallInputEdit(log, index) {
+  const r = log[index];
+  if (!r) return;
+  editingBall = { log, index };
+  document.body.classList.add("edit-mode"); // yellow outline while editing
+  const btn = document.getElementById("btn-editmode");
+  if (btn) btn.textContent = "Done Editing";
+  // surface the ball's saved selections on the coding controls
+  state.tags = { btn: false, unc: false, wtb: false, rs: false, ...(r.tags || {}) };
+  state.footwork = r.footwork || null;
+  state.inAir = !!r.inAir;
+  syncTagControls();
+  const air = document.getElementById("in-air-btn");
+  air?.classList.toggle("active", state.inAir);
+  air?.setAttribute("aria-pressed", String(state.inAir));
+  if (r.bowl) applyBowlType(r.bowl);
+  if (r.shot) applyShotType(r.shot);
+  drawBallReview(r);
+  updateInputLock(); // unlock the panels for the edit
+  toast(`Editing ball ${r.num} — draw or select to update, then press Done Editing`);
+}
+
+function exitBallInputEdit() {
+  if (!editingBall) return;
+  editingBall = null;
+  document.body.classList.remove("edit-mode");
+  const btn = document.getElementById("btn-editmode");
+  if (btn) btn.textContent = "Edit Mode";
+  clearReview();
+  // back to a clean live-ball tag context
+  state.tags = { btn: false, unc: false, wtb: false, rs: false };
+  state.footwork = null;
+  state.inAir = false;
+  syncTagControls();
+  const air = document.getElementById("in-air-btn");
+  air?.classList.remove("active");
+  air?.setAttribute("aria-pressed", "false");
+  updateInputLock();
+  render(); // refresh the log (bowl/shot cells may have changed) + persist
 }
 
 // The mini player (#camera-preview) doubles as a clip player: when a logged
@@ -755,6 +829,16 @@ function wireFieldMap() {
     drawing = false;
     const p = clampToField(...posArgs(toPct(e)));
     removePreview();
+    // Editing a saved ball: the new line replaces that ball's stored wagon.
+    const er = editingBallRow();
+    if (er) {
+      er.wagon = { x: p.x, y: p.y };
+      er.placement = wagonRegion(p.x, p.y);
+      drawBallReview(er);
+      showRegion(p.x, p.y);
+      scheduleSave();
+      return;
+    }
     addWagonLine(p.x, p.y, runColor(state.pendingRuns || 0));
     showRegion(p.x, p.y);
     // Left click records the exact point as-is; the shot's position defaults to
@@ -937,9 +1021,24 @@ function placementPoint(position, region) {
 }
 
 function recordPlacement(position, region) {
+  const pt = placementPoint(position, region);
+  // Editing a saved ball: the placement + mapped point go onto that ball.
+  const er = editingBallRow();
+  if (er) {
+    er.placement = position;
+    er.wagon = { x: pt.x, y: pt.y };
+    drawBallReview(er);
+    scheduleSave();
+    const lbl = document.getElementById("wagon-region");
+    if (lbl) {
+      lbl.textContent = position;
+      clearTimeout(lbl._t);
+      lbl._t = setTimeout(() => { lbl.textContent = ""; }, 2600);
+    }
+    return;
+  }
   state.pendingPlacement = position;
   // Map the red line to the selected placement's direction + depth.
-  const pt = placementPoint(position, region);
   addWagonLine(pt.x, pt.y, runColor(state.pendingRuns || 0));
   const label = document.getElementById("wagon-region");
   if (label) {
@@ -1834,7 +1933,8 @@ function setBallButton(label) {
 // reports row, Match Events and Edit Mode stay usable throughout.
 const BALL_LOCKED_PANELS = [".events-grid", ".keypad-panel", ".cb-pitch", ".cb-wagon", ".cb-bowl", ".cb-bat"];
 function updateInputLock() {
-  const locked = !state.ballStarted;
+  // unlocked while a live ball is in progress OR a saved ball is being edited
+  const locked = !state.ballStarted && !editingBall;
   BALL_LOCKED_PANELS.forEach((sel) => document.querySelectorAll(sel).forEach((el) => {
     el.inert = locked;
     el.classList.toggle("input-locked", locked);
@@ -1857,6 +1957,7 @@ function wireActionButtons() {
 
   over?.addEventListener("click", () => {
     if (state.matchOver) return;                       // match complete — locked
+    if (editingBall) exitBallInputEdit();              // back to live scoring
     if (!state.overStarted) {
       if (state.pendingBowler) {
         toast("Select the next bowler first");
@@ -1901,6 +2002,7 @@ function wireActionButtons() {
 
   ball?.addEventListener("click", () => {
     if (state.matchOver) return;                       // match complete — locked
+    if (editingBall) exitBallInputEdit();              // back to live scoring
     if (!state.overStarted) { flash(over); return; }   // start the over first
     if (!state.ballStarted && state.pendingBatsman) {
       toast("Select the incoming batsman first");
@@ -3022,11 +3124,12 @@ function overlayEditBall(index, log = state.log) {
       <input type="checkbox" id="eb-marked" class="f-check" ${r.marked ? "checked" : ""} /></label>
     <div class="btn-row-modal">
       <button class="m-btn m-green" id="eb-save">Save</button>
+      <button class="m-btn m-yellow" id="eb-screen">Edit On-Screen Inputs</button>
       <button class="m-btn m-red" id="eb-delete">Delete</button>
     </div>`;
   openOverlay(popupShell(`EDIT BALL ${r.num}`, body));
 
-  document.getElementById("eb-save")?.addEventListener("click", () => {
+  const applyFields = () => {
     const oldVal = (Number(r.runs) || 0) + extNum(r.ext);
     r.bowler = fieldVal("eb-bowler");
     r.striker = fieldVal("eb-striker");
@@ -3038,8 +3141,19 @@ function overlayEditBall(index, log = state.log) {
     r.marked = !!document.getElementById("eb-marked")?.checked;
     const newVal = (Number(r.runs) || 0) + extNum(r.ext);
     if (live) state.runs = Math.max(0, state.runs + (newVal - oldVal)); // keep score in sync
+  };
+  document.getElementById("eb-save")?.addEventListener("click", () => {
+    applyFields();
     closeOverlay();
     render();
+  });
+  // Continue on the coding surfaces: wagon wheel, pitch map, grids and tags
+  // now update this ball until Done Editing is pressed.
+  document.getElementById("eb-screen")?.addEventListener("click", () => {
+    applyFields();
+    closeOverlay();
+    render();
+    enterBallInputEdit(log, index);
   });
   document.getElementById("eb-delete")?.addEventListener("click", () => {
     if (live) state.runs = Math.max(0, state.runs - ((Number(r.runs) || 0) + extNum(r.ext)));
@@ -3106,6 +3220,7 @@ function wireBallLogEditing() {
   if (!body) return;
   // single click: review that ball's saved wagon + pitch inputs
   body.addEventListener("click", (e) => {
+    if (editingBall) return; // finish Done Editing before browsing other balls
     // click on a collapsed-over summary row toggles it open/closed
     const head = e.target.closest("tr.over-summary");
     if (head) {
@@ -3123,6 +3238,7 @@ function wireBallLogEditing() {
   });
   // double click: edit that ball
   body.addEventListener("dblclick", (e) => {
+    if (editingBall) return; // finish Done Editing before opening another edit
     const tr = e.target.closest("tr[data-index]");
     if (!tr) return;
     overlayEditBall(Number(tr.getAttribute("data-index")));
@@ -3134,17 +3250,33 @@ function wireBallLogEditing() {
 // Wire the footer tag bar into state. BTN/UNC/WTB/RS are independent checkboxes
 // (any combination); FF/BF/SD/CRM are one radio group (at most one).
 function wireTags() {
+  // While a saved ball is being edited, tag changes rewrite that ball too.
+  const mirrorToEditedBall = () => {
+    const er = editingBallRow();
+    if (!er) return;
+    er.tags = { ...state.tags };
+    er.footwork = state.footwork;
+    er.inAir = state.inAir;
+    scheduleSave();
+  };
   document.querySelectorAll("input[data-tag]").forEach((el) => {
-    el.addEventListener("change", () => { state.tags[el.dataset.tag] = el.checked; });
+    el.addEventListener("change", () => {
+      state.tags[el.dataset.tag] = el.checked;
+      mirrorToEditedBall();
+    });
   });
   document.querySelectorAll("input[data-footwork]").forEach((el) => {
-    el.addEventListener("change", () => { if (el.checked) state.footwork = el.dataset.footwork; });
+    el.addEventListener("change", () => {
+      if (el.checked) state.footwork = el.dataset.footwork;
+      mirrorToEditedBall();
+    });
   });
   const air = document.getElementById("in-air-btn");
   air?.addEventListener("click", () => {
     state.inAir = !state.inAir;
     air.classList.toggle("active", state.inAir);
     air.setAttribute("aria-pressed", String(state.inAir));
+    mirrorToEditedBall();
   });
 }
 
@@ -3243,7 +3375,8 @@ function wireOverlayButtons() {
   });
   document.addEventListener("keydown", (e) => { if (e.key === "Escape") { closeOverlay(); closeContextMenu(); } });
   document.getElementById("btn-editmode")?.addEventListener("click", () => {
-    overlayEditMode();
+    if (editingBall) exitBallInputEdit(); // "Done Editing"
+    else overlayEditMode();
   });
 }
 
