@@ -496,6 +496,14 @@ a.home-main-btn {
   text-transform: uppercase;
 }
 
+/* Camera panel in element-fullscreen (◉ toolbar icon toggles it) */
+.video-panel:fullscreen { background: #000; }
+.video-panel:fullscreen .camera-preview {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+
 .camera-preview {
   position: absolute;
   inset: 0;
@@ -631,6 +639,26 @@ a.home-main-btn {
   box-shadow: inset 3px 0 0 var(--danger, #e05c5c);
 }
 .ball-log tbody tr.wkt-ball:hover { background: rgba(224, 92, 92, 0.22); }
+
+/* Completed overs collapse into a clickable one-row summary in the ball log */
+.ball-log tbody tr.over-summary td {
+  padding: 9px 10px;
+  background: rgba(16, 32, 50, 0.9);
+  color: var(--muted);
+  font-size: 10px;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  border-bottom: 1px solid rgba(124, 157, 196, 0.14);
+}
+.ball-log tbody tr.over-summary:hover td { background: rgba(77, 179, 255, 0.12); }
+.over-caret {
+  display: inline-block;
+  width: 15px;
+  color: var(--accent, #4db3ff);
+}
+.over-stats { float: right; font-weight: 700; letter-spacing: 0.06em; }
+.over-wkts { color: var(--danger, #e05c5c); }
 .mark-flag {
   color: var(--warning, #f0c761);
   margin-right: 5px;
@@ -1474,9 +1502,9 @@ a.home-main-btn {
   margin-left: 6px;
 }
 .over-chip {
-  width: 28px;
+  min-width: 28px;
   height: 28px;
-  padding: 0;
+  padding: 0 6px;
   border-radius: 999px;
   display: inline-flex;
   align-items: center;
@@ -1492,6 +1520,27 @@ a.home-main-btn {
 .over-chip.chip-6 { background: linear-gradient(180deg, #b8902f, #8a6a1f); color: #fff; }
 .over-chip.chip-w { background: linear-gradient(180deg, #a3414f, #6d2732); color: #fff; }
 .over-chip.current { box-shadow: 0 0 0 2px rgba(77, 179, 255, 0.55); }
+.over-chip.chip-ext { color: var(--warning, #f0c761); }
+
+/* Full-innings ball-by-ball strip: one chip per logged ball, divider per over */
+.innings-balls {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  flex-wrap: nowrap;
+  overflow-x: auto;
+  padding: 2px 2px 6px;
+  margin-left: 6px;
+  scrollbar-width: thin;
+}
+.innings-balls .over-chip { flex: 0 0 auto; }
+.over-break {
+  flex: 0 0 auto;
+  width: 1px;
+  align-self: stretch;
+  margin: 0 4px;
+  background: rgba(124, 157, 196, 0.35);
+}
 
 .keypad-btn.marked { outline: 2px solid var(--warning); outline-offset: -2px; }
 /* RBW armed: external-parameter capture toggled on for the next ball */
@@ -1505,6 +1554,13 @@ a.home-main-btn {
 .yellow-parens { color: var(--warning); }
 
 body.edit-mode .app { outline: 2px solid rgba(240, 199, 97, 0.5); outline-offset: -6px; }
+
+/* Per-ball input panels are inert until a ball is started (see updateInputLock) */
+.input-locked {
+  opacity: 0.45;
+  filter: saturate(0.55);
+  transition: opacity 0.15s ease;
+}
 
 /* ---- Overlay root -------------------------------------------------------- */
 .overlay-root {

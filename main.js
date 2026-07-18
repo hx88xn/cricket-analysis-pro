@@ -131,6 +131,32 @@ ipcMain.handle("dialog:select-database-file", async (event, opts) => {
   return { canceled: false, path: filePaths[0] };
 });
 
+// Pick a saved video from disk and return its bytes for playback in the camera
+// view (played via a blob: URL — the CSP does not allow raw file: media).
+ipcMain.handle("dialog:pick-video", async (event) => {
+  const win = BrowserWindow.fromWebContents(event.sender);
+  const { canceled, filePaths } = await dialog.showOpenDialog(win, {
+    title: "Load a saved video",
+    properties: ["openFile"],
+    filters: [
+      { name: "Videos", extensions: ["webm", "mp4", "mov", "mkv", "avi"] },
+      { name: "All files", extensions: ["*"] },
+    ],
+  });
+  if (canceled || !filePaths?.length) return { canceled: true };
+  const filePath = filePaths[0];
+  try {
+    const bytes = await fs.promises.readFile(filePath);
+    const mime = {
+      ".mp4": "video/mp4", ".mov": "video/quicktime", ".mkv": "video/x-matroska",
+      ".avi": "video/x-msvideo",
+    }[path.extname(filePath).toLowerCase()] || "video/webm";
+    return { ok: true, bytes, mime, name: path.basename(filePath) };
+  } catch (e) {
+    return { ok: false, error: String((e && e.message) || e) };
+  }
+});
+
 // Sanitise an untrusted folder/file segment so it can't escape the root.
 function safeSegment(s) {
   return String(s || "").replace(/[^A-Za-z0-9 _-]/g, "").replace(/\s+/g, " ").trim();
@@ -191,7 +217,9 @@ ipcMain.handle("save-recording", async (event, arrayBuffer, defaultName, subfold
 
   const { filePath, canceled } = await dialog.showSaveDialog(win, {
     defaultPath: baseName,
-    filters: [{ name: "WebM video", extensions: ["webm"] }],
+    filters: [/\.png$/i.test(baseName)
+      ? { name: "PNG image", extensions: ["png"] }
+      : { name: "WebM video", extensions: ["webm"] }],
   });
   if (canceled || !filePath) {
     return { ok: false, canceled: true };

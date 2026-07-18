@@ -126,10 +126,12 @@
       <section class="coding-body">
         <!-- Col 1: Ball by Ball log -->
         <div class="cb-log">
-          <div class="cb-title">Ball by Ball</div>
+          <div class="cb-title">This Over</div>
           <div class="log-toolbar">
             <span class="this-over" id="this-over"></span>
           </div>
+          <div class="cb-title">Ball by Ball</div>
+          <div class="innings-balls" id="innings-balls"></div>
           <div class="table-wrap">
             <table class="ball-log">
               <thead>
@@ -161,15 +163,15 @@
               aria-label="Camera preview"
             ></video>
             <div class="video-toolbar">
-              <span class="video-icon monitor-icon" title="Stop">&#9635;</span>
-              <span class="video-icon camera-icon" title="Record">&#9673;</span>
+              <span class="video-icon monitor-icon" title="Save a screenshot">&#9635;</span>
+              <span class="video-icon camera-icon" title="Toggle full screen">&#9673;</span>
             </div>
           </div>
           <div class="video-actions">
             <button type="button" id="btn-over" class="btn wide teal">Start Over</button>
             <button type="button" id="btn-ball" class="btn wide teal">Start Ball</button>
             <button type="button" id="btn-capture" class="btn wide teal">Start Capture</button>
-            <button type="button" class="btn wide teal" title="Live Score">LS</button>
+            <button type="button" id="btn-ls" class="btn wide teal" title="Load a saved video">LS</button>
             <button type="button" id="btn-undo" class="btn wide teal icon-refresh" title="Undo last ball">&#8635;</button>
           </div>
 

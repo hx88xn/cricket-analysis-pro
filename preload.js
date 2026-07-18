@@ -7,6 +7,7 @@ contextBridge.exposeInMainWorld("cricketApp", {
   setConfig: (patch) => ipcRenderer.invoke("config:set", patch),
   selectDirectory: (opts) => ipcRenderer.invoke("dialog:select-directory", opts),
   selectDatabaseFile: (opts) => ipcRenderer.invoke("dialog:select-database-file", opts),
+  pickVideo: () => ipcRenderer.invoke("dialog:pick-video"),
   currentDatabase: () => ipcRenderer.invoke("db:current"),
   switchDatabase: (filePath) => ipcRenderer.invoke("db:switch", filePath),
   newDatabase: () => ipcRenderer.invoke("db:new"),

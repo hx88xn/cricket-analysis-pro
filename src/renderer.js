@@ -713,17 +713,24 @@ function wireFieldMap() {
     preview.line.remove(); preview.dot.remove(); preview = null;
   }
 
-  // Hover (not drawing) just updates the region label.
+  // Hover (not drawing) updates the region label; if the cursor rests on the
+  // wheel for 2 seconds, the fielding-placements menu opens for that point.
+  let hoverTimer = null;
+  const cancelHoverMenu = () => { clearTimeout(hoverTimer); hoverTimer = null; };
   wrap.addEventListener("mousemove", (e) => {
     if (drawing) return;
     const p = clampToField(...posArgs(toPct(e)));
     showRegion(p.x, p.y);
+    cancelHoverMenu();
+    if (document.getElementById("context-menu")) return; // a menu is already open
+    hoverTimer = setTimeout(() => openPlacementsMenu(e.clientX, e.clientY, p), 2000);
   });
-  wrap.addEventListener("mouseleave", hideRegionSoon);
+  wrap.addEventListener("mouseleave", () => { cancelHoverMenu(); hideRegionSoon(); });
 
   // Left button: draw with a live preview (click or press-drag).
   wrap.addEventListener("mousedown", (e) => {
     if (e.button !== 0) return;
+    cancelHoverMenu();
     closeContextMenu();
     clearReview();        // leave review mode when drawing the live ball
     drawing = true; moved = false;
@@ -747,9 +754,10 @@ function wireFieldMap() {
     removePreview();
     addWagonLine(p.x, p.y, runColor(state.pendingRuns || 0));
     showRegion(p.x, p.y);
-    // Left click draws the line, then offers the fielding-placement menu for
-    // the region it landed in.
-    openPlacementsMenu(e.clientX, e.clientY, p);
+    // Left click records the exact point as-is; the shot's position defaults to
+    // the region the line landed in. A named placement can still be picked from
+    // the hover menu (see above), which overrides this default.
+    state.pendingPlacement = wagonRegion(p.x, p.y);
   });
 
   // Right button: fielding events (Caught / Fumble / … → fielder) for the shot,
@@ -775,24 +783,26 @@ function posArgs(p) { return [p.x, p.y]; }
 // Picking a fielder records position + event + fielder for the shot.
 
 function closeContextMenu() {
+  document.getElementById("context-submenu2")?.remove();
   document.getElementById("context-submenu")?.remove();
   document.getElementById("context-menu")?.remove();
   document.removeEventListener("mousedown", onDocDownForMenu, true);
 }
 
 function onDocDownForMenu(e) {
-  if (e.target.closest("#context-menu") || e.target.closest("#context-submenu")) return;
+  if (e.target.closest("#context-menu") || e.target.closest("#context-submenu") || e.target.closest("#context-submenu2")) return;
   closeContextMenu();
 }
 
-function recordFieldingEvent(position, event, fielder, p) {
+function recordFieldingEvent(position, event, fielder, p, netRunsSaved = "") {
   state.fieldingEvents = state.fieldingEvents || [];
-  state.fieldingEvents.push({ position, event, fielder, netRunsSaved: "",
+  state.fieldingEvents.push({ position, event, fielder, netRunsSaved,
     over: `${state.over}.${state.ball}`, x: p?.x, y: p?.y, ball: state.log.length });
   scheduleSave(); // persist fielding events to the DB
   const label = document.getElementById("wagon-region");
   if (label) {
-    label.textContent = `${position} · ${event} · ${fielder}`;
+    const nrs = netRunsSaved === "" ? "" : ` · NRS ${netRunsSaved > 0 ? `+${netRunsSaved}` : netRunsSaved}`;
+    label.textContent = `${position} · ${event} · ${fielder}${nrs}`;
     clearTimeout(label._t);
     label._t = setTimeout(() => { label.textContent = ""; }, 2600);
   }
@@ -815,8 +825,9 @@ function placeFlyout(sub, item) {
   sub.style.top = `${d.y}px`;
 }
 
-// Level 3: fielders for a chosen position + event.
+// Level 3: fielders for a chosen position + event (cascades into net runs saved).
 function openFielderSubmenu(item, position, event, p) {
+  document.getElementById("context-submenu2")?.remove();
   document.getElementById("context-submenu")?.remove();
   item.parentElement.querySelectorAll(".ctx-item.active").forEach((x) => x.classList.remove("active"));
   item.classList.add("active");
@@ -827,11 +838,32 @@ function openFielderSubmenu(item, position, event, p) {
   FIELDERS.forEach((f) => {
     const b = document.createElement("button");
     b.type = "button";
-    b.className = "ctx-item";
-    b.textContent = f;
-    b.addEventListener("click", () => { recordFieldingEvent(position, event, f, p); closeContextMenu(); });
+    b.className = "ctx-item has-sub";
+    b.innerHTML = `<span class="ctx-label">${f}</span><span class="ctx-arrow">&#8250;</span>`;
+    b.addEventListener("mouseenter", () => openNetRunsSubmenu(b, position, event, f, p));
+    b.addEventListener("click", () => openNetRunsSubmenu(b, position, event, f, p));
     sub.appendChild(b);
   });
+  placeFlyout(sub, item);
+}
+
+// Level 4: net runs saved (−4…+4) by the fielder — picking one records the event.
+function openNetRunsSubmenu(item, position, event, fielder, p) {
+  document.getElementById("context-submenu2")?.remove();
+  item.parentElement.querySelectorAll(".ctx-item.active").forEach((x) => x.classList.remove("active"));
+  item.classList.add("active");
+
+  const sub = document.createElement("div");
+  sub.id = "context-submenu2";
+  sub.className = "context-menu submenu";
+  for (let n = -4; n <= 4; n += 1) {
+    const b = document.createElement("button");
+    b.type = "button";
+    b.className = "ctx-item";
+    b.textContent = n > 0 ? `+${n}` : String(n);
+    b.addEventListener("click", () => { recordFieldingEvent(position, event, fielder, p, n); closeContextMenu(); });
+    sub.appendChild(b);
+  }
   placeFlyout(sub, item);
 }
 
@@ -1120,9 +1152,17 @@ function logBall({ runs = 0, ext = 0, boundary = false, legal = true, bye = fals
   state.bowl.runs += Math.max(0, runs) + (bye ? 0 : ext);
   if (legal) state.bowl.balls += 1;
 
-  // over running tally
-  const tally = legal ? (bye ? `${runs || 1}b` : String(runs)) : `${extLabel}`;
+  // over running tally — standard ball-by-ball tags: W (wicket), B4/B6 (boundary
+  // four/six), the plain number for ran runs, WD/NB (+ runs off the bat) for
+  // illegal balls, byes/leg-byes as e.g. 2b / 1lb.
+  let tally;
+  if (wicket) tally = "W";
+  else if (!legal) tally = `${extLabel}${runs > 0 ? `+${runs}` : ""}`;
+  else if (bye) tally = `${ext || 1}${extLabel.toLowerCase()}`;
+  else if (boundary) tally = `B${runs}`;
+  else tally = String(runs);
   state.thisOver.push(tally);
+  logged.tally = tally; // reused by the full-innings ball-by-ball strip
   state.overRunsThisOver += runs + ext;
 
   if (wicket) {
@@ -1376,6 +1416,7 @@ function endInnings() {
   // below). A saved Revised Target, if any, overrides it.
   state.target = state.runs + 1;
   state.firstInningsBalls = state.log.length; // keep for video-count validation
+  state.prevInningsLog = state.log;           // keep 1st-innings balls editable (Edit Mode)
   state.innings = 2;
 
   swapBattingSides();
@@ -1389,6 +1430,7 @@ function endInnings() {
   };
   state.bowl = { spell: 1, balls: 0, runs: 0, mdns: 0, wkts: 0 };
   state.log = []; state.overRunsThisOver = 0; state.thisOver = []; state.history = [];
+  expandedOvers.clear(); // over numbers restart with the new innings
   state.bowlEnd = "FAR END";
   state.openersRecorded = false; // 2nd-innings openers recorded on its first ball
   state.overStarted = false; state.ballStarted = false;
@@ -1551,15 +1593,11 @@ function render() {
   const to = document.getElementById("this-over");
   if (to) {
     const last = state.thisOver.length - 1;
-    to.innerHTML = state.thisOver.map((t, i) => {
-      const w = t === "W"; const four = t === "4"; const six = t === "6";
-      const cls = w ? "chip-w" : six ? "chip-6" : four ? "chip-4" : "";
-      const cur = i === last ? " current" : "";
-      return `<span class="over-chip ${cls}${cur}">${t}</span>`;
-    }).join("");
+    to.innerHTML = state.thisOver.map((t, i) => ballChipHtml(t, i === last)).join("");
   }
 
   renderLog();
+  updateInputLock(); // covers boot and undo/history restores
   scheduleSave();
 }
 
@@ -1604,18 +1642,89 @@ function setBowl(k, v) {
   if (el) el.textContent = v;
 }
 
-function renderLog() {
+// Overs the scorer has clicked back open in the ball log (session-only UI state).
+const expandedOvers = new Set();
+
+// One ball-by-ball chip. Tag colours: W red, B4/4 blue, B6/6 gold, extras amber.
+function ballChipHtml(t, current) {
+  const s = String(t);
+  const cls = s === "W" ? "chip-w"
+    : s === "B6" || s === "6" ? "chip-6"
+    : s === "B4" || s === "4" ? "chip-4"
+    : /^(WD|NB|P)/i.test(s) || /b$/i.test(s) ? "chip-ext" : "";
+  return `<span class="over-chip ${cls}${current ? " current" : ""}">${s}</span>`;
+}
+
+// Ball-by-ball tag for a logged row: the tally recorded at scoring time, else
+// derived (rows saved before tallies existed): W for wickets, the extras cell,
+// or the run count.
+function ballTag(r) {
+  if (r.tally) return r.tally;
+  if (r.wicket) return "W";
+  const ext = String(r.ext ?? "");
+  if (ext && ext !== "0" && !/^\d+$/.test(ext)) return ext.replace(/OT\d*/gi, "") || String(r.runs);
+  return String(r.runs);
+}
+
+// Total runs a logged ball put on the board (batter runs + extras). Overthrow
+// annotations ("OT2") never scored, so they are stripped before reading extras.
+function ballTotal(r) {
+  return (Number(r.runs) || 0) + extNum(String(r.ext).replace(/OT\d*/gi, ""));
+}
+
+function renderLog(preserveScroll = false) {
   const body = document.getElementById("ball-log-body");
   if (!body) return;
-  const start = Math.max(0, state.log.length - 30);
-  body.innerHTML = state.log.slice(start).map((r, i) => `
-    <tr data-index="${start + i}" class="${r.marked ? "marked-ball" : ""} ${r.wicket ? "wkt-ball" : ""}" title="${r.marked ? "Marked for edit — " : ""}${r.wicket && r.dismissal ? `Wicket: ${r.dismissal} — ` : ""}Double-click to edit this ball">
+  const wrap = body.closest(".table-wrap");
+  const prevScroll = wrap ? wrap.scrollTop : 0;
+
+  const ballRow = (i) => { const r = state.log[i]; return `
+    <tr data-index="${i}" class="${r.marked ? "marked-ball" : ""} ${r.wicket ? "wkt-ball" : ""}" title="${r.marked ? "Marked for edit — " : ""}${r.wicket && r.dismissal ? `Wicket: ${r.dismissal} — ` : ""}Double-click to edit this ball">
       <td>${r.marked ? '<span class="mark-flag" title="Marked for edit">⚑</span>' : ""}${r.num}</td>
       <td>${r.bowler}</td><td>${r.striker}</td><td>${r.nonstr}</td>
       <td>${r.bowl}</td><td>${r.shot}</td><td>${r.runs}</td><td>${r.ext}${r.wicket && r.dismissal ? ` (${r.dismissal})` : ""}</td>
-    </tr>`).join("");
-  const wrap = body.closest(".table-wrap");
-  if (wrap) wrap.scrollTop = wrap.scrollHeight;
+    </tr>`; };
+
+  // Group the log into overs. Completed overs (anything before the current over
+  // counter) collapse into a one-row summary — runs conceded + wickets fallen —
+  // that clicking expands back into its ball rows. The over in progress always
+  // shows its balls in full.
+  const groups = [];
+  state.log.forEach((r, i) => {
+    const over = parseInt(String(r.num), 10) || 0;
+    const g = groups[groups.length - 1];
+    if (g && g.over === over) g.rows.push(i);
+    else groups.push({ over, rows: [i] });
+  });
+
+  body.innerHTML = groups.map((g) => {
+    if (g.over >= state.over) return g.rows.map(ballRow).join(""); // over in progress
+    const open = expandedOvers.has(g.over);
+    const runs = g.rows.reduce((t, i) => t + ballTotal(state.log[i]), 0);
+    const wkts = g.rows.reduce((t, i) => t + (state.log[i].wicket ? 1 : 0), 0);
+    const head = `
+    <tr class="over-summary" data-over="${g.over}" title="Click to ${open ? "collapse" : "expand"} this over">
+      <td colspan="8"><span class="over-caret">${open ? "▾" : "▸"}</span>Over ${g.over + 1}
+        <span class="over-stats">${runs} run${runs === 1 ? "" : "s"} · <span class="${wkts ? "over-wkts" : ""}">${wkts} wicket${wkts === 1 ? "" : "s"}</span></span></td>
+    </tr>`;
+    return open ? head + g.rows.map(ballRow).join("") : head;
+  }).join("");
+
+  if (wrap) wrap.scrollTop = preserveScroll ? prevScroll : wrap.scrollHeight;
+
+  // Full-innings ball-by-ball strip: every logged ball as a chip, with a divider
+  // between overs; kept scrolled to the latest delivery.
+  const strip = document.getElementById("innings-balls");
+  if (strip) {
+    let prevOver = null;
+    strip.innerHTML = state.log.map((r) => {
+      const over = parseInt(String(r.num), 10) || 0;
+      const brk = prevOver !== null && over !== prevOver ? '<span class="over-break"></span>' : "";
+      prevOver = over;
+      return brk + ballChipHtml(ballTag(r), false);
+    }).join("");
+    strip.scrollLeft = strip.scrollWidth;
+  }
 }
 
 // ---- Button state machine -------------------------------------------------
@@ -1649,6 +1758,20 @@ function setBallButton(label) {
   b.classList.toggle("teal", !ending);
   b.disabled = state.matchOver; // no more deliveries once the match is complete
   updateCaptureEnabled();
+  updateInputLock();
+}
+
+// Until a ball is started, every per-ball input panel is locked (dimmed +
+// `inert`, which blocks both mouse and keyboard): the events grid, keypad,
+// pitch map, wagon wheel and the bowl/shot spec grids. The action buttons,
+// reports row, Match Events and Edit Mode stay usable throughout.
+const BALL_LOCKED_PANELS = [".events-grid", ".keypad-panel", ".cb-pitch", ".cb-wagon", ".cb-bowl", ".cb-bat"];
+function updateInputLock() {
+  const locked = !state.ballStarted;
+  BALL_LOCKED_PANELS.forEach((sel) => document.querySelectorAll(sel).forEach((el) => {
+    el.inert = locked;
+    el.classList.toggle("input-locked", locked);
+  }));
 }
 
 // A ball may only be entered once its over and the ball itself are started.
@@ -1671,19 +1794,38 @@ function wireActionButtons() {
       state.overStarted = true;
       setOverButton("End Over");
     } else {
-      // End Over is just a marker — it must NOT skip the over or reset the ball
-      // count. The over advances on its own when the 6th legal ball is bowled
-      // (see logBall). Toggling here simply closes the marker so the over can be
-      // continued from where the ball left off (re-click Start Over to resume).
-      state.overStarted = false;
-      state.ballStarted = false;
-      state.pending = null;
-      state.staged = null;
-      setOverButton("Start Over");
-      setBallButton("Start Ball");
-      fillKeypad();
+      // End Over pressed mid-over (a completed over closes itself in
+      // completeOver, so this is always before the 6th legal ball) — confirm.
+      confirmEndOver();
     }
   });
+
+  // Confirm ending an incomplete over. On confirm the remaining balls are
+  // recorded as dot balls (0), which advances the over naturally — strike and
+  // bowler rotation happen inside completeOver when the 6th ball lands.
+  function confirmEndOver() {
+    const body = `
+      <div class="confirm-box">
+        <p>All balls for over ${state.over + 1} are not completed (${state.ball} of 6 bowled).
+          Do you want to end the over? The remaining balls will be recorded as 0.</p>
+        <div class="btn-row-modal center">
+          <button class="m-btn m-red" id="eo-end">End Over</button>
+          <button class="m-btn m-green" data-close>Continue Over</button>
+        </div>
+      </div>`;
+    openOverlay(popupShell("END OVER", body));
+    document.getElementById("eo-end")?.addEventListener("click", () => {
+      closeOverlay();
+      state.pending = null; // drop any half-staged delivery
+      state.staged = null;
+      let guard = 6; // the over holds at most 6 more legal balls
+      do {
+        state.ballStarted = true;
+        logBall({});
+        guard -= 1;
+      } while (state.ball !== 0 && guard > 0);
+    });
+  }
 
   ball?.addEventListener("click", () => {
     if (state.matchOver) return;                       // match complete — locked
@@ -2775,9 +2917,13 @@ function extNum(ext) {
   return /^(NB|WD|LB|B)/i.test(String(ext).trim()) ? 1 : 0;
 }
 
-function overlayEditBall(index) {
-  const r = state.log[index];
+// Edit one logged ball. `log` defaults to the live innings; Edit Mode can pass
+// the stored 1st-innings log instead, in which case the team score is left
+// untouched (that innings' total is already fixed).
+function overlayEditBall(index, log = state.log) {
+  const r = log[index];
   if (!r) return;
+  const live = log === state.log;
   const inp = (id, label, v) =>
     `<label class="f-row"><span class="f-label">${label}</span><input class="f-input" id="${id}" value="${escAttr(v)}" /></label>`;
   const sel = (id, label, opts) =>
@@ -2814,15 +2960,45 @@ function overlayEditBall(index) {
     r.ext = fieldVal("eb-ext");
     r.marked = !!document.getElementById("eb-marked")?.checked;
     const newVal = (Number(r.runs) || 0) + extNum(r.ext);
-    state.runs = Math.max(0, state.runs + (newVal - oldVal)); // keep score in sync
+    if (live) state.runs = Math.max(0, state.runs + (newVal - oldVal)); // keep score in sync
     closeOverlay();
     render();
   });
   document.getElementById("eb-delete")?.addEventListener("click", () => {
-    state.runs = Math.max(0, state.runs - ((Number(r.runs) || 0) + extNum(r.ext)));
-    state.log.splice(index, 1);
+    if (live) state.runs = Math.max(0, state.runs - ((Number(r.runs) || 0) + extNum(r.ext)));
+    log.splice(index, 1);
     closeOverlay();
     render();
+  });
+}
+
+// Edit Mode: pick an innings + over + ball, then open that ball's saved inputs
+// for editing. Over/ball use the human numbering shown on the over summaries
+// (over 1 = the log's 0.x balls).
+function overlayEditMode() {
+  const innOpts = state.innings === 2 ? [1, 2] : [1];
+  const body = `
+    <label class="f-row"><span class="f-label">Innings</span><select class="f-select" id="em-inn">${
+      innOpts.map((o) => `<option>${o}</option>`).join("")}</select></label>
+    <label class="f-row"><span class="f-label">Over No</span><input class="f-input" id="em-over" placeholder="1 = first over" /></label>
+    <label class="f-row"><span class="f-label">Ball No</span><input class="f-input" id="em-ball" placeholder="1–6" /></label>
+    <div class="btn-row-modal">
+      <button class="m-btn m-green" id="em-load">Load Ball</button>
+      <button class="m-btn m-red" data-close>Cancel</button>
+    </div>`;
+  openOverlay(popupShell("EDIT MODE", body));
+  document.getElementById("em-load")?.addEventListener("click", () => {
+    const inn = Number(fieldVal("em-inn")) || 1;
+    const overNo = Number(fieldVal("em-over"));
+    const ballNo = Number(fieldVal("em-ball"));
+    if (!overNo || !ballNo) { toast("Enter the over and ball number"); return; }
+    const log = inn === state.innings ? state.log : (state.prevInningsLog || []);
+    const num = `${overNo - 1}.${ballNo}`;
+    let index = log.findIndex((r) => String(r.num) === num);
+    if (index < 0) index = log.findIndex((r) => String(r.num).startsWith(`${num}+`));
+    if (index < 0) { toast(`No ball ${num} recorded in innings ${inn}`); return; }
+    closeOverlay();
+    overlayEditBall(index, log);
   });
 }
 
@@ -2853,6 +3029,15 @@ function wireBallLogEditing() {
   if (!body) return;
   // single click: review that ball's saved wagon + pitch inputs
   body.addEventListener("click", (e) => {
+    // click on a collapsed-over summary row toggles it open/closed
+    const head = e.target.closest("tr.over-summary");
+    if (head) {
+      const over = Number(head.getAttribute("data-over"));
+      if (expandedOvers.has(over)) expandedOvers.delete(over);
+      else expandedOvers.add(over);
+      renderLog(true); // keep the scroll position while toggling
+      return;
+    }
     const tr = e.target.closest("tr[data-index]");
     if (!tr) return;
     body.querySelectorAll("tr.selected").forEach((x) => x.classList.remove("selected"));
@@ -2981,7 +3166,61 @@ function wireOverlayButtons() {
   });
   document.addEventListener("keydown", (e) => { if (e.key === "Escape") { closeOverlay(); closeContextMenu(); } });
   document.getElementById("btn-editmode")?.addEventListener("click", () => {
-    document.body.classList.toggle("edit-mode");
+    overlayEditMode();
+  });
+}
+
+// Number keys enter runs while a ball is in progress, exactly like the keypad:
+// 0–3/5/7–9 stage that many ran runs; 4 and 6 first ask Boundary or Ran (a
+// boundary credits the batter's 4s/6s). The score commits on End Ball as usual.
+function wireRunKeys() {
+  document.addEventListener("keydown", (e) => {
+    if (e.ctrlKey || e.altKey || e.metaKey) return;
+    const t = e.target;
+    if (t && (t.matches?.("input, textarea, select") || t.isContentEditable)) return;
+    if (!/^[0-9]$/.test(e.key)) return;
+    if (state.matchOver || !state.overStarted || !state.ballStarted) return;
+    const root = overlayRoot();
+    if (root && !root.hidden) return; // a popup is open — keys belong to it
+    e.preventDefault();
+    const val = Number(e.key);
+    if (val === 4 || val === 6) overlayRunChoice(val);
+    else stageRun(val, false);
+  });
+}
+
+// 4/6 typed on the keyboard: boundary (hit to the rope) or runs ran?
+function overlayRunChoice(val) {
+  const body = `
+    <div class="confirm-box">
+      <p>Was the ${val} a boundary or runs taken?</p>
+      <div class="btn-row-modal center">
+        <button class="m-btn m-green" id="rc-boundary">Boundary ${val}</button>
+        <button class="m-btn m-yellow" id="rc-ran">Ran ${val}</button>
+      </div>
+    </div>`;
+  openOverlay(popupShell(`${val} RUNS`, body));
+  document.getElementById("rc-boundary")?.addEventListener("click", () => { closeOverlay(); stageRun(val, true); });
+  document.getElementById("rc-ran")?.addEventListener("click", () => { closeOverlay(); stageRun(val, false); });
+}
+
+// LS: load a saved video from disk (Finder / Explorer picker) and play it in
+// the camera view. The live preview reattaches on the next Start Capture.
+function wireLoadSavedVideo() {
+  const btn = document.getElementById("btn-ls");
+  const videoEl = document.getElementById("camera-preview");
+  if (!btn || !videoEl || !window.cricketApp?.pickVideo) return;
+  btn.addEventListener("click", async () => {
+    const res = await window.cricketApp.pickVideo();
+    if (!res || res.canceled) return;
+    if (!res.ok) { toast(`Could not load video: ${res.error || "unknown error"}`); return; }
+    if (ballClipUrl) URL.revokeObjectURL(ballClipUrl);
+    ballClipUrl = URL.createObjectURL(new Blob([res.bytes], { type: res.mime || "video/webm" }));
+    videoEl.srcObject = null; // detach the live camera stream
+    videoEl.src = ballClipUrl;
+    videoEl.controls = true;
+    videoEl.play?.().catch(() => {});
+    toast(`Playing ${res.name || "video"}`);
   });
 }
 
@@ -3212,6 +3451,41 @@ function wireCapture() {
   window.addEventListener("focus", () => { startPreview(); });
 }
 
+// Video toolbar icons: the left (□) icon snapshots the current camera frame
+// into the match's screenshots folder; the right (◉) icon toggles the camera
+// panel full screen (pressing it again in full screen restores the layout).
+function wireVideoToolbar() {
+  const videoEl = document.getElementById("camera-preview");
+  const panel = document.querySelector(".video-panel");
+  const shotBtn = document.querySelector(".video-toolbar .monitor-icon");
+  const fsBtn = document.querySelector(".video-toolbar .camera-icon");
+  if (!videoEl || !panel) return;
+
+  shotBtn?.addEventListener("click", async () => {
+    if (!videoEl.videoWidth) { toast("No camera preview to capture"); return; }
+    const canvas = document.createElement("canvas");
+    canvas.width = videoEl.videoWidth;
+    canvas.height = videoEl.videoHeight;
+    canvas.getContext("2d").drawImage(videoEl, 0, 0);
+    const blob = await new Promise((res) => canvas.toBlob(res, "image/png"));
+    if (!blob || !window.cricketApp?.saveRecording) { toast("Could not capture screenshot"); return; }
+    const ts = new Date().toISOString().replace(/[:.]/g, "-").slice(0, 19);
+    const label = `INN${state.innings}-OVER${state.over}-BALL${state.ball + 1}`;
+    const name = `${state.recordingPrefix ? `${state.recordingPrefix}-` : ""}SHOT-${label}-${ts}.png`;
+    // Saved inside the match's own folder: <root>/<tournament>/<match>/screenshots/.
+    // Without a loaded match there is no match folder, so group under UNGROUPED.
+    const folder = `${state.recordingFolder || "UNGROUPED"}/screenshots`;
+    const res = await window.cricketApp.saveRecording(await blob.arrayBuffer(), name, folder);
+    if (res?.ok) toast("Screenshot saved");
+    else if (!res?.canceled) toast("Could not save screenshot");
+  });
+
+  fsBtn?.addEventListener("click", () => {
+    if (document.fullscreenElement === panel) document.exitFullscreen();
+    else panel.requestFullscreen().catch(() => toast("Fullscreen not available"));
+  });
+}
+
 // ===========================================================================
 // Match context (loaded from the database via ?match=<id>)
 // ===========================================================================
@@ -3339,6 +3613,7 @@ function applyMatch(match) {
   };
   state.bowl = { spell: 1, balls: 0, runs: 0, mdns: 0, wkts: 0 };
   state.log = [];
+  expandedOvers.clear();
   state.overRunsThisOver = 0;
   state.thisOver = [];
   state.history = [];
@@ -3385,6 +3660,7 @@ function serializeState() {
     batTimes: state.batTimes, matchStartTime: state.matchStartTime,
     matchStartTs: state.matchStartTs, openersRecorded: state.openersRecorded,
     firstInningsBalls: state.firstInningsBalls,
+    prevInningsLog: state.prevInningsLog, // 1st-innings balls stay editable in Edit Mode
     // Recent undo stack — without this, a resumed match shows logged balls but
     // undo refuses ("nothing to undo"). Capped to keep the debounced save light.
     history: (state.history || []).slice(-10),
@@ -3430,6 +3706,9 @@ async function boot() {
   syncToggles();
   render();
   wireCapture();
+  wireVideoToolbar();
+  wireRunKeys();
+  wireLoadSavedVideo();
   updateCaptureEnabled(); // Start Capture stays disabled until a ball is started
   wireShortcuts();
 
