@@ -1573,6 +1573,13 @@ a.home-main-btn {
   background: rgba(124, 157, 196, 0.35);
 }
 
+/* Per-ball event toggles (Appeals / Key Moment / Play and Miss / …) armed */
+.events-grid .btn.active {
+  background: linear-gradient(180deg, #1f6f43, #14502f);
+  outline: 2px solid var(--success, #2ecc71);
+  outline-offset: -2px;
+}
+
 .keypad-btn.marked { outline: 2px solid var(--warning); outline-offset: -2px; }
 /* RBW armed: external-parameter capture toggled on for the next ball */
 .keypad-btn.active-mode {

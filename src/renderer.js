@@ -616,6 +616,11 @@ function enterBallInputEdit(log, index) {
   air?.setAttribute("aria-pressed", String(state.inAir));
   if (r.bowl) applyBowlType(r.bowl);
   if (r.shot) applyShotType(r.shot);
+  // wipe any live-ball leftovers so only this ball's saved inputs are on the
+  // maps (a stray live pitch dot would read as a phantom third input)
+  clearWagonLines();
+  state.pendingWagonLine = null;
+  clearPitchDots();
   drawBallReview(r);
   updateInputLock(); // unlock the panels for the edit
   toast(`Editing ball ${r.num} — draw or select to update, then press Done Editing`);
@@ -3249,16 +3254,28 @@ function wireBallLogEditing() {
 
 // Wire the footer tag bar into state. BTN/UNC/WTB/RS are independent checkboxes
 // (any combination); FF/BF/SD/CRM are one radio group (at most one).
+// While a saved ball is being edited, tag/footwork/in-air changes rewrite it.
+function mirrorToEditedBall() {
+  const er = editingBallRow();
+  if (!er) return;
+  er.tags = { ...state.tags };
+  er.footwork = state.footwork;
+  er.inAir = state.inAir;
+  scheduleSave();
+}
+
 function wireTags() {
-  // While a saved ball is being edited, tag changes rewrite that ball too.
-  const mirrorToEditedBall = () => {
-    const er = editingBallRow();
-    if (!er) return;
-    er.tags = { ...state.tags };
-    er.footwork = state.footwork;
-    er.inAir = state.inAir;
-    scheduleSave();
-  };
+  // Key Moment / Play and Miss / Bowling Variations / Edge / Free Hit on the
+  // events grid are per-ball toggles, saved onto the ball with the other tags.
+  document.querySelectorAll(".events-grid button[data-tag]").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const on = !state.tags[btn.dataset.tag];
+      state.tags[btn.dataset.tag] = on;
+      btn.classList.toggle("active", on);
+      btn.setAttribute("aria-pressed", String(on));
+      mirrorToEditedBall();
+    });
+  });
   document.querySelectorAll("input[data-tag]").forEach((el) => {
     el.addEventListener("change", () => {
       state.tags[el.dataset.tag] = el.checked;
@@ -3343,6 +3360,11 @@ async function addSpecEntry(category, grp, name, kind) {
 function syncTagControls() {
   document.querySelectorAll("input[data-tag]").forEach((el) => {
     el.checked = !!state.tags[el.dataset.tag];
+  });
+  document.querySelectorAll(".events-grid button[data-tag]").forEach((b) => {
+    const on = !!state.tags[b.dataset.tag];
+    b.classList.toggle("active", on);
+    b.setAttribute("aria-pressed", String(on));
   });
   document.querySelectorAll("input[data-footwork]").forEach((el) => {
     el.checked = state.footwork === el.dataset.footwork;
