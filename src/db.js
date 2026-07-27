@@ -16,7 +16,7 @@
 const fs = require("fs");
 const path = require("path");
 const Database = require("better-sqlite3");
-const { buildSeed, buildMasters } = require("./seed/seed");
+const { buildSeed, buildMasters, MATCH_TYPES } = require("./seed/seed");
 
 let db = null; // better-sqlite3 instance
 let dbFile = null; // absolute path of the currently open database file
@@ -40,6 +40,13 @@ CREATE TABLE IF NOT EXISTS competitions (
 CREATE TABLE IF NOT EXISTS competition_teams (
   competition_id TEXT, team_id TEXT,
   PRIMARY KEY (competition_id, team_id)
+);
+-- Officials (umpires / match referees) allocated to a competition. Match
+-- Registration and Fixtures offer only these officials once a competition has
+-- an allocation; an empty allocation means "any official from the master".
+CREATE TABLE IF NOT EXISTS competition_officials (
+  competition_id TEXT, official_id TEXT,
+  PRIMARY KEY (competition_id, official_id)
 );
 CREATE TABLE IF NOT EXISTS officials (
   id TEXT PRIMARY KEY, name TEXT, role TEXT, country TEXT, category TEXT
@@ -112,6 +119,7 @@ function init(filePath, { seed: doSeed = true } = {}) {
   ensureColumns(); // add/back-fill columns added after a DB was first created
   migrateMasterCategories(); // rename legacy master categories in place
   ensureMasters(); // option lists for the coding screen (also back-fills existing DBs)
+  ensureMatchTypes(); // Match Type option list (back-fills blank/packaged DBs)
   ensureBowlerSpecs(); // bowler specialization master defaults (back-fills existing DBs)
   migrateUppercaseData(); // one-time: upper-case existing free-text fields
   return db;
@@ -225,6 +233,15 @@ function ensureMasters() {
   tx(buildMasters());
 }
 
+// Seed the Match Type master if empty. These are option lists, not demo data:
+// a packaged build and "New blank database" both open with { seed: false } and
+// so never ran seed(), which left Match Type dropdowns with nothing to pick.
+function ensureMatchTypes() {
+  if (db.prepare("SELECT COUNT(*) c FROM match_types").get().c > 0) return;
+  const ins = db.prepare("INSERT OR IGNORE INTO match_types (name,ord) VALUES (?,?)");
+  db.transaction(() => MATCH_TYPES.forEach((m, i) => ins.run(m, i)))();
+}
+
 // Seed the Bowler Specialization master with sensible defaults if empty. Runs
 // every init so databases created before this feature get the defaults too.
 function ensureBowlerSpecs() {
@@ -276,10 +293,12 @@ function seed(data) {
       (id,name,trophy,season,format,match_type,start_date,end_date)
       VALUES (@id,@name,@trophy,@season,@format,@match_type,@start_date,@end_date)`);
     const insCompTeam = db.prepare("INSERT OR IGNORE INTO competition_teams (competition_id,team_id) VALUES (?,?)");
+    const insCompOff = db.prepare("INSERT OR IGNORE INTO competition_officials (competition_id,official_id) VALUES (?,?)");
     (d.competitions || []).forEach((c) => {
       insComp.run({ id: c.id, name: c.name, trophy: c.trophy || "", season: c.season || "",
         format: c.format || "", match_type: c.matchType || "", start_date: c.startDate || "", end_date: c.endDate || "" });
       (c.teamIds || []).forEach((tid) => insCompTeam.run(c.id, tid));
+      (c.officialIds || []).forEach((oid) => insCompOff.run(c.id, oid));
     });
 
     const insOff = db.prepare("INSERT INTO officials (id,name,role,country,category) VALUES (@id,@name,@role,@country,@category)");
@@ -370,10 +389,15 @@ function ballCount() {
 function competitions() {
   const comps = db.prepare("SELECT * FROM competitions ORDER BY name").all();
   const teamStmt = db.prepare("SELECT team_id FROM competition_teams WHERE competition_id = ?");
+  // Only officials that still exist in the master are returned, so a deleted
+  // official can never linger as a stale id in a competition's allocation.
+  const offStmt = db.prepare(`SELECT co.official_id FROM competition_officials co
+    JOIN officials o ON o.id = co.official_id WHERE co.competition_id = ? ORDER BY o.name`);
   return comps.map((c) => ({
     id: c.id, name: c.name, trophy: c.trophy, season: c.season, format: c.format,
     matchType: c.match_type, startDate: c.start_date, endDate: c.end_date,
     teamIds: teamStmt.all(c.id).map((r) => r.team_id),
+    officialIds: offStmt.all(c.id).map((r) => r.official_id),
   }));
 }
 
@@ -569,7 +593,11 @@ function saveOfficial(o) {
 }
 
 function deleteOfficial(id) {
-  return { deleted: db.prepare("DELETE FROM officials WHERE id = ?").run(id).changes };
+  const tx = db.transaction(() => {
+    db.prepare("DELETE FROM competition_officials WHERE official_id = ?").run(id);
+    return db.prepare("DELETE FROM officials WHERE id = ?").run(id).changes;
+  });
+  return { deleted: tx() };
 }
 
 function saveGround(g) {
@@ -598,8 +626,8 @@ function coaches() {
 // are intersected with the source so version differences are tolerated; rows
 // are INSERT OR REPLACE'd by primary key. Returns a per-table added/updated count.
 const IMPORT_SETS = {
-  master: ["teams", "players", "competitions", "competition_teams", "officials",
-    "grounds", "coaches", "bowler_specs", "masters", "match_types"],
+  master: ["teams", "players", "competitions", "competition_teams", "competition_officials",
+    "officials", "grounds", "coaches", "bowler_specs", "masters", "match_types"],
   reconciled: ["matches", "match_squad", "match_state", "balls"],
 };
 
@@ -676,6 +704,10 @@ function saveCompetition(c) {
     db.prepare("DELETE FROM competition_teams WHERE competition_id = ?").run(id);
     const insCT = db.prepare("INSERT OR IGNORE INTO competition_teams (competition_id,team_id) VALUES (?,?)");
     (c.teamIds || []).forEach((tid) => insCT.run(id, tid));
+    // Officials allocated to the competition (umpires / referees), replaced wholesale.
+    db.prepare("DELETE FROM competition_officials WHERE competition_id = ?").run(id);
+    const insCO = db.prepare("INSERT OR IGNORE INTO competition_officials (competition_id,official_id) VALUES (?,?)");
+    (c.officialIds || []).forEach((oid) => insCO.run(id, oid));
   });
   tx();
   return { ...c, id };
@@ -684,6 +716,7 @@ function saveCompetition(c) {
 function deleteCompetition(id) {
   const tx = db.transaction(() => {
     db.prepare("DELETE FROM competition_teams WHERE competition_id = ?").run(id);
+    db.prepare("DELETE FROM competition_officials WHERE competition_id = ?").run(id);
     return db.prepare("DELETE FROM competitions WHERE id = ?").run(id).changes;
   });
   return { deleted: tx() };

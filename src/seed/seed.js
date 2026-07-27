@@ -33,6 +33,10 @@ function pl(name, short, role, bat, bowlStyle, bowlType, spec) {
   };
 }
 
+// The Match Type option list. Not demo data — every database needs it, so
+// db.js back-fills it on open even for blank (unseeded) databases.
+const MATCH_TYPES = ["Test", "ODI", "T20I", "100 Balls", "First Class", "List A", "T20D", "T10D", "Others"];
+
 // ---- Teams + squads -------------------------------------------------------
 
 const TEAM_DEFS = [
@@ -210,6 +214,7 @@ function buildSeed() {
       startDate: "02-Feb-2026",
       endDate: "20-Mar-2026",
       teamIds: [byCode("OMRED").id, byCode("OMWHT").id],
+      officialIds: ["o01", "o02", "o06", "o07"],
     },
     {
       id: "c02",
@@ -221,6 +226,7 @@ function buildSeed() {
       startDate: "05-Oct-2026",
       endDate: "20-Nov-2026",
       teamIds: [byCode("IND").id, byCode("AUS").id, byCode("ENG").id, byCode("PAK").id],
+      officialIds: ["o01", "o02", "o03", "o04", "o05", "o06", "o07", "o08", "o09"],
     },
     {
       id: "c03",
@@ -232,6 +238,7 @@ function buildSeed() {
       startDate: "12-Jan-2026",
       endDate: "28-Jan-2026",
       teamIds: [byCode("CANA").id, byCode("OMN").id],
+      officialIds: ["o03", "o04", "o05", "o08"],
     },
   ];
 
@@ -256,7 +263,7 @@ function buildSeed() {
     { id: "g06", name: "Gaddafi Stadium", country: "Pakistan", state: "Punjab", city: "Lahore" },
   ];
 
-  const matchTypes = ["Test", "ODI", "T20I", "100 Balls", "First Class", "List A", "T20D", "T10D", "Others"];
+  const matchTypes = MATCH_TYPES;
 
   // One pre-existing match so Match Details / Registration have a row to resume,
   // mirroring the screenshots (OMAN RED vs OMAN WHITE).
@@ -359,4 +366,4 @@ function buildMasters() {
   return out;
 }
 
-module.exports = { buildSeed, buildMasters };
+module.exports = { buildSeed, buildMasters, MATCH_TYPES };
