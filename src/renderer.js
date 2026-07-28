@@ -2151,15 +2151,28 @@ function wireActionButtons() {
     });
   }
 
+  // Striker, non-striker and bowler must all be named before a ball can start.
+  // Returns false (and points at the offending slot) when one is missing.
+  function bothEndsAndBowlerSet() {
+    const missing = [
+      ["striker", state.striker, "name-striker", "Select the striker first"],
+      ["nonStriker", state.nonStriker, "name-nonstriker", "Select the non-striker first"],
+      ["bowler", state.bowler, "name-bowler", "Select the bowler first"],
+    ].find(([, value]) => !value);
+    if (!missing) return true;
+    toast(missing[3]);
+    flash(document.getElementById(missing[2]));
+    return false;
+  }
+
   ball?.addEventListener("click", () => {
     if (state.matchOver) return;                       // match complete — locked
     if (editingBall) exitBallInputEdit();              // back to live scoring
     if (!state.overStarted) { flash(over); return; }   // start the over first
-    if (!state.ballStarted && state.pendingBatsman) {
-      toast("Select the incoming batsman first");
-      flash(document.getElementById(state.pendingBatsman === "nonStriker" ? "name-nonstriker" : "name-striker"));
-      return;
-    }
+    // No delivery can be staged until both ends and the bowler are filled: a
+    // wicket empties an end, a completed over empties the bowler, and all three
+    // slots can be left on "Select…". Flag the first empty one and stop here.
+    if (!state.ballStarted && !bothEndsAndBowlerSet()) return;
     if (!state.ballStarted) {
       // Start the ball — begin staging a fresh delivery.
       state.ballStarted = true;
