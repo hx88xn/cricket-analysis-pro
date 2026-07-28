@@ -111,7 +111,7 @@ const DISMISSALS = [
 
 const MATCH_EVENTS_NAV = [
   "Breaks", "Other Wickets", "Power Play", "Revised Overs", "Revised Target",
-  "Match Results", "Match Info Edit", "Batsman In / Out Time",
+  "End Innings", "Match Results", "Match Info Edit", "Batsman In / Out Time",
   "Ball Change", "Video Count Validation", "Movie Organiser",
 ];
 
@@ -489,7 +489,7 @@ function wagonRegion(x, y) {
   if (Math.hypot(dx, dy) < 32) return "";      // too close to the batsman
   let a = (Math.atan2(dx, -dy) * 180) / Math.PI; // 0 = straight up, clockwise
   if (a < 0) a += 360;
-  // on the mirrored (right-hander) field the sectors swap sides
+  // on the mirrored (right-hander) wagon wheel the sectors swap sides
   if (state.fieldMirrored) a = (360 - a) % 360;
   return WAGON_REGIONS[Math.floor(a / 45) % 8];
 }
@@ -648,6 +648,12 @@ function exitBallInputEdit() {
 // The mini player (#camera-preview) doubles as a clip player: when a logged
 // ball is selected, its saved recording is loaded here with playback controls.
 let ballClipUrl = null;
+
+// Path of a video loaded from disk with LS, while it is on screen. When this is
+// set, Start Capture cuts a segment out of THIS file (by playback time, via
+// ffmpeg) instead of recording the live camera. Cleared when the clip is closed
+// or a live capture takes the player back.
+let loadedVideoPath = null;
 
 // Live camera preview kept hot in the video container. The stream from the
 // device chosen in video settings is always shown; recording (Start Capture)
@@ -1306,10 +1312,10 @@ function logBall({ runs = 0, ext = 0, boundary = false, legal = true, bye = fals
   if (legal && !allOut) {
     state.ball += 1;
     if (runs % 2 === 1) swapStrike();
-    if (state.ball >= 6) {
-      completeOver();
-      if (state.over >= maxOvers()) oversUp = true; // reached the innings over limit
-    }
+    if (state.ball >= 6) completeOver();
+    // Checked every legal ball, not just at the end of an over: a Revised Overs
+    // limit like 5.4 ends the innings part-way through the 6th over.
+    if (ballsBowled() >= maxBalls()) oversUp = true;
   } else if (!allOut) {
     // no-ball / wide: same striker, odd runs off the bat still rotate
     if (runs % 2 === 1) swapStrike();
@@ -1355,9 +1361,9 @@ function swapStrike() {
   else if (state.pendingBatsman === "nonStriker") state.pendingBatsman = "striker";
 }
 
-// A wicket empties the fallen batsman's slot (the end that just fell) and shows
-// a dropdown of the remaining batting order there; scoring resumes once the
-// incoming batsman is picked (see pickNewBatsman / renderNameSlot).
+// A wicket empties the fallen batsman's slot (the end that just fell), so its
+// dropdown falls back to the "Select…" placeholder; scoring resumes once the
+// incoming batsman is picked (see pickBatsman / renderBatsmanSlot).
 function newBatsman(end = "striker") {
   if (end === "nonStriker") {
     state.nonStriker = "";
@@ -1369,10 +1375,12 @@ function newBatsman(end = "striker") {
   state.pendingBatsman = end;
 }
 
-// Batting-order players still available to come in.
-function availableBatsmen() {
-  return CANADA.filter((n) => n && n !== state.striker && n !== state.nonStriker
-    && !state.dismissed.includes(n));
+// Batsmen selectable at one end: the batting order minus anyone already out and
+// minus whoever is at the other end (nobody can be at both). The end's own
+// occupant stays in the list — it is what the dropdown shows as selected.
+function battingOptions(end) {
+  const other = end === "nonStriker" ? state.striker : state.nonStriker;
+  return CANADA.filter((n) => n && n !== other && !state.dismissed.includes(n));
 }
 
 function pickNewBatsman(name) {
@@ -1388,38 +1396,111 @@ function pickNewBatsman(name) {
   render();
 }
 
-// Bowlers offered for a new over: the second-last bowler first (the one most
-// likely to alternate back in), then the rest of the pool. The bowler who just
-// finished is excluded — no consecutive overs.
-function nextBowlerOptions() {
-  const plain = (b) => String(b || "").split(" -")[0];
-  const hist = state.bowlerHistory || [];
-  const last = plain(hist[hist.length - 1]);
-  const secondLast = plain(hist[hist.length - 2]);
-  const pool = OMAN_BOWLERS.filter((n) => n && n !== last);
-  if (secondLast && pool.includes(secondLast)) {
-    return [secondLast, ...pool.filter((n) => n !== secondLast)];
-  }
-  return pool.length ? pool : OMAN_BOWLERS.slice();
-}
-
-function pickNewBowler(name) {
-  if (!name) return;
-  state.bowler = `${name} -OS`;
-  state.pendingBowler = false;
+// A batting end's dropdown changed. After a wicket the end is empty and this is
+// the incoming batsman (stats already zeroed, walk-in recorded). Otherwise the
+// scorer is correcting who is at that end mid-innings: the runs already logged
+// belong to the end, so they stay put, and the open in/out timing row is
+// re-labelled so it follows the corrected name rather than stranding the old one.
+function pickBatsman(end, name) {
+  if (!name || state.matchOver) return;
+  if (state.pendingBatsman === end) { pickNewBatsman(name); return; }
+  const prev = end === "nonStriker" ? state.nonStriker : state.striker;
+  if (name === prev) return;
+  if (end === "nonStriker") state.nonStriker = name; else state.striker = name;
+  const open = (state.batTimes || []).find((r) =>
+    r.batsman === prev && !r.outTime && r.innings === state.innings);
+  if (open) open.batsman = name;
+  const i = CANADA.indexOf(name);
+  if (i >= 0 && i >= state.nextBatIndex) state.nextBatIndex = i + 1;
+  scheduleSave();
   render();
 }
 
-// Show a plain name in a scoreboard slot, or — while a replacement is pending —
-// a dropdown to pick it. The dropdown is kept across renders once built.
-function renderNameSlot(id, name, pending, options, onPick) {
+// state.bowler carries the bowling spec ("CHRIS WOAKES -R FAST"); the pool and
+// the bowler history hold plain names. Strip the suffix to compare the two.
+function bowlerPlainName(b) {
+  return String(b || "").split(" -")[0];
+}
+
+// Every bowler in the pool, in batting-card order. Rendered with the spec
+// suffix (via bowlerLabel) so the slot reads exactly as it always has, while
+// still matching state.bowler exactly for selection.
+function bowlerOptions() {
+  const xi = state.bowlPlayers || [];
+  return OMAN_BOWLERS.filter(Boolean).map((n) => {
+    const p = xi.find((q) => (q.name || "").toUpperCase() === n);
+    return p ? bowlerLabel(p) : n;
+  });
+}
+
+function pickNewBowler(label) {
+  if (!label || state.matchOver) return;
+  state.bowler = label;
+  state.pendingBowler = false;
+  scheduleSave();
+  render();
+}
+
+// The bowler slot is a permanent dropdown, like the two batting ends: any
+// bowler in the pool can be selected at any time, not only between overs.
+// Updated in place so an open dropdown survives a re-render.
+function renderBowlerSlot(id) {
   const el = document.getElementById(id);
   if (!el) return;
-  if (!pending) { el.textContent = name; return; }
-  if (el.querySelector("select")) return;
-  el.innerHTML = `<select class="sg-select"><option value="">Select…</option>${
-    options.map((o) => `<option>${esc(o)}</option>`).join("")}</select>`;
-  el.querySelector("select").addEventListener("change", (e) => onPick(e.target.value));
+  const options = bowlerOptions();
+  // After an over the slot is empty (completeOver clears it) and needs a
+  // placeholder to sit on until the next bowler is chosen.
+  const current = state.bowler || "";
+  // The bowler on record may sit outside the pool — a part-timer with no
+  // bowling type, or a resumed state whose bowler belongs to the other side.
+  // Carry them in regardless, so the slot never displays someone it isn't.
+  if (current && !options.includes(current)) options.unshift(current);
+  let sel = el.querySelector("select");
+  if (!sel) {
+    el.textContent = "";
+    sel = document.createElement("select");
+    sel.className = "sg-name-select";
+    sel.addEventListener("change", (e) => pickNewBowler(e.target.value));
+    el.appendChild(sel);
+  }
+  const wanted = (current ? options : ["", ...options]).join("\n");
+  if (sel._wanted !== wanted) {
+    sel._wanted = wanted;
+    sel.innerHTML = (current ? "" : `<option value="">Select…</option>`)
+      + options.map((o) => `<option>${esc(o)}</option>`).join("");
+  }
+  if (sel.value !== current) sel.value = current;
+  sel.disabled = !!state.matchOver;
+}
+
+// The two batting ends are always dropdowns, so the scorer can correct who is
+// at an end at any time — not only when a wicket has just fallen. The <select>
+// is created once and then updated in place: its options are rewritten only
+// when the eligible list actually changes (a dismissal, a strike rotation), so
+// an open dropdown is never torn out from under the user mid-render.
+function renderBatsmanSlot(id, end) {
+  const el = document.getElementById(id);
+  if (!el) return;
+  const name = end === "nonStriker" ? state.nonStriker : state.striker;
+  const options = battingOptions(end);
+  let sel = el.querySelector("select");
+  if (!sel) {
+    el.textContent = "";
+    sel = document.createElement("select");
+    sel.className = "sg-name-select";
+    sel.addEventListener("change", (e) => pickBatsman(end, e.target.value));
+    el.appendChild(sel);
+  }
+  // An empty end (a wicket just fell) needs a placeholder to sit on until the
+  // incoming batsman is picked; an occupied one shows the occupant.
+  const wanted = (name ? options : ["", ...options]).join("\n");
+  if (sel._wanted !== wanted) {
+    sel._wanted = wanted;
+    sel.innerHTML = (name ? "" : `<option value="">Select…</option>`)
+      + options.map((o) => `<option>${esc(o)}</option>`).join("");
+  }
+  if (sel.value !== (name || "")) sel.value = name || "";
+  sel.disabled = !!state.matchOver;
 }
 
 // ---- Batsman in / out timing ----------------------------------------------
@@ -1494,12 +1575,44 @@ function logOtherWicket(batsman, dismissal) {
   if (state.wkts < 10) newBatsman(end); // 10th wicket = all out (no new batter)
 }
 
-// The maximum overs allowed for the current innings: the most recent saved
-// Revised Overs (rain/DLS reduction) if any, otherwise the match format's total
-// overs (20 for T20, 50 for ODI). The innings ends once this is reached.
-function maxOvers() {
+// Overs are written in cricket's overs.balls notation, so a rain reduction to
+// "5.4" means 5 overs and 4 balls (34 balls) — not five-and-two-fifths overs.
+// Returns the ball count, or NaN when the text isn't a valid overs figure (the
+// balls part must be a single digit 0–5).
+function oversToBalls(v) {
+  const m = /^(\d+)(?:\.(\d))?$/.exec(String(v ?? "").trim());
+  if (!m) return NaN;
+  const balls = m[2] ? Number(m[2]) : 0;
+  if (balls > 5) return NaN;
+  return Number(m[1]) * 6 + balls;
+}
+
+// Ball count back into overs.balls notation for display (34 → "5.4", 30 → "5").
+function ballsToOvers(n) {
+  const b = Math.max(0, Math.floor(Number(n) || 0));
+  return b % 6 ? `${Math.floor(b / 6)}.${b % 6}` : String(Math.floor(b / 6));
+}
+
+// Legal balls bowled so far in the current innings.
+function ballsBowled() {
+  return state.over * 6 + state.ball;
+}
+
+// The innings limit as a ball count: the most recent saved Revised Overs
+// (rain/DLS reduction) if any, otherwise the match format's total overs (20 for
+// T20, 50 for ODI). Tracked in balls because a revised limit can be a part-over
+// like 5.4, which ends the innings mid-over. The innings ends once it's reached.
+function maxBalls() {
   const revO = state.revisedOvers?.[state.revisedOvers.length - 1];
-  return Number(revO?.value) || state.overs || 0;
+  const rev = oversToBalls(revO?.value);
+  // Rounded: a part-over limit leaves state.overs as a repeating fraction
+  // (2.2 overs → 2.3333…), and 14.000000000000002 would cost an extra ball.
+  return rev > 0 ? rev : Math.round((Number(state.overs) || 0) * 6);
+}
+
+// The same limit written as overs.balls, for display.
+function maxOvers() {
+  return ballsToOvers(maxBalls());
 }
 
 // The runs the batting side needs to win the current (2nd) innings: a saved
@@ -1547,9 +1660,9 @@ function completeOver() {
   state.thisOver = [];
   swapStrike();
   state.bowlEnd = state.bowlEnd === "FAR END" ? "NEAR END" : "FAR END";
-  // The over's bowler goes into the history and the slot empties into a
-  // dropdown for the next over (second-last bowler listed first — see
-  // nextBowlerOptions). Start Over stays blocked until one is picked.
+  // The over's bowler goes into the history and the slot empties, so the bowler
+  // dropdown falls back to its "Select…" placeholder for the next over. Start
+  // Over stays blocked until one is picked.
   state.bowlerHistory = state.bowlerHistory || [];
   state.bowlerHistory.push(state.bowler);
   state.bowler = "";
@@ -1563,6 +1676,12 @@ function completeOver() {
 }
 
 // ---- Innings change (all out at 10 wickets) -------------------------------
+
+// "1st Innings" / "2nd Innings" — how the innings is labelled on the Match
+// Events screens (Revised Overs/Target rows, the End Innings confirmation).
+function inningsLabel() {
+  return state.innings === 2 ? "2nd Innings" : "1st Innings";
+}
 
 function endInnings() {
   if (state.matchOver) return;
@@ -1617,30 +1736,43 @@ function endInnings() {
 // are pre-filled from the swapped playing XIs (set in endInnings); the scorer
 // can adjust before pressing Start Innings.
 function overlayInningsDetails() {
+  // Batsmen come from the side that has just come in to bat and bowlers from
+  // the side that has just taken the field — swapBattingSides() (called by
+  // endInnings before this screen opens) has already repointed both pools.
+  const batsmen = CANADA.filter((n) => n && !state.dismissed.includes(n));
+  const bowlers = OMAN_BOWLERS.filter(Boolean);
   const sel = (id, opts, cur) =>
     `<select class="f-select" id="${id}">${["Select", ...opts].map((o) =>
-      `<option ${o === cur ? "selected" : ""}>${o}</option>`).join("")}</select>`;
+      `<option ${o === cur ? "selected" : ""}>${esc(o)}</option>`).join("")}</select>`;
+  const end = (v) =>
+    `<label class="ck"><input type="radio" name="id-end" value="${v}"${
+      state.bowlEnd === v ? " checked" : ""}/> ${v}</label>`;
   const body = `
     <div class="innings-details">
       <label class="f-row"><span class="f-label">Team</span><input class="f-input" value="${state.battingCode}" disabled/></label>
-      <label class="f-row"><span class="f-label">Striker</span>${sel("id-striker", CANADA, state.striker)}</label>
-      <label class="f-row"><span class="f-label">Non Striker</span>${sel("id-nonstriker", CANADA, state.nonStriker)}</label>
-      <label class="f-row"><span class="f-label">Bowler</span>${sel("id-bowler", OMAN_BOWLERS, state.bowler)}</label>
-      <div class="seg-row"><span class="f-label">Bowling End</span>
-        <label class="ck"><input type="radio" name="id-end" value="NEAR END" checked/> NEAR END</label>
-        <label class="ck"><input type="radio" name="id-end" value="FAR END"/> FAR END</label>
-      </div>
+      <label class="f-row"><span class="f-label">Opening Batsman (Striker)</span>${sel("id-striker", batsmen, state.striker)}</label>
+      <label class="f-row"><span class="f-label">Other Batsman (Non Striker)</span>${sel("id-nonstriker", batsmen, state.nonStriker)}</label>
+      <label class="f-row"><span class="f-label">Opening Bowler</span>${sel("id-bowler", bowlers, state.bowler)}</label>
+      <div class="seg-row"><span class="f-label">Bowling End</span>${end("NEAR END")}${end("FAR END")}</div>
       <div class="btn-row-modal center"><button class="m-btn m-green" id="id-start">Start Innings</button></div>
     </div>`;
-  openOverlay(popupShell("INNINGS DETAILS", body));
+  // Not dismissable: the innings must not begin until all three are chosen.
+  openOverlay(popupShell(`INNINGS DETAILS — ${inningsLabel().toUpperCase()}`, body, false, false),
+    { locked: true });
   document.getElementById("id-start")?.addEventListener("click", () => {
-    const pick = (id) => document.getElementById(id)?.value;
+    const pick = (id) => {
+      const v = document.getElementById(id)?.value;
+      return v && v !== "Select" ? v : "";
+    };
     const s = pick("id-striker"), ns = pick("id-nonstriker"), bw = pick("id-bowler");
-    if (s && s !== "Select") state.striker = s;
-    if (ns && ns !== "Select") state.nonStriker = ns;
-    if (bw && bw !== "Select") state.bowler = bw;
+    if (!s || !ns || !bw) { toast("Choose both openers and the opening bowler"); return; }
+    if (s === ns) { toast("The two openers must be different players"); return; }
+    state.striker = s;
+    state.nonStriker = ns;
+    state.bowler = bw;
     state.bowlEnd = (document.querySelector('input[name="id-end"]:checked') || {}).value || "NEAR END";
-    closeOverlay();
+    closeOverlay({ force: true });
+    scheduleSave();
     render();
   });
 }
@@ -1691,9 +1823,15 @@ function undo() {
 function setText(id, txt) { const el = document.getElementById(id); if (el) el.textContent = txt; }
 
 // ---- Field orientation (striker handedness) --------------------------------
-// The stock field-map / pitch-map images show the left-hander's view; for a
-// right-handed striker the mirrored variants are swapped in (labels re-drawn
-// readable, see assets/*-flipped.png) and the wagon sector math is reflected.
+// The wagon wheel and the pitch map are drawn from OPPOSITE viewpoints: the
+// wheel looks out toward the bowler (third man / fine leg sit behind the
+// batsman, at the top), while the pitch map looks back down the pitch at the
+// batsman. The same striker therefore mirrors them in opposite directions, so
+// they cannot share one flag — doing that left one of the two inverted for
+// every striker, whichever way the flag was set.
+//   left-handed  → field-map.png          + pitch-map-flipped.png
+//   right-handed → field-map-flipped.png  + pitch-map.png
+// Either way the two agree on which screen side the off side is.
 function strikerLeftHanded() {
   const xi = state.battingTeam?.playingXIPlayers || [];
   const p = xi.find((q) => (q.name || "").toUpperCase() === (state.striker || "").toUpperCase());
@@ -1701,13 +1839,17 @@ function strikerLeftHanded() {
 }
 
 function updateFieldOrientation() {
-  const mirrored = !strikerLeftHanded();
+  const leftHanded = strikerLeftHanded();
+  // state.fieldMirrored tracks the WAGON WHEEL — it also drives the wagon
+  // sector maths (wagonRegion) and fielding placements (placementPoint), which
+  // must follow the wheel's artwork, not the pitch map's.
+  const mirrored = !leftHanded;
   if (state.fieldMirrored === mirrored) return;
   state.fieldMirrored = mirrored;
   const field = document.querySelector(".field-map-img");
   if (field) field.src = mirrored ? "assets/field-map-flipped.png" : "assets/field-map.png";
   const pitch = document.querySelector(".pitch-map-img");
-  if (pitch) pitch.src = mirrored ? "assets/pitch-map-flipped.png" : "assets/pitch-map.png";
+  if (pitch) pitch.src = leftHanded ? "assets/pitch-map-flipped.png" : "assets/pitch-map.png";
 }
 
 // Batting styles can be edited in the masters (player editor) while this
@@ -1732,6 +1874,13 @@ window.addEventListener("focus", refreshBattingStyles);
 
 function render() {
   updateFieldOrientation(); // striker may have changed (swap / wicket / new over)
+  // The Over button follows state.overStarted, always: it reads "End Over" from
+  // the moment the over is started until the over closes — at six legal balls
+  // (completeOver) or when it is ended early. Syncing it here rather than only
+  // at the click sites means every path that changes the flag — a resumed
+  // match, an undo across the over boundary, an innings change — lands on the
+  // right label instead of leaving a stale one.
+  setOverButton(state.overStarted ? "End Over" : "Start Over");
   setText("bat-team-code", state.battingCode);
   setText("team-a-label", state.teamA);
   setText("team-b-label", state.teamB);
@@ -1741,10 +1890,10 @@ function render() {
   const rr = oversFloat > 0 ? (state.runs / oversFloat).toFixed(2) : "0.00";
   setText("runrate-value", rr);
   renderChaseRow();
-  renderNameSlot("name-striker", state.striker, state.pendingBatsman === "striker", availableBatsmen(), pickNewBatsman);
-  renderNameSlot("name-nonstriker", state.nonStriker, state.pendingBatsman === "nonStriker", availableBatsmen(), pickNewBatsman);
+  renderBatsmanSlot("name-striker", "striker");
+  renderBatsmanSlot("name-nonstriker", "nonStriker");
   setText("name-bowlend", state.bowlEnd);
-  renderNameSlot("name-bowler", state.bowler, !!state.pendingBowler, nextBowlerOptions(), pickNewBowler);
+  renderBowlerSlot("name-bowler");
 
   // batting stats
   const sb = state.bat.striker, nb = state.bat.nonStriker;
@@ -1782,10 +1931,7 @@ function renderChaseRow() {
   row.hidden = false;
 
   const target = chaseTarget();
-  const totalOvers = maxOvers();
-
-  const ballsBowled = state.over * 6 + state.ball;
-  const ballsRemaining = Math.max(0, totalOvers * 6 - ballsBowled);
+  const ballsRemaining = Math.max(0, maxBalls() - ballsBowled());
   const runsNeeded = Math.max(0, target - state.runs);
   const rrr = ballsRemaining > 0 ? (runsNeeded / (ballsRemaining / 6)).toFixed(2) : "0.00";
 
@@ -2094,14 +2240,23 @@ function toast(msg) {
 
 const overlayRoot = () => document.getElementById("overlay-root");
 
-function openOverlay(html) {
+// `locked` marks an overlay the scorer must answer rather than dismiss (the
+// 2nd-innings Innings Details screen): no click-outside here, and closeOverlay
+// refuses, which also covers the global Escape handler.
+let overlayLocked = false;
+function openOverlay(html, { locked = false } = {}) {
   const root = overlayRoot();
+  overlayLocked = locked;
   root.innerHTML = html;
   root.hidden = false;
   root.querySelectorAll("[data-close]").forEach((b) => b.addEventListener("click", closeOverlay));
-  root.addEventListener("mousedown", (e) => { if (e.target === root) closeOverlay(); }, { once: true });
+  if (!locked) {
+    root.addEventListener("mousedown", (e) => { if (e.target === root) closeOverlay(); }, { once: true });
+  }
 }
-function closeOverlay() {
+function closeOverlay({ force = false } = {}) {
+  if (overlayLocked && !force) return;
+  overlayLocked = false;
   const root = overlayRoot();
   root.hidden = true;
   root.innerHTML = "";
@@ -2142,10 +2297,13 @@ function moduleShell(title, navHtml, bodyHtml) {
     </div>`;
 }
 
-function popupShell(title, bodyHtml, wide = false) {
+// closable=false drops the ✕ for a screen that must be answered (see openOverlay's
+// `locked` option) rather than dismissed.
+function popupShell(title, bodyHtml, wide = false, closable = true) {
   return `
     <div class="popup ${wide ? "popup-wide" : ""}">
-      <div class="popup-head"><span>${title}</span><button class="popup-x" data-close>✕</button></div>
+      <div class="popup-head"><span>${title}</span>${
+        closable ? `<button class="popup-x" data-close>✕</button>` : ""}</div>
       <div class="popup-body">${bodyHtml}</div>
     </div>`;
 }
@@ -2575,9 +2733,11 @@ let editingMatchResult = false;
 function overlayMatchEvents(active = "Breaks") {
   // Revised Overs applies only in the 1st innings, Revised Target only in the
   // 2nd — disable the one that doesn't apply to the current innings.
+  // End Innings has nothing left to close once the match is complete.
   const navDisabled = (n) =>
     (n === "Revised Target" && state.innings === 1) ||
-    (n === "Revised Overs" && state.innings === 2);
+    (n === "Revised Overs" && state.innings === 2) ||
+    (n === "End Innings" && state.matchOver);
   const nav = `<div class="me-nav">${MATCH_EVENTS_NAV.map((n) =>
     `<button class="me-nav-item ${n === active ? "active" : ""} ${navDisabled(n) ? "disabled" : ""}" data-nav="${n}" ${navDisabled(n) ? "disabled" : ""}>${n}</button>`).join("")}</div>`;
   openOverlay(moduleShell(matchEventTitle(active), nav, matchEventBody(active)));
@@ -2724,10 +2884,36 @@ function overlayMatchEvents(active = "Breaks") {
   if (active === "Revised Overs" || active === "Revised Target") {
     const store = active === "Revised Overs" ? state.revisedOvers : state.revisedTargets;
     listScreen(store, () => {
-      const value = val("rv-val");
+      const value = val("rv-val").trim();
       if (!value) { toast(`Enter the ${active.toLowerCase()}`); return null; }
-      return { value, innings: active === "Revised Overs" ? "1st Innings" : "2nd Innings", reason: val("rv-reason") };
+      // Revised Overs is an overs figure: whole overs (20) or a part-over in
+      // overs.balls notation (5.4 = 5 overs and 4 balls). Stored normalised so
+      // "5.0" and "5" become the same entry.
+      if (active === "Revised Overs") {
+        const balls = oversToBalls(value);
+        if (!(balls > 0)) {
+          toast("Revised overs must look like 20 or 5.4 (balls 0–5)");
+          return null;
+        }
+        return { value: ballsToOvers(balls), innings: "1st Innings", reason: val("rv-reason") };
+      }
+      return { value, innings: "2nd Innings", reason: val("rv-reason") };
     }, "rv-save", "rv-del");
+  }
+
+  if (active === "End Innings") {
+    document.getElementById("ei-no")?.addEventListener("click", closeOverlay);
+    document.getElementById("ei-yes")?.addEventListener("click", () => {
+      if (state.matchOver) { closeOverlay(); toast("The match has already ended"); return; }
+      // Closing the innings discards any half-entered delivery — it was never
+      // committed to the log, and the innings is over as of the last legal ball.
+      state.pending = null;
+      state.staged = null;
+      // endInnings opens the screen that comes next itself (Innings Details
+      // after the 1st, Match Results once the 2nd ends the match), and that
+      // replaces this overlay — so there is nothing to close here.
+      endInnings();
+    });
   }
 
   if (active === "Match Info Edit") {
@@ -2757,16 +2943,22 @@ function overlayMatchEvents(active = "Breaks") {
       state.tossDecision = tossDecision;
 
       // Editing Number of Overs sets the new match limit. Record it as a Revised
-      // Overs entry (the latest entry is what maxOvers() uses, so it becomes the
-      // new default) — but only when the value actually changes.
-      const newOvers = Number(val("mi-overs"));
-      if (newOvers > 0 && newOvers !== maxOvers()) {
+      // Overs entry (the latest entry is what maxBalls() uses, so it becomes the
+      // new default) — but only when the value actually changes. Accepts a
+      // part-over ("5.4") the same way the Revised Overs screen does.
+      const oversText = val("mi-overs").trim();
+      const newBalls = oversToBalls(oversText);
+      if (oversText && !(newBalls > 0)) {
+        appDialog("Number of Overs must be a whole number of overs or overs.balls, e.g. 20 or 5.4.", "INVALID OVERS");
+        return;
+      }
+      if (newBalls > 0 && newBalls !== maxBalls()) {
         state.revisedOvers.push({
-          value: String(newOvers),
-          innings: state.innings === 2 ? "2nd Innings" : "1st Innings",
+          value: ballsToOvers(newBalls),
+          innings: inningsLabel(),
           reason: "Match Info Edit",
         });
-        state.overs = newOvers; // keep the base format in sync
+        state.overs = newBalls / 6; // keep the base format in sync
       }
       state.venue = val("mi-venue");
 
@@ -2792,7 +2984,7 @@ function overlayMatchEvents(active = "Breaks") {
 
       // If the (possibly reduced) limit has already been reached, advance the
       // innings (1st) or end the match (2nd) now, per the latest revised overs.
-      if (state.over >= maxOvers()) endInnings();
+      if (ballsBowled() >= maxBalls()) endInnings();
       render();          // refresh anything that reads overs/team info
     });
   }
@@ -3033,7 +3225,7 @@ function matchEventBody(name) {
       return `
         <div class="me-form-narrow">
           <label class="f-row"><span class="f-label">Innings</span><span class="f-input f-static">${name === "Revised Overs" ? "1st Innings" : "2nd Innings"}</span></label>
-          <label class="f-row"><span class="f-label">${name === "Revised Overs" ? "Revised Overs" : "Revised Target"}</span><input class="f-input" id="rv-val"/></label>
+          <label class="f-row"><span class="f-label">${name === "Revised Overs" ? "Revised Overs" : "Revised Target"}</span><input class="f-input" id="rv-val" placeholder="${name === "Revised Overs" ? "e.g. 20 or 5.4" : "Runs"}"/></label>
           <label class="f-row"><span class="f-label">Reason</span><input class="f-input" id="rv-reason" placeholder="Reason"/></label>
         </div>${saveDeleteRow("", "rv-save", "rv-del")}
         ${meTable([name, "Innings", "Reason"], revisedRows(name))}`;
@@ -3048,6 +3240,17 @@ function matchEventBody(name) {
         </div>${saveDeleteRow("", "mi-save")}`;
     case "Batsman In / Out Time":
       return meTable(["Batsman","In Time","Out Time","Mins","Balls"], batTimeRows());
+    // Declare the innings closed early (rain, a declaration, an abandoned
+    // chase) instead of waiting for 10 wickets or the over limit.
+    case "End Innings":
+      return `
+        <div class="confirm-box">
+          <p>Do you want to End innings for ${inningsLabel()} at ${state.over}.${state.ball}?</p>
+          <div class="btn-row-modal center">
+            <button class="m-btn m-green" id="ei-yes">Yes</button>
+            <button class="m-btn m-red" id="ei-no">No</button>
+          </div>
+        </div>`;
     case "Video Count Validation":
       return `
         <div class="confirm-box">
@@ -3454,11 +3657,16 @@ function wireLoadSavedVideo() {
     videoEl.controls = true;
     videoEl.play?.().catch(() => {});
     if (closeBtn) closeBtn.hidden = false; // ✕ returns to the live camera
-    toast(`Playing ${res.name || "video"}`);
+    // Remember the real file so Start Capture cuts from it rather than the camera.
+    loadedVideoPath = res.path || null;
+    toast(res.path
+      ? `Playing ${res.name || "video"} — Start Capture will clip from it`
+      : `Playing ${res.name || "video"}`);
   });
   // ✕ removes the loaded video and switches back to the realtime camera.
   closeBtn?.addEventListener("click", () => {
     if (ballClipUrl) { URL.revokeObjectURL(ballClipUrl); ballClipUrl = null; }
+    loadedVideoPath = null;
     videoEl.removeAttribute("src");
     videoEl.controls = false;
     closeBtn.hidden = true;
@@ -3615,6 +3823,11 @@ function wireCapture() {
 
   let recorder = null, starting = false;
   const chunks = [];
+  // Set while a capture is running over a video loaded with LS: the source file
+  // and the playback position the capture started at. The clip is cut out of
+  // that file when the capture ends, so it is exact to the second regardless of
+  // how the on-screen playback behaved.
+  let clipCut = null;
   function setUi(active) {
     btn.textContent = active ? "End Capture" : "Start Capture";
     btn.classList.toggle("teal", !active);
@@ -3628,9 +3841,43 @@ function wireCapture() {
     updateCaptureEnabled();
   }
   let captureLabel = "";
+  // Capturing over a video loaded with LS: mark the in-point at the current
+  // playback position and let it run. Nothing is recorded from the screen —
+  // endClipCapture() cuts the real file between the two positions.
+  function startClipCapture() {
+    if (state.matchOver) return;
+    captureLabel = `INN${state.innings}-OVER${state.over}-BALL${state.ball + 1}`;
+    clipCut = { source: loadedVideoPath, start: videoEl.currentTime || 0 };
+    videoEl.play?.().catch(() => {}); // a paused clip would capture nothing
+    setUi(true);
+  }
+
+  async function endClipCapture() {
+    const cut = clipCut; clipCut = null;
+    setUi(false);
+    if (!cut) return;
+    const end = videoEl.currentTime || 0;
+    if (!(end > cut.start)) { toast("Nothing captured — the video did not advance"); return; }
+    const prefix = state.recordingPrefix || "";
+    const ts = new Date().toISOString().replace(/[:.]/g, "-").slice(0, 19);
+    const name = prefix ? `${prefix}-${captureLabel}.mp4`
+      : `cricket-capture-${captureLabel}-${ts}.mp4`;
+    const res = await window.cricketApp.cutVideo({
+      sourcePath: cut.source, start: cut.start, end,
+      name, subfolder: state.recordingFolder || "",
+    });
+    if (res?.ok) {
+      toast(`Clipped ${(end - cut.start).toFixed(1)}s from the loaded video`);
+    } else if (!res?.canceled) {
+      alert(`Could not clip the loaded video:\n${res?.filePath || ""}\n\n${res?.error || res?.reason || "unknown error"}`);
+    }
+  }
+
   async function start() {
     if (state.matchOver) return;   // no new captures once the match is complete
     if (starting || (recorder && recorder.state === "recording")) return;
+    // A video loaded with LS is the capture source in its own right.
+    if (loadedVideoPath && window.cricketApp?.cutVideo) { startClipCapture(); return; }
     starting = true;
     try {
       // Drop any clip that was loaded for review, then show the live feed.
@@ -3683,9 +3930,12 @@ function wireCapture() {
     } finally { starting = false; }
   }
   btn.addEventListener("click", () => {
-    if (recorder && recorder.state === "recording") recorder.stop();
+    if (clipCut) endClipCapture();
+    else if (recorder && recorder.state === "recording") recorder.stop();
     else start();
   });
+  // Running off the end of the loaded video closes the capture at its last frame.
+  videoEl.addEventListener("ended", () => { if (clipCut) endClipCapture(); });
 
   // Kick off the always-on live preview, and re-check the configured device
   // whenever the coding window regains focus (the user may have changed it in
@@ -3820,7 +4070,20 @@ function applyMatch(match) {
   state.recordingPrefix = recordingFolderName(match); // filename prefix (no slash)
   state.recordingFolder = `${tournamentFolderName(match)}/${state.recordingPrefix}`; // <tournament>/<match>
   ensureRecordingFolder(); // create the match folder as soon as the match opens
-  const A = match.teamA, B = match.teamB; // innings 1: A bats, B bowls
+  // The toss — recorded in the Toss popup on Match Details before the match is
+  // ever opened here — decides who bats first: the winner if they elected to
+  // Bat, otherwise the other side. Untossed matches fall back to the registered
+  // home side (team A) opening the batting, as before.
+  const home = match.teamA, away = match.teamB;
+  const winner = !match.tossWonBy ? null
+    : match.tossWonBy === away.code ? away : home;
+  const batFirst = !winner ? home
+    : match.tossDecision === "Bowl" ? (winner === home ? away : home)
+    : winner;
+  const A = batFirst === away ? away : home; // innings 1: A bats, B bowls
+  const B = A === home ? away : home;
+  state.tossWonBy = winner ? winner.code : "";
+  state.tossDecision = match.tossDecision || "";
   state.battingTeam = A;
   state.bowlingTeam = B;
   state.bowlPlayers = B.playingXIPlayers || [];
@@ -3841,12 +4104,18 @@ function applyMatch(match) {
     return;
   }
 
-  // fresh innings
+  // fresh innings — openers and the opening bowler come from the toss popup,
+  // falling back to the top of the batting order / first recognised bowler.
   const xi = A.playingXIPlayers || [];
-  state.striker = (xi[0] && xi[0].name.toUpperCase()) || "BATSMAN 1";
-  state.nonStriker = (xi[1] && xi[1].name.toUpperCase()) || "BATSMAN 2";
+  const bxi = B.playingXIPlayers || [];
+  const striker = xi.find((p) => p.id === match.openingStrikerId) || xi[0];
+  const nonStriker = xi.find((p) => p.id === match.openingNonStrikerId && p !== striker)
+    || xi.find((p) => p !== striker);
+  state.striker = (striker && striker.name.toUpperCase()) || "BATSMAN 1";
+  state.nonStriker = (nonStriker && nonStriker.name.toUpperCase()) || "BATSMAN 2";
   state.bowlEnd = "FAR END";
-  const firstBowler = (B.playingXIPlayers || []).find((p) => p.bowlingType) || (B.playingXIPlayers || [])[0];
+  const firstBowler = bxi.find((p) => p.id === match.openingBowlerId)
+    || bxi.find((p) => p.bowlingType) || bxi[0];
   state.bowler = bowlerLabel(firstBowler) || "BOWLER";
   state.runs = 0; state.wkts = 0; state.over = 0; state.ball = 0;
   state.pace = "Fast"; state.style = "Aggressive";
@@ -3865,7 +4134,12 @@ function applyMatch(match) {
   state.matchOver = false;
   state.overStarted = false;
   state.ballStarted = false;
-  state.nextBatIndex = 2; // openers occupy 0 and 1; next in is #3
+  // Openers can be picked from anywhere in the order, so the next batsman in is
+  // the first batting-order slot neither of them occupies (2 for the usual 0/1).
+  const openerIdx = [CANADA.indexOf(state.striker), CANADA.indexOf(state.nonStriker)];
+  let nextIn = 0;
+  while (openerIdx.includes(nextIn)) nextIn += 1;
+  state.nextBatIndex = nextIn;
   state.dismissed = [];
   // Fresh match: clear any Match Events left over from a previous one.
   state.breaks = []; state.otherWickets = []; state.powerPlays = [];

@@ -173,6 +173,15 @@ function ensureColumns() {
   addCol("matches", "points_b", "TEXT");
   addCol("matches", "scorer_id", "TEXT");   // fixture scorer allocation
   addCol("matches", "scorer_name", "TEXT");
+  // Toss result + opening players, captured by the Toss popup on Match Details
+  // before the coding screen is ever opened. toss_won_by holds the winning
+  // side's team *code* (matching the Match Info Edit convention on the coding
+  // screen); toss_decision is "Bat" or "Bowl".
+  addCol("matches", "toss_won_by", "TEXT");
+  addCol("matches", "toss_decision", "TEXT");
+  addCol("matches", "opening_striker_id", "TEXT");
+  addCol("matches", "opening_nonstriker_id", "TEXT");
+  addCol("matches", "opening_bowler_id", "TEXT");
 
   const cols = db.prepare("PRAGMA table_info(players)").all().map((c) => c.name);
   if (!cols.includes("sort_order")) {
@@ -492,6 +501,10 @@ function rowToMatch(m) {
     matchResult: m.match_result || "", refId: m.ref_id || "", phase: m.phase || "",
     pointsA: m.points_a || "", pointsB: m.points_b || "",
     scorerId: m.scorer_id || "", scorerName: m.scorer_name || "",
+    tossWonBy: m.toss_won_by || "", tossDecision: m.toss_decision || "",
+    openingStrikerId: m.opening_striker_id || "",
+    openingNonStrikerId: m.opening_nonstriker_id || "",
+    openingBowlerId: m.opening_bowler_id || "",
     teamA: sideOf(m.id, "A", m), teamB: sideOf(m.id, "B", m),
     state,
   };
@@ -765,7 +778,7 @@ function writeMatch(match) {
       match_date: match.matchDate || "", ground_id: match.groundId || "", venue_name: match.venueName || "",
       neutral_venue: match.neutralVenue ? 1 : 0, day_night: match.dayNight ? 1 : 0,
       umpire1_id: match.umpire1Id || "", umpire2_id: match.umpire2Id || "", umpire3_id: match.umpire3Id || "",
-      referee_id: match.refereeId || "", status: match.status || "RESUME",
+      referee_id: match.refereeId || "", status: match.status || "TOSS",
       created_at: createdAt, updated_at: now,
       team_a_id: A.id || "", team_a_name: A.name || "", team_a_code: A.code || "",
       team_a_captain_id: A.captainId || "", team_a_keeper_id: A.keeperId || "",
@@ -809,6 +822,29 @@ function writeMatch(match) {
 
 function saveMatch(match) {
   const id = db.transaction(() => writeMatch(match))();
+  return getMatch(id);
+}
+
+// Record the toss and the opening players for a match, then move it out of the
+// "TOSS" status so Match Details offers RESUME. Deliberately separate from
+// writeMatch: re-saving a match from Match Registration must not wipe a toss
+// that has already been taken, so registration never touches these columns.
+function saveMatchToss(id, toss = {}) {
+  const m = db.prepare("SELECT id FROM matches WHERE id = ?").get(id);
+  if (!m) return null;
+  db.prepare(`UPDATE matches SET toss_won_by=@toss_won_by, toss_decision=@toss_decision,
+      opening_striker_id=@opening_striker_id, opening_nonstriker_id=@opening_nonstriker_id,
+      opening_bowler_id=@opening_bowler_id, status=@status, updated_at=@updated_at WHERE id=@id`)
+    .run({
+      id,
+      toss_won_by: toss.tossWonBy || "",
+      toss_decision: toss.tossDecision || "",
+      opening_striker_id: toss.openingStrikerId || "",
+      opening_nonstriker_id: toss.openingNonStrikerId || "",
+      opening_bowler_id: toss.openingBowlerId || "",
+      status: toss.status || "RESUME",
+      updated_at: new Date().toISOString(),
+    });
   return getMatch(id);
 }
 
@@ -925,6 +961,7 @@ module.exports = {
   saveCompetition,
   deleteCompetition,
   saveMatch,
+  saveMatchToss,
   saveMatchState,
   deleteMatch,
   bowlingFigures,

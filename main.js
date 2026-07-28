@@ -151,7 +151,9 @@ ipcMain.handle("dialog:pick-video", async (event) => {
       ".mp4": "video/mp4", ".mov": "video/quicktime", ".mkv": "video/x-matroska",
       ".avi": "video/x-msvideo",
     }[path.extname(filePath).toLowerCase()] || "video/webm";
-    return { ok: true, bytes, mime, name: path.basename(filePath) };
+    // `path` lets Start Capture cut the real file with ffmpeg (see video:cut)
+    // instead of re-recording the on-screen playback.
+    return { ok: true, bytes, mime, name: path.basename(filePath), path: filePath };
   } catch (e) {
     return { ok: false, error: String((e && e.message) || e) };
   }
@@ -227,6 +229,54 @@ ipcMain.handle("save-recording", async (event, arrayBuffer, defaultName, subfold
   await fs.promises.mkdir(path.dirname(filePath), { recursive: true });
   await fs.promises.writeFile(filePath, Buffer.from(arrayBuffer));
   return { ok: true, filePath };
+});
+
+// Cut [start, end) out of a video already on disk — used when a clip has been
+// loaded with LS and Start/End Capture is pressed over it. Cutting the source
+// file with ffmpeg keeps the result exact to the second, rather than
+// re-recording the on-screen playback in real time (which would inherit every
+// dropped frame and stall). Always re-encoded to H.264/MP4 so the output is
+// valid whatever container came in.
+ipcMain.handle("video:cut", async (event, { sourcePath, start, end, name, subfolder } = {}) => {
+  const win = BrowserWindow.fromWebContents(event.sender);
+  if (!sourcePath) return { ok: false, reason: "no-source" };
+  const from = Math.max(0, Number(start) || 0);
+  const duration = (Number(end) || 0) - from;
+  if (!(duration > 0)) return { ok: false, reason: "empty-range" };
+
+  const cfg = loadConfig();
+  const root = (cfg.recordingsPath || "").trim();
+  const sub = safeSubpath(subfolder);
+  const baseName = path.basename(name || "cricket-clip.mp4").replace(/\.[^.]+$/, "") + ".mp4";
+
+  let outPath;
+  if (root) {
+    const dir = sub ? path.join(root, sub) : root;
+    try { await fs.promises.mkdir(dir, { recursive: true }); }
+    catch (e) { return { ok: false, error: String((e && e.message) || e) }; }
+    outPath = path.join(dir, baseName);
+  } else {
+    const picked = await dialog.showSaveDialog(win, {
+      defaultPath: baseName,
+      filters: [{ name: "MP4 video", extensions: ["mp4"] }],
+    });
+    if (picked.canceled || !picked.filePath) return { ok: false, canceled: true };
+    outPath = picked.filePath;
+  }
+
+  try {
+    // -ss before -i seeks fast; -t (not -to) is unambiguous after a pre-input
+    // seek. Re-encoding is what makes the cut land on the requested second
+    // rather than the nearest preceding keyframe.
+    await run(FFMPEG, [
+      "-y", "-ss", String(from), "-i", sourcePath, "-t", String(duration),
+      "-c:v", "libx264", "-preset", "veryfast", "-crf", "20",
+      "-c:a", "aac", "-movflags", "+faststart", outPath,
+    ]);
+    return { ok: true, filePath: outPath, start: from, duration };
+  } catch (e) {
+    return { ok: false, reason: "ffmpeg-failed", error: String((e && e.message) || e), filePath: outPath };
+  }
 });
 
 // Count the video files actually saved in a match's recordings subfolder, so the
@@ -425,6 +475,7 @@ ipcMain.handle("db:import", async (event, { mode }) => {
 ipcMain.handle("db:competition:save", (_e, c) => db.saveCompetition(c));
 ipcMain.handle("db:competition:delete", (_e, id) => db.deleteCompetition(id));
 ipcMain.handle("db:match:save", (_e, match) => db.saveMatch(match));
+ipcMain.handle("db:match:saveToss", (_e, { id, toss }) => db.saveMatchToss(id, toss));
 ipcMain.handle("db:match:saveState", (_e, { id, state, status }) => db.saveMatchState(id, state, status));
 ipcMain.handle("db:match:delete", (_e, id) => db.deleteMatch(id));
 ipcMain.handle("db:report:bowling", (_e, matchId) => db.bowlingFigures(matchId));

@@ -301,7 +301,7 @@ function buildSeed() {
       captainId: whiteSquad[0].id,
       keeperId: (whiteSquad.find((p) => p.role === "Wicket Keeper") || whiteSquad[1]).id,
     },
-    status: "RESUME",
+    status: "TOSS", // never started — the toss and openers are collected first
     state: null,
     createdAt: "2026-03-05T14:00:00.000Z",
   };

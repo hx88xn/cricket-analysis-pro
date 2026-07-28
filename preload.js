@@ -16,6 +16,7 @@ contextBridge.exposeInMainWorld("cricketApp", {
   importData: (mode) => ipcRenderer.invoke("db:import", { mode }),
   saveRecording: (arrayBuffer, defaultName, subfolder) =>
     ipcRenderer.invoke("save-recording", arrayBuffer, defaultName, subfolder),
+  cutVideo: (args) => ipcRenderer.invoke("video:cut", args),
   ensureRecordingFolder: (folderName) =>
     ipcRenderer.invoke("recordings:ensure-folder", folderName),
   countRecordings: (folderName, innings) =>
@@ -59,6 +60,7 @@ contextBridge.exposeInMainWorld("cricketApp", {
     saveCompetition: (c) => ipcRenderer.invoke("db:competition:save", c),
     deleteCompetition: (id) => ipcRenderer.invoke("db:competition:delete", id),
     saveMatch: (match) => ipcRenderer.invoke("db:match:save", match),
+    saveMatchToss: (id, toss) => ipcRenderer.invoke("db:match:saveToss", { id, toss }),
     saveMatchState: (payload) => ipcRenderer.invoke("db:match:saveState", payload),
     deleteMatch: (id) => ipcRenderer.invoke("db:match:delete", id),
     reportBowling: (matchId) => ipcRenderer.invoke("db:report:bowling", matchId),

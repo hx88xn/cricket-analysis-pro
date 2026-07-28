@@ -907,6 +907,7 @@ textarea {
   color: var(--accent);
   cursor: pointer;
   text-align: left;
+  text-decoration: none; /* the Match Details variant is an <a> */
 }
 .row-link:hover {
   text-decoration: underline;
@@ -933,6 +934,171 @@ textarea {
   text-decoration: none;
 }
 .status-team:hover { text-decoration: underline; }
+
+/* Match awaiting its toss — opens the Toss popup rather than the coding screen. */
+.status-toss {
+  border: 0;
+  background: none;
+  padding: 0;
+  font: inherit;
+  color: var(--warning);
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  cursor: pointer;
+  text-align: left;
+}
+.status-toss:hover { text-decoration: underline; }
+
+/* ---- Toss popup ---------------------------------------------------------- */
+
+.toss-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  background: rgba(3, 8, 15, 0.72);
+  backdrop-filter: blur(3px);
+}
+
+.toss-card {
+  position: relative;
+  width: min(560px, 100%);
+  max-height: 100%;
+  overflow: auto;
+  padding: 28px;
+  border-radius: var(--radius-xl);
+  border: 1px solid var(--border-strong);
+  background: var(--surface-3);
+  box-shadow: var(--shadow-lg);
+}
+
+.toss-close {
+  position: absolute;
+  top: 14px;
+  right: 16px;
+  border: 0;
+  background: none;
+  color: var(--muted);
+  font-size: 26px;
+  line-height: 1;
+  cursor: pointer;
+}
+.toss-close:hover { color: var(--text); }
+
+.toss-title {
+  font-size: 22px;
+  font-weight: 800;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+}
+
+.toss-sub {
+  margin-top: 4px;
+  font-size: 13px;
+  color: var(--muted);
+}
+
+.toss-steps {
+  display: flex;
+  gap: 8px;
+  margin: 18px 0 4px;
+}
+
+.toss-step {
+  flex: 1;
+  padding: 8px 10px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border);
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  text-align: center;
+  color: var(--muted);
+}
+.toss-step.on {
+  color: var(--text);
+  border-color: rgba(89, 176, 241, 0.55);
+  background: rgba(77, 179, 255, 0.12);
+}
+
+.toss-q {
+  margin: 18px 0 10px;
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.toss-choice {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+
+.toss-opt {
+  display: grid;
+  gap: 2px;
+  padding: 14px 16px;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--border);
+  background: rgba(7, 14, 23, 0.92);
+  color: var(--text);
+  cursor: pointer;
+  text-align: left;
+}
+.toss-opt:hover { border-color: var(--border-strong); }
+.toss-opt.on {
+  border-color: rgba(89, 176, 241, 0.65);
+  background: rgba(77, 179, 255, 0.14);
+  box-shadow: 0 0 0 3px rgba(77, 179, 255, 0.12);
+}
+
+.toss-opt-main {
+  font-size: 14px;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+.toss-opt-sub {
+  font-size: 11px;
+  letter-spacing: 0.12em;
+  color: var(--muted);
+}
+
+.toss-note {
+  margin-top: 18px;
+  font-size: 13px;
+  color: var(--text-soft);
+}
+
+.toss-form {
+  display: grid;
+  gap: 14px;
+  margin-top: 18px;
+}
+
+.toss-row {
+  display: grid;
+  gap: 6px;
+}
+
+.toss-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 12px;
+  margin-top: 22px;
+}
+.toss-actions .btn-main { min-width: 120px; }
+.toss-ghost {
+  background: rgba(7, 14, 23, 0.92);
+  border-color: var(--border);
+  color: var(--text-soft);
+}
+.toss-actions .btn-main[disabled] { opacity: 0.45; cursor: not-allowed; }
 
 /* Per-row "Fixtures" link in the Competition Master table */
 .mst-fixtures {

@@ -21,7 +21,10 @@ html {
      window — to fit inside the window, letterboxing when needed. Hidden (not
      auto) so no rounding edge case can ever flash a scrollbar. */
   overflow: hidden;
-  background: #050b14;
+  /* No background here on purpose: <html> keeps the page gradient the base
+     stylesheet gives it (legacy.css / styles.css both set `html, body`), which
+     is what fills the window — canvas and letterbox bars alike. See the body
+     rule below for why the canvas must not paint its own copy. */
   /* Hidden until stage.js applies the scale, so the unscaled (full-1920) frame
      never paints. stage.js reveals it on the first fit. */
   visibility: hidden;
@@ -41,6 +44,15 @@ body {
      stretch the body past a design canvas that is shorter than the window
      (letterboxed fit) and bring back a scrollbar. */
   min-height: 0 !important;
+  /* The page background belongs to the WINDOW, not the design canvas. <body> is
+     scaled, and whenever a tall screen is height-constrained it is also narrower
+     and/or shorter than the window — so a background painted on it stops at the
+     canvas edge, and the letterbox bars fall back to <html>. Because the corner
+     glows are positioned against whichever box paints them, the two never line
+     up and the bars read as flat dark edges beside the lit canvas. Letting
+     <html> paint the one and only background, over the full window, removes the
+     seam entirely at any scale. */
+  background: none;
   margin: 0;
   container-type: size;
   transform-origin: top left;

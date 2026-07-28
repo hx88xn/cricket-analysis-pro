@@ -2253,7 +2253,7 @@ async function buildMatchRegistration() {
         <label class="field-label">Home Team</label>${sel("rg-home", reg.teams, (t) => t.id, (t) => t.name)}
         <label class="field-label">Away Team</label>${sel("rg-away", reg.teams, (t) => t.id, (t) => t.name)}
         <label class="field-label">Match Status</label>
-        <select class="field-select" id="rg-status"><option value="RESUME">Resume (in progress)</option><option value="COMPLETED">Completed</option></select>
+        <select class="field-select" id="rg-status"><option value="TOSS">Toss (not started)</option><option value="RESUME">Resume (in progress)</option><option value="COMPLETED">Completed</option></select>
         <label class="field-label">Umpire 1</label>${sel("rg-ump1", umpires, (o) => o.id, (o) => o.name)}
         <label class="field-label">Umpire 2</label>${sel("rg-ump2", umpires, (o) => o.id, (o) => o.name)}
         <label class="field-label">Umpire 3</label>${sel("rg-ump3", umpires, (o) => o.id, (o) => o.name)}
@@ -2478,12 +2478,19 @@ function renderMatchesTable(matches, withName, withDelete = withName) {
           } else if (m.status === "TEAM SELECTION") {
             // Fixtures await team selection — open Match Registration to finish them.
             statusCell = `<a class="status-team" href="prototype.html?screen=match-registration&edit=${m.id}">TEAM SELECTION</a>`;
+          } else if (m.status === "TOSS") {
+            // Registered but not yet tossed — the Toss popup collects the toss
+            // result and the opening players before the coding screen opens.
+            statusCell = `<button type="button" class="status-toss" data-toss="${m.id}">TOSS</button>`;
           } else {
             statusCell = `<a class="status-resume" href="index.html?match=${m.id}">RESUME</a>`;
           }
+          // On Match Registration the name loads the row into the form already
+          // on screen; everywhere else (Match Details) it deep-links into Match
+          // Registration, which loads the whole match from the ?edit= id.
           const nameCell = withName
             ? `<button class="row-link" data-edit="${m.id}">${esc(m.matchName)}</button>`
-            : esc(m.matchName);
+            : `<a class="row-link" href="prototype.html?screen=match-registration&edit=${encodeURIComponent(m.id)}">${esc(m.matchName)}</a>`;
           const deleteCell = withDelete
             ? `<span><button type="button" class="row-del-btn" data-del="${m.id}" title="Delete this match">Delete</button></span>`
             : "";
@@ -2506,6 +2513,7 @@ function wireMatchesTable(root, matches) {
   root.querySelectorAll("#rg-table [data-edit]").forEach((btn) => {
     btn.addEventListener("click", () => loadMatchIntoForm(btn.getAttribute("data-edit"), root, matches));
   });
+  wireTossButtons(root.querySelector("#rg-table"), () => refreshMatchesTable(root));
   root.querySelectorAll("#rg-table [data-del]").forEach((btn) => {
     btn.addEventListener("click", async () => {
       const id = btn.getAttribute("data-del");
@@ -2602,7 +2610,7 @@ function clearRegForm(root) {
   populateOfficialSelects(root, null, null);
   populateTeamSelects(root, null, "", "");
   root.querySelector("#rg-overs").value = "50";
-  root.querySelector("#rg-status").value = "RESUME";
+  root.querySelector("#rg-status").value = "TOSS";
   root.querySelector("#rg-neutral").checked = false;
   root.querySelector("#rg-daynight").checked = true;
   repaintPanel("A", root);
@@ -2811,7 +2819,9 @@ async function initMatchRegistration(root) {
       refereeId: root.querySelector("#rg-ref").value,
       teamA: sideOut(reg.A),
       teamB: sideOut(reg.B),
-      status: root.querySelector("#rg-status").value || "RESUME",
+      // A newly registered match (or a fixture being completed here) starts at
+      // TOSS — the toss and openers are collected before the coding screen opens.
+      status: root.querySelector("#rg-status").value || "TOSS",
       phase: root.querySelector("#rg-phase").value.trim(),
       refId: root.querySelector("#rg-refid").value.trim(),
       matchResult: root.querySelector("#rg-result").value.trim(),
@@ -2822,7 +2832,9 @@ async function initMatchRegistration(root) {
       const saved = await dbCall("saveMatch", match);
       if (saved) {
         reg.editingId = saved.id;
-        toast(`Saved ${saved.matchName}. Click RESUME to open the coding screen.`);
+        toast(saved.status === "TOSS"
+          ? `Saved ${saved.matchName}. Click TOSS to record the toss and openers.`
+          : `Saved ${saved.matchName}. Click RESUME to open the coding screen.`);
         refreshMatchesTable(root);
       } else {
         toast("Could not save match", true);
@@ -2873,6 +2885,10 @@ function initMatchDetails(root) {
     page = meta.page;
     tableEl.innerHTML = renderMatchesTable(meta.slice, false, true) + pagerHtml(meta, "matches");
     wireMatchDetailsDelete(tableEl, render);
+    wireTossButtons(tableEl, async () => {
+      tableEl._matches = (await dbCall("matches")) || [];
+      render();
+    });
     wirePager(tableEl, meta, (p) => { page = p; render(); });
     applyAutoPage(tableEl, size, render);
   }
@@ -2897,6 +2913,184 @@ function wireMatchDetailsDelete(tableEl, render) {
       render();
     });
   });
+}
+
+// ===========================================================================
+// Toss — popup shown from the match list (Match Details / Match Registration)
+// ===========================================================================
+// A freshly registered match sits at status "TOSS" instead of "RESUME". Clicking
+// that status opens this two-step popup: step 1 records who won the toss and
+// what they elected to do; step 2 switches to whichever side that leaves batting
+// and collects its two openers plus the fielding side's opening bowler. Saving
+// stores all of it on the match, flips the status to RESUME and opens the coding
+// screen, which builds the first innings from these choices.
+
+function wireTossButtons(scopeEl, refresh) {
+  if (!scopeEl) return;
+  scopeEl.querySelectorAll("[data-toss]").forEach((btn) => {
+    btn.addEventListener("click", () => openTossPopup(btn.getAttribute("data-toss"), refresh));
+  });
+}
+
+// Readable option label for a bowler: name plus whatever bowling spec is known.
+function bowlerOptionLabel(p) {
+  const spec = [p.bowlingStyle, p.bowlingType].filter(Boolean).join(" ");
+  return spec ? `${p.name} — ${spec}` : p.name;
+}
+
+// The XI members who bowl. Falls back to the whole XI when no bowling types
+// have been filled in, so the popup is never left with an empty dropdown.
+function bowlersOf(side) {
+  const xi = side.playingXIPlayers || [];
+  const pool = xi.filter((p) => p.bowlingType);
+  return pool.length ? pool : xi;
+}
+
+function playerOptions(players, selectedId) {
+  return [`<option value="">Select</option>`]
+    .concat(players.map((p) =>
+      `<option value="${esc(p.id)}"${p.id === selectedId ? " selected" : ""}>${esc(p.name)}</option>`))
+    .join("");
+}
+
+async function openTossPopup(matchId, refresh) {
+  const match = await dbCall("getMatch", matchId);
+  if (!match) return toast("Could not load that match", true);
+  const sides = { A: match.teamA || {}, B: match.teamB || {} };
+  if (!(sides.A.playingXIPlayers || []).length || !(sides.B.playingXIPlayers || []).length) {
+    return toast("Both teams need a playing XI before the toss — finish team selection first.", true);
+  }
+
+  // Pre-fill from a previously recorded toss (the popup can be reopened).
+  let wonSide = match.tossWonBy && match.tossWonBy === sides.B.code ? "B"
+    : match.tossWonBy ? "A" : "";
+  let decision = match.tossDecision || "";
+  let step = 1;
+
+  // Which side ends up batting: the toss winner if they chose to bat, else the other.
+  const battingSide = () => {
+    if (!wonSide || !decision) return "";
+    const other = wonSide === "A" ? "B" : "A";
+    return decision === "Bat" ? wonSide : other;
+  };
+
+  const backdrop = document.createElement("div");
+  backdrop.className = "toss-backdrop";
+  backdrop.innerHTML = `
+    <div class="toss-card" role="dialog" aria-modal="true" aria-label="Toss">
+      <button type="button" class="toss-close" id="toss-close" aria-label="Close">×</button>
+      <div class="toss-title">Toss</div>
+      <div class="toss-sub">${esc(match.matchName)} — ${esc(sides.A.name)} vs ${esc(sides.B.name)}</div>
+      <div class="toss-steps" id="toss-steps"></div>
+      <div class="toss-body" id="toss-body"></div>
+    </div>`;
+  document.body.appendChild(backdrop);
+
+  const close = () => {
+    document.removeEventListener("keydown", onKey);
+    backdrop.remove();
+  };
+  function onKey(e) { if (e.key === "Escape") close(); }
+  document.addEventListener("keydown", onKey);
+  backdrop.addEventListener("mousedown", (e) => { if (e.target === backdrop) close(); });
+  backdrop.querySelector("#toss-close").addEventListener("click", close);
+
+  function renderStep() {
+    backdrop.querySelector("#toss-steps").innerHTML = [1, 2]
+      .map((n) => `<span class="toss-step${n === step ? " on" : ""}">${n === 1 ? "Toss" : "Opening players"}</span>`)
+      .join("");
+    const body = backdrop.querySelector("#toss-body");
+    if (step === 1) renderTossStep(body); else renderOpenersStep(body);
+  }
+
+  function renderTossStep(body) {
+    const bs = battingSide();
+    const teamBtn = (key) =>
+      `<button type="button" class="toss-opt${wonSide === key ? " on" : ""}" data-won="${key}">
+         <span class="toss-opt-main">${esc(sides[key].name)}</span>
+         <span class="toss-opt-sub">${esc(sides[key].code)}</span>
+       </button>`;
+    const decBtn = (key) =>
+      `<button type="button" class="toss-opt${decision === key ? " on" : ""}" data-dec="${key}">
+         <span class="toss-opt-main">${key}</span>
+       </button>`;
+    body.innerHTML = `
+      <div class="toss-q">Which team won the toss?</div>
+      <div class="toss-choice">${teamBtn("A")}${teamBtn("B")}</div>
+      <div class="toss-q">…and elected to</div>
+      <div class="toss-choice">${decBtn("Bat")}${decBtn("Bowl")}</div>
+      <div class="toss-note">${bs
+        ? `${esc(sides[wonSide].name)} won the toss and elected to ${decision.toLowerCase()} — <strong>${esc(sides[bs].name)}</strong> bats first.`
+        : "Pick the toss winner and their decision to continue."}</div>
+      <div class="toss-actions">
+        <button type="button" class="btn-main btn-blue" id="toss-next"${bs ? "" : " disabled"}>Next</button>
+      </div>`;
+    body.querySelectorAll("[data-won]").forEach((b) =>
+      b.addEventListener("click", () => { wonSide = b.getAttribute("data-won"); renderStep(); }));
+    body.querySelectorAll("[data-dec]").forEach((b) =>
+      b.addEventListener("click", () => { decision = b.getAttribute("data-dec"); renderStep(); }));
+    body.querySelector("#toss-next").addEventListener("click", () => {
+      if (!battingSide()) return;
+      step = 2;
+      renderStep();
+    });
+  }
+
+  function renderOpenersStep(body) {
+    const batKey = battingSide();
+    const bowlKey = batKey === "A" ? "B" : "A";
+    const bat = sides[batKey], bowl = sides[bowlKey];
+    const xi = bat.playingXIPlayers || [];
+    const bowlers = bowlersOf(bowl);
+    // Defaults: the top two of the batting order and the fielding side's first
+    // recognised bowler, unless a previous toss already chose otherwise.
+    const strikerId = match.openingStrikerId || (xi[0] && xi[0].id) || "";
+    const nonStrikerId = match.openingNonStrikerId || (xi[1] && xi[1].id) || "";
+    const bowlerId = match.openingBowlerId || (bowlers[0] && bowlers[0].id) || "";
+    body.innerHTML = `
+      <div class="toss-note"><strong>${esc(bat.name)}</strong> batting · <strong>${esc(bowl.name)}</strong> bowling</div>
+      <div class="toss-form">
+        <label class="toss-row">
+          <span class="field-label">Opening Batsman (Striker)</span>
+          <select class="field-select" id="toss-striker">${playerOptions(xi, strikerId)}</select>
+        </label>
+        <label class="toss-row">
+          <span class="field-label">Other Batsman (Non-Striker)</span>
+          <select class="field-select" id="toss-nonstriker">${playerOptions(xi, nonStrikerId)}</select>
+        </label>
+        <label class="toss-row">
+          <span class="field-label">Opening Bowler</span>
+          <select class="field-select" id="toss-bowler">${
+            [`<option value="">Select</option>`].concat(bowlers.map((p) =>
+              `<option value="${esc(p.id)}"${p.id === bowlerId ? " selected" : ""}>${esc(bowlerOptionLabel(p))}</option>`)).join("")
+          }</select>
+        </label>
+      </div>
+      <div class="toss-actions">
+        <button type="button" class="btn-main toss-ghost" id="toss-back">Back</button>
+        <button type="button" class="btn-main btn-green" id="toss-start">Start Match</button>
+      </div>`;
+    body.querySelector("#toss-back").addEventListener("click", () => { step = 1; renderStep(); });
+    body.querySelector("#toss-start").addEventListener("click", async () => {
+      const s = body.querySelector("#toss-striker").value;
+      const ns = body.querySelector("#toss-nonstriker").value;
+      const bw = body.querySelector("#toss-bowler").value;
+      if (!s || !ns || !bw) return toast("Choose both openers and the opening bowler", true);
+      if (s === ns) return toast("The two openers must be different players", true);
+      const saved = await dbCall("saveMatchToss", matchId, {
+        tossWonBy: sides[wonSide].code || sides[wonSide].name,
+        tossDecision: decision,
+        openingStrikerId: s, openingNonStrikerId: ns, openingBowlerId: bw,
+        status: "RESUME",
+      });
+      if (!saved) return toast("Could not save the toss", true);
+      close();
+      if (refresh) await refresh();
+      window.location.href = `index.html?match=${encodeURIComponent(matchId)}`;
+    });
+  }
+
+  renderStep();
 }
 
 // ===========================================================================

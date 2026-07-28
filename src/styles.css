@@ -1513,6 +1513,24 @@ a.home-main-btn {
 }
 
 /* Replacement picker shown inside a scoreboard name slot (new batsman/bowler) */
+/* The two batting ends are permanent dropdowns (renderBatsmanSlot). Styled to
+   read as the blue name pill they sit inside, so the scoreboard looks unchanged
+   until the scorer opens one; the native arrow is kept as the affordance. */
+.sg-name > .sg-name-select {
+  width: 100%;
+  min-width: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: #fff;
+  font: inherit;
+  font-weight: 700;
+  cursor: pointer;
+}
+.sg-name > .sg-name-select:focus { outline: none; }
+.sg-name > .sg-name-select:disabled { cursor: default; opacity: 1; color: #fff; }
+.sg-name > .sg-name-select option { background: #0a1626; color: var(--text); }
+
 .sg-select {
   width: 100%;
   max-width: 220px;
