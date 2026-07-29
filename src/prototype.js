@@ -350,6 +350,7 @@ const screenDefs = {
   reports: {
     title: "CRICPRO Reports",
     back: "home.html",
+    fullbleed: true, // edge-to-edge, exactly one viewport tall (own topbar, like the coding screen)
     build: buildReports,
     init: initReports,
   },
@@ -1515,11 +1516,15 @@ const REPORT_TABS = [
 // Live report state: the loaded match, its innings, the sidebar filters and the
 // currently-selected tab / sub-view toggles.
 const rep = {
-  matches: [], match: null, innings: [],
+  matches: [], officials: [], match: null, innings: [],
   activeTab: "Statistics",
   teamView: "both",   // Manhattan / Worm / Extras / Wickets team toggle
   wagonSide: "all",   // Spider / Sector on-side / off-side / all
-  filters: { battingCode: "", striker: "", bowler: "", wicket: "", runs: "", fromOver: "", toOver: "" },
+  statPage: 0,        // Statistics grid pagination
+  cmpA: "", cmpB: "", // Player Comparison picks
+  wwcA: 0, wwcB: 1,   // Wagon Wheel / Pitchmap Comparison innings picks
+  selFilter: false,   // "Select Filter" export-sections bar visibility
+  filters: { battingCode: "", striker: "", bowler: "", wicket: "", runs: "", misc: "", fromOver: "", toOver: "" },
 };
 
 // ---- scoring helpers (mirror the coding screen's ball semantics) ----------
@@ -1580,6 +1585,9 @@ function filterBalls(log) {
     if (f.bowler && b.bowler !== f.bowler) return false;
     if (f.wicket && (b.dismissal || "") !== f.wicket) return false;
     if (f.runs !== "" && ballBat(b) !== +f.runs) return false;
+    if (f.misc === "boundaries" && ballBat(b) < 4) return false;
+    if (f.misc === "dots" && ballTeam(b) !== 0) return false;
+    if (f.misc === "wickets" && !isWicket(b)) return false;
     const oi = overIndexOf(b.num);
     if (from != null && oi < from) return false;
     if (to != null && oi > to) return false;
@@ -1793,15 +1801,32 @@ function toggledInnings(inns) {
 
 function repTitle(t) { return `<h2 class="rep-title">${esc(t)}</h2>`; }
 
-// Statistics — the ball-by-ball grid (default tab).
+// Statistics — the paged ball-by-ball data grid (default tab; mirrors the
+// reference grid with the match metadata columns and pager bar).
 function reportStatistics(inns) {
-  const cols = ["InnsNo", "Team", "Over", "Striker", "Nonstriker", "Bowler", "Bowl", "Shot", "Run", "Extras", "Wkt", "Dismissal"];
+  const m = rep.match || {};
+  const meta = [m.competitionName || "", m.matchName || "", m.venueName || "", String(m.matchDate || "").split("T")[0]];
+  const cols = ["Competition", "Match", "Venue", "Date", "InnsNo", "Team", "Over", "Striker", "Nonstriker", "Bowler", "Bowl", "Shot", "Run", "Extras", "Wkt", "Dismissal"];
+  const leftCols = new Set([0, 1, 2, 7, 8, 9]);
   const rows = [];
   inns.forEach((i) => i.balls.forEach((b) => {
     const e = parseExt(b.ext);
-    rows.push(`<tr><td>${i.innings}</td><td>${esc(i.batCode)}</td><td>${esc(b.num)}</td><td>${esc(b.striker)}</td><td>${esc(b.nonstr)}</td><td>${esc(b.bowler)}</td><td>${esc(b.bowl || "")}</td><td>${esc(b.shot || "")}</td><td>${ballBat(b)}</td><td>${e.type ? esc(e.type + (e.runs > 1 ? e.runs : "")) : ""}</td><td>${isWicket(b) ? "W" : ""}</td><td>${esc(b.dismissal || "")}</td></tr>`);
+    rows.push([...meta, i.innings, i.batCode, b.num, b.striker, b.nonstr, b.bowler, b.bowl || "", b.shot || "", ballBat(b), e.type ? e.type + (e.runs > 1 ? e.runs : "") : "", isWicket(b) ? "W" : "", b.dismissal || ""]);
   }));
-  return `${repTitle("Statistics — Ball by Ball")}<div class="rep-scroll"><table class="rep-table"><thead><tr>${cols.map((c) => `<th>${c}</th>`).join("")}</tr></thead><tbody>${rows.join("") || `<tr><td colspan="${cols.length}" class="rep-none">No deliveries recorded.</td></tr>`}</tbody></table></div><div class="rep-foot">${rows.length} deliveries</div>`;
+  const SIZE = 18, pages = Math.max(1, Math.ceil(rows.length / SIZE));
+  const cur = Math.min(rep.statPage, pages - 1);
+  const body = rows.slice(cur * SIZE, (cur + 1) * SIZE)
+    .map((r) => `<tr>${r.map((c, ci) => `<td${leftCols.has(ci) ? ' class="rep-l"' : ""}>${esc(String(c))}</td>`).join("")}</tr>`).join("");
+  const nums = [];
+  for (let p = Math.max(0, Math.min(cur - 2, pages - 5)); p < pages && nums.length < 5; p++) nums.push(p);
+  const pager = `<div class="report-pager">
+    <span class="pg-btn" data-pg="0">«</span><span class="pg-btn" data-pg="${Math.max(0, cur - 1)}">‹</span>
+    ${nums.map((p) => p === cur ? `<span class="pg-num">${p + 1}</span>` : `<span class="pg-btn" data-pg="${p}">${p + 1}</span>`).join("")}
+    <span class="pg-btn" data-pg="${Math.min(pages - 1, cur + 1)}">›</span><span class="pg-btn" data-pg="${pages - 1}">»</span>
+    <span class="pg-info">Page <b>${cur + 1}</b> of ${pages} · ${rows.length} deliveries</span></div>`;
+  return `<div class="report-groupbar">Drag a column header and drop it here to group by that column</div>
+    <div class="rep-scroll"><table class="rep-table"><thead><tr>${cols.map((c, ci) => `<th${leftCols.has(ci) ? ' class="rep-l"' : ""}>${c}</th>`).join("")}</tr></thead>
+    <tbody>${body || `<tr><td colspan="${cols.length}" class="rep-none">No deliveries recorded.</td></tr>`}</tbody></table></div>${pager}`;
 }
 
 // Scorecard — batting table per innings. Each batsman row expands (click) into
@@ -1860,35 +1885,82 @@ function reportExtras(inns) {
   return `${repTitle("Extras Chart")}${teamViewToggle(inns)}<div class="rep-pie-wrap">${pieChart(slices)}<div class="rep-legend rep-legend-col">${slices.map((s) => `<span class="rep-key"><i style="background:${s.color}"></i>${esc(s.label)} : ${s.value}</span>`).join("")}</div></div>`;
 }
 
-// Wickets — pie of dismissal types.
+// Wickets — pie of dismissal types with the full dismissal legend and the
+// reference Difficulty Mode panel (needs difficulty tagging on the coding
+// screen, so the checkboxes stay disabled until that data exists).
 function reportWickets(inns) {
   const balls = allBalls(toggledInnings(inns)), w = wicketBreakdown(balls);
-  const palette = { Caught: "#39c0c8", Bowled: "#c750c7", "Run Out": "#e0903a", LBW: "#e7c53a", Stumped: "#e0a53a", "Caught & Bowled": "#5ac85a", "Hit Wicket": "#3f7fd0" };
-  const kinds = ["Caught", "Bowled", "Run Out", "LBW", "Stumped", "Caught & Bowled", "Hit Wicket"];
-  const slices = kinds.map((k) => ({ label: k, value: w[k] || 0, color: palette[k] || "#9fb3c8" }));
+  const palette = {
+    Caught: "#2eaadc", Bowled: "#d543b8", "Run Out": "#e8722a", LBW: "#f2e230", "Hit Wicket": "#8a5a3b",
+    "Handled the Ball": "#1f3fb8", "Timed Out": "#39c0c8", "Hitting Twice": "#e8edf3", Stumped: "#e7c53a",
+    "Caught & Bowled": "#7a7a1f", "Obstructing Field": "#8a1111", Mankading: "#cfc9b8", "Retired Out": "#0d8a2a", "Absent Hurt": "#37e01f",
+  };
+  const kinds = Object.keys(palette);
+  const slices = kinds.map((k) => ({ label: k, value: w[k] || 0, color: palette[k] }));
   Object.keys(w).forEach((k) => { if (!kinds.includes(k)) slices.push({ label: k, value: w[k], color: "#9fb3c8" }); });
-  return `${repTitle("Wickets Chart")}${teamViewToggle(inns)}<div class="rep-pie-wrap">${pieChart(slices)}<div class="rep-legend rep-legend-col">${slices.map((s) => `<span class="rep-key"><i style="background:${s.color}"></i>${esc(s.label)} : ${s.value}</span>`).join("")}</div></div>`;
+  const diffPanel = `<div class="rep-panel rep-diff-panel"><div class="rep-panel-h">Difficulty Mode</div>
+    ${["Tough", "Medium", "Easy"].map((d) => `<label class="rep-check-line"><input type="checkbox" disabled /> ${d}</label>`).join("")}
+    <p class="rep-muted rep-diff-note">Tag difficulty while coding to enable.</p></div>`;
+  return `${repTitle("Wickets Chart")}${teamViewToggle(inns)}<div class="rep-pie-wrap">${pieChart(slices)}${diffPanel}</div>
+    <div class="rep-legend rep-legend-grid">${slices.map((s) => `<span class="rep-key"><i style="background:${s.color}"></i>${esc(s.label)} : ${s.value}</span>`).join("")}</div>`;
+}
+
+// Wagon-ball helpers. A saved wagon point lives in the coding screen's 642x640
+// overlay space (centre 324.5,312.5); off side is the left half as drawn.
+const hasWagon = (b) => b.wagon && typeof b.wagon.x === "number";
+const wagonIsOff = (b) => hasWagon(b) && b.wagon.x < 324.5;
+// Filter a ball list by the active off/all/on side toggle (balls without a
+// wagon point stay in "all" only).
+function sideBalls(balls, side) {
+  if (side === "off") return balls.filter(wagonIsOff);
+  if (side === "on") return balls.filter((b) => hasWagon(b) && !wagonIsOff(b));
+  return balls;
+}
+// OFF SIDE / ALL / ON SIDE toggle with the runs scored to either side above it.
+function sideToggleBar(balls) {
+  const offRuns = sideBalls(balls, "off").reduce((a, b) => a + ballBat(b), 0);
+  const onRuns = sideBalls(balls, "on").reduce((a, b) => a + ballBat(b), 0);
+  const btn = (v, l) => `<button class="rep-side-btn ${rep.wagonSide === v ? "active" : ""}" data-wagonside="${v}">${l}</button>`;
+  return `<div class="rep-side-runs"><span>${offRuns} RUNS<br>OFF SIDE</span><span>${onRuns} RUNS<br>ON SIDE</span></div>
+    <div class="rep-side-bar">${btn("off", "OFF SIDE")}${btn("all", "ALL")}${btn("on", "ON SIDE")}</div>`;
 }
 
 // Wagon field SVG (viewBox 0 0 642 640, centre 324.5,312.5, r 290 — matches the
 // coding-screen overlay coordinate space so saved wagon points map 1:1).
-function wagonFieldSvg(balls, sectors) {
+// mode: false/"spider" = shot lines; true/"sector" = sector split + runs (balls)
+// labels, no lines; "combined" = both (the Spider&Sector Combined reference).
+function wagonFieldSvg(balls, mode) {
+  const sectors = mode === true || mode === "sector" || mode === "combined";
+  const shots = mode === false || mode === "spider" || mode === "combined";
   const CX = 321, CY = 320, R = 300;
   let sect = "";
   if (sectors) { for (let s = 0; s < 8; s++) { const a = (Math.PI / 4) * s - Math.PI / 2; sect += `<line x1="${CX}" y1="${CY}" x2="${CX + R * Math.cos(a)}" y2="${CY + R * Math.sin(a)}" stroke="rgba(255,255,255,.25)"/>`; } }
-  let lines = "";
+  let lines = "", labels = "";
+  const secAgg = Array.from({ length: 8 }, () => ({ runs: 0, balls: 0 }));
+  let wagonBalls = 0;
   for (const b of balls) {
-    if (!b.wagon || typeof b.wagon.x !== "number") continue;
+    if (!hasWagon(b)) continue;
     // rebase from the 642x640 overlay space onto our field circle
-    const x = CX + (b.wagon.x - 324.5) * (R / 290), y = CY + (b.wagon.y - 312.5) * (R / 290);
+    const dx = (b.wagon.x - 324.5) * (R / 290), dy = (b.wagon.y - 312.5) * (R / 290);
     const c = runColor(ballBat(b));
-    lines += `<line x1="${CX}" y1="${CY}" x2="${x}" y2="${y}" stroke="${c}" stroke-width="2.5" opacity="0.9"/>`;
+    if (shots) lines += `<line x1="${CX}" y1="${CY}" x2="${CX + dx}" y2="${CY + dy}" stroke="${c}" stroke-width="2.5" opacity="0.9"/>`;
+    const si = (Math.floor(((Math.atan2(dy, dx) + Math.PI / 2) / (Math.PI / 4)) % 8) + 8) % 8;
+    secAgg[si].runs += ballBat(b); secAgg[si].balls += 1; wagonBalls += 1;
+  }
+  if (sectors && wagonBalls) {
+    secAgg.forEach((s, si) => {
+      if (!s.balls) return;
+      const mid = (Math.PI / 4) * si + Math.PI / 8 - Math.PI / 2, lr = R * 0.66;
+      const lx = CX + lr * Math.cos(mid), ly = CY + lr * Math.sin(mid);
+      labels += `<text x="${lx}" y="${ly}" text-anchor="middle" fill="#fff" font-size="26" font-weight="700">${s.runs} (${s.balls})</text>
+        <text x="${lx}" y="${ly + 26}" text-anchor="middle" fill="rgba(255,255,255,.85)" font-size="19">${num(pct(s.balls, wagonBalls), 1)}%</text>`;
+    });
   }
   return `<svg class="rep-field" viewBox="0 0 642 640" preserveAspectRatio="xMidYMid meet">
     <circle cx="${CX}" cy="${CY}" r="${R}" fill="#2f8f43" stroke="#e7d14f" stroke-width="4"/>
     <circle cx="${CX}" cy="${CY}" r="${R * 0.55}" fill="none" stroke="rgba(255,255,255,.18)"/>
     <rect x="${CX - 14}" y="${CY - 46}" width="28" height="92" fill="#caa96b" opacity="0.55"/>
-    ${sect}${lines}<circle cx="${CX}" cy="${CY}" r="4" fill="#fff"/></svg>`;
+    ${sect}${lines}${labels}<circle cx="${CX}" cy="${CY}" r="4" fill="#fff"/></svg>`;
 }
 
 // Summary side-panel shared by Spider / Sector / Pitch Map.
@@ -1913,33 +1985,59 @@ function tallyChips(balls) {
   return `<div class="rep-chips">${chip("Ext", s.WD + s.NB + s.B + s.LB + s.P, REP_COLORS.ext)}${chip("0s", s.dots, "#5b6b7d")}${chip("1s", s.ones, REP_COLORS[1])}${chip("2s", s.twos, REP_COLORS[2])}${chip("3s", s.threes, REP_COLORS[3])}${chip("4s", s.fours, REP_COLORS[4])}${chip("6s", s.sixes, REP_COLORS[6])}${chip("Wkts", s.wkts, "#8a99ab")}</div>`;
 }
 
-function reportSpiderWagon(inns) {
-  const balls = allBalls(inns);
-  return `${repTitle("Spider Wagon Wheel Report")}<div class="rep-wagon-grid"><div class="rep-wagon-main">${wagonFieldSvg(balls, false)}${tallyChips(balls)}</div><div class="rep-panels">${scoringPanel(balls)}</div></div>`;
+// Spider / Sector / Combined wagon reports share one layout: the wheel with the
+// off/all/on side toggle + run chips on the left, Summary/Extras panels right.
+function wagonReport(inns, title, sectors) {
+  const balls = allBalls(inns), view = sideBalls(balls, rep.wagonSide);
+  return `${repTitle(title)}<div class="rep-wagon-grid"><div class="rep-wagon-main">${wagonFieldSvg(view, sectors)}${sideToggleBar(balls)}${tallyChips(view)}</div><div class="rep-panels">${scoringPanel(view)}</div></div>`;
 }
-function reportSectorWagon(inns) {
-  const balls = allBalls(inns);
-  return `${repTitle("Sector Wagon Wheel Report")}<div class="rep-wagon-grid"><div class="rep-wagon-main">${wagonFieldSvg(balls, true)}${tallyChips(balls)}</div><div class="rep-panels">${scoringPanel(balls)}</div></div>`;
-}
+const reportSpiderWagon = (inns) => wagonReport(inns, "Spider Wagon Wheel Report", false);
+const reportSectorWagon = (inns) => wagonReport(inns, "Sector Wagon Wheel Report", true);
 
-// Pitch map grid — 6 length rows × 5 line columns coloured by ball count.
-function pitchGrid(balls) {
+// Coding-screen pitch input: click 1 is the BOUNCE point (kind "pitch"), click 2
+// the point it passes the stumps (kind "height"). The pitch map reports the
+// former, the impact map the latter — hence `which`.
+const pitchPointOf = (b, which) => {
+  const pts = b.pitch || [];
+  return which === "height" ? (pts.find((p) => p.kind === "height") || pts[1]) : (pts.find((p) => p.kind === "pitch") || pts[0]);
+};
+
+// Pitch map grid — 6 length rows × 5 line columns, cell = ball count.
+function pitchGrid(balls, which = "pitch") {
   const lengths = ["Full Toss", "Yorker", "Full", "Good", "Short", "Bouncer"];
+  const heights = ["Above Head", "Head", "Chest", "Waist", "Thigh", "Stumps"];
   const lines = ["WIDE O.O", "OUTSIDE OFF", "MIDDLE", "OUTSIDE LEG", "WIDE D.L"];
+  const rowLabels = which === "height" ? heights : lengths;
   const grid = Array.from({ length: 6 }, () => Array(5).fill(0));
+  let plotted = 0;
   for (const b of balls) {
-    const p = (b.pitch || [])[0]; if (!p) continue;
+    const p = pitchPointOf(b, which); if (!p) continue;
     const row = Math.min(5, Math.max(0, Math.floor((p.y / 100) * 6)));
     const col = Math.min(4, Math.max(0, Math.floor((p.x / 100) * 5)));
-    grid[row][col] += 1;
+    grid[row][col] += 1; plotted += 1;
   }
   const maxCell = Math.max(1, ...grid.flat());
-  const cells = grid.map((r, ri) => `<div class="rep-pm-rowlabel">${lengths[ri]}</div>` + r.map((c) => `<div class="rep-pm-cell" style="background:rgba(77,179,255,${0.12 + 0.6 * (c / maxCell)})">${c || ""}</div>`).join("")).join("");
-  return `<div class="rep-pitchmap">${cells}</div><div class="rep-pm-cols">${lines.map((l) => `<span>${l}</span>`).join("")}</div>`;
+  const cells = grid.map((r, ri) => `<div class="rep-pm-rowlabel">${rowLabels[ri]}</div>` + r.map((c) => `<div class="rep-pm-cell" style="background:rgba(77,179,255,${0.12 + 0.6 * (c / maxCell)})">${c || ""}</div>`).join("")).join("");
+  const note = plotted ? "" : `<div class="rep-none">No ${which === "height" ? "impact" : "pitch"} points recorded.</div>`;
+  return `<div class="rep-pitchmap">${cells}</div><div class="rep-pm-cols">${lines.map((l) => `<span>${l}</span>`).join("")}</div>${note}`;
 }
+
+// Pitch Map — where the ball bounced.
 function reportPitchMap(inns) {
   const balls = allBalls(inns);
-  return `${repTitle("Pitch Map Report")}<div class="rep-wagon-grid"><div>${pitchGrid(balls)}</div><div class="rep-panels">${scoringPanel(balls)}</div></div>`;
+  return `${repTitle("Pitch Map Report")}<div class="rep-wagon-grid"><div><div class="rep-sub">Standard Pitch Map</div>${pitchGrid(balls, "pitch")}</div><div class="rep-panels">${scoringPanel(balls)}</div></div>`;
+}
+// Pitch Map Impact — where the ball passed the stumps (the 2nd coded point).
+function reportPitchImpact(inns) {
+  const balls = allBalls(inns);
+  return `${repTitle("Pitch Map Impact")}<div class="rep-wagon-grid"><div><div class="rep-sub">Impact / Stump-Passing Height</div>${pitchGrid(balls, "height")}</div><div class="rep-panels">${scoringPanel(balls)}</div></div>`;
+}
+// PitchMap & ImpactPitch — both views side by side (the reference pairing).
+function reportPitchBoth(inns) {
+  const balls = allBalls(inns);
+  return `${repTitle("PitchMap & ImpactPitch")}<div class="rep-cmp-grid">
+    <div class="rep-cmp-side"><div class="rep-sub">Standard Pitch Map</div>${pitchGrid(balls, "pitch")}</div>
+    <div class="rep-cmp-side"><div class="rep-sub">Impact Pitch</div>${pitchGrid(balls, "height")}</div></div>`;
 }
 
 // Balls faced by one striker across the given innings.
@@ -1999,25 +2097,85 @@ function reportBowlerKPI(inns) {
   return `${repTitle("Bowler KPI")}<div class="rep-scroll"><table class="rep-table"><thead><tr><th class="rep-l">Bowler</th><th>Inns</th><th>Overs</th><th>Runs</th><th>Wkts</th><th>S/R</th><th>Eco</th><th>Avg</th><th>DB</th><th>DB%</th><th>SB</th><th>4s</th><th>6s</th><th>Wd</th><th>NB</th></tr></thead><tbody>${rows || `<tr><td colspan="15" class="rep-none">No data.</td></tr>`}</tbody></table></div>`;
 }
 
-// Over comparison — side-by-side over table for both innings.
+// KPI Report — the combined view: batting KPI table over bowling KPI table.
+function reportKpiCombined(inns) {
+  return `${reportBatsmanKPI(inns)}${reportBowlerKPI(inns)}`;
+}
+
+// Recent Performance — each batsman's innings-by-innings progression in ten-ball
+// blocks, so form through the innings is visible rather than one total.
+function reportRecentPerformance(inns) {
+  const out = [];
+  inns.forEach((i) => {
+    const names = [...new Set(i.balls.map((b) => b.striker).filter(Boolean))];
+    const rows = names.map((n) => {
+      const bs = i.balls.filter((b) => b.striker === n);
+      const blocks = [];
+      for (let s = 0; s < bs.length; s += 10) {
+        const chunk = bs.slice(s, s + 10);
+        blocks.push(`${chunk.reduce((a, b) => a + ballBat(b), 0)}<span class="rep-muted">(${chunk.filter(isLegal).length})</span>`);
+      }
+      const r = battingCard(bs)[0] || { runs: 0, balls: 0, sr: 0, fours: 0, sixes: 0 };
+      return `<tr><td class="rep-l">${esc(n)}</td><td>${r.runs}</td><td>${r.balls}</td><td>${num(r.sr)}</td><td>${r.fours}</td><td>${r.sixes}</td><td class="rep-l">${blocks.join(" · ") || "—"}</td></tr>`;
+    }).join("");
+    if (rows) out.push(`<div class="rep-inns-head">${esc(i.batName)} — Recent Performance (Innings ${i.innings})</div>
+      <div class="rep-scroll"><table class="rep-table"><thead><tr><th class="rep-l">Batsman</th><th>Runs</th><th>Balls</th><th>S/R</th><th>4's</th><th>6's</th><th class="rep-l">Per 10 balls — runs(faced)</th></tr></thead><tbody>${rows}</tbody></table></div>`);
+  });
+  return out.join("") || `${repTitle("Recent Performance")}<div class="rep-none">No batting data.</div>`;
+}
+
+// Session Report — team batting/bowling totals per session (innings split in
+// three), the team-level counterpart to the per-bowler session report.
+function reportSession(inns) {
+  const rows = [];
+  inns.forEach((i) => {
+    const maxOver = Math.max(1, ...i.balls.map((b) => overIndexOf(b.num) + 1));
+    const per = Math.max(1, Math.ceil(maxOver / 3));
+    for (let s = 0; s < 3; s++) {
+      const bs = i.balls.filter((b) => { const o = overIndexOf(b.num); return o >= s * per && o < (s + 1) * per; });
+      if (!bs.length) continue;
+      const g = scoringSummary(bs);
+      rows.push(`<tr><td class="rep-l">${esc(i.batName)}</td><td>${i.innings}</td><td>${s + 1}</td><td>${s * per + 1}–${Math.min(maxOver, (s + 1) * per)}</td><td>${g.runs}</td><td>${g.balls}</td><td>${g.wkts}</td><td>${g.balls ? num(g.runs / (g.balls / 6)) : "0.00"}</td><td>${g.dots}</td><td>${num(pct(g.dots, g.balls))}</td><td>${g.fours}</td><td>${g.sixes}</td><td>${g.WD + g.NB + g.B + g.LB + g.P}</td></tr>`);
+    }
+  });
+  return `${repTitle("Session Report")}<div class="rep-scroll"><table class="rep-table"><thead><tr><th class="rep-l">Team</th><th>Inns</th><th>Session</th><th>Overs</th><th>Runs</th><th>Balls</th><th>Wkts</th><th>RPO</th><th>Dots</th><th>DB%</th><th>4's</th><th>6's</th><th>Extras</th></tr></thead>
+    <tbody>${rows.join("") || `<tr><td colspan="13" class="rep-none">No data.</td></tr>`}</tbody></table></div>`;
+}
+
+// Over comparison — side-by-side over table for both innings, with the chase
+// columns (rate/runs required, balls remaining) on the second innings.
 function reportOverComparison(inns) {
-  const cards = inns.map((i) => ({ i, ov: overAgg(i.balls), bc: i.balls }));
+  const cards = inns.map((i) => ({ i, ov: overAgg(i.balls) }));
   const maxOver = Math.max(1, ...cards.flatMap((c) => c.ov.map((o) => o.over + 1)));
-  let cum = inns.map(() => 0);
+  const totalOvers = Math.max(maxOver, +((rep.match || {}).overs) || (rep.match && rep.match.state && +rep.match.state.overs) || 0);
+  const target = cards.length > 1 ? totals(inns[0].balls).runs + 1 : 0;
+  let cum = inns.map(() => 0), cumBalls = inns.map(() => 0);
   const rows = [];
   for (let o = 0; o < maxOver; o++) {
     const cells = cards.map((c, ci) => {
+      const chase = ci === 1;
+      const blank = chase ? `<td></td><td></td><td></td><td></td><td></td><td></td><td></td>` : `<td></td><td></td><td></td><td></td><td></td>`;
       const ov = c.ov.find((x) => x.over === o);
-      if (!ov) return `<td></td><td></td><td></td><td></td>`;
-      cum[ci] += ov.runs;
-      const rr = ((cum[ci]) / (o + 1)).toFixed(2);
+      if (!ov) return blank;
+      cum[ci] += ov.runs; cumBalls[ci] += ov.balls;
+      const rr = num(cum[ci] / (cumBalls[ci] / 6 || 1));
+      // run rate across the most recent five overs
+      const last5 = c.ov.filter((x) => x.over > o - 5 && x.over <= o);
+      const rr5 = num(last5.reduce((a, x) => a + x.runs, 0) / (Math.min(o + 1, 5)));
       const w = inns[ci].balls.filter((b) => overIndexOf(b.num) <= o && isWicket(b)).length;
-      return `<td class="rep-l">${esc(ov.bowler || "")}</td><td>${cum[ci]}/${w}</td><td>${ov.runs}</td><td>${rr}</td>`;
+      let extra = "";
+      if (chase && target) {
+        const runsReq = Math.max(0, target - cum[ci]);
+        const ballsRem = Math.max(0, totalOvers * 6 - cumBalls[ci]);
+        const rateReq = ballsRem ? num(runsReq / (ballsRem / 6)) : "0.00";
+        extra = `<td>${rateReq}</td><td>${runsReq}</td><td>${ballsRem}</td>`;
+      } else if (chase) extra = `<td></td><td></td><td></td>`;
+      return `<td class="rep-l">${esc(ov.bowler || "")}</td><td>${cum[ci]}/${w}</td><td>${ov.runs}</td><td>${rr}</td><td>${rr5}</td>${extra}`;
     }).join("");
     rows.push(`<tr><td>${o + 1}</td>${cells}</tr>`);
   }
-  const heads = inns.map((i) => `<th class="rep-l">Bowler</th><th>Score</th><th>Runs</th><th>RR</th>`).join("");
-  return `${repTitle("Over Comparison")}<div class="rep-scroll"><table class="rep-table"><thead><tr><th>Over</th>${heads}</tr><tr class="rep-subhead"><th></th>${inns.map((i) => `<th colspan="4">${esc(i.batName)} — Inns ${i.innings}</th>`).join("")}</tr></thead><tbody>${rows.join("")}</tbody></table></div>`;
+  const heads = inns.map((i, ci) => `<th class="rep-l">Bowler</th><th>Score</th><th>Runs</th><th>${ci ? "2n RR" : "RR"}</th><th>RR/5 Ovs</th>${ci ? `<th>Rate Req.</th><th>Runs Req.</th><th>Balls Rem.</th>` : ""}`).join("");
+  return `${repTitle("Over Comparison")}<div class="rep-scroll"><table class="rep-table"><thead><tr class="rep-subhead"><th></th>${inns.map((i, ci) => `<th colspan="${ci ? 8 : 5}">${esc(i.batName)} ${i.innings === 1 ? "1st" : "2nd"} Innings</th>`).join("")}</tr><tr><th>Over</th>${heads}</tr></thead><tbody>${rows.join("")}</tbody></table></div>`;
 }
 
 // Commentary — over-grouped ball-by-ball narrative.
@@ -2039,30 +2197,379 @@ function reportCommentary(inns) {
   }).join("");
 }
 
-// Simple batsman × bowler runs matrix (used for the "vs" reports).
-function reportVsMatrix(inns, title) {
-  const balls = allBalls(inns), bats = [], bowls = [], grid = new Map();
-  for (const b of balls) {
-    if (!b.striker || !b.bowler) continue;
-    if (!bats.includes(b.striker)) bats.push(b.striker);
-    if (!bowls.includes(b.bowler)) bowls.push(b.bowler);
-    const k = b.striker + "|" + b.bowler;
-    if (!grid.has(k)) grid.set(k, { runs: 0, balls: 0, w: 0 });
-    const c = grid.get(k); c.runs += ballBat(b); if (isLegal(b)) c.balls += 1; if (bowlerWicket(b) && b.outBatsman === b.striker) c.w += 1;
-  }
-  const head = `<th class="rep-l">Batsman \\ Bowler</th>${bowls.map((bo) => `<th>${esc(bo)}</th>`).join("")}`;
-  const rows = bats.map((ba) => `<tr><td class="rep-l">${esc(ba)}</td>${bowls.map((bo) => { const c = grid.get(ba + "|" + bo); return `<td>${c ? `${c.runs}<span class="rep-muted">(${c.balls})${c.w ? " ✗" : ""}</span>` : ""}</td>`; }).join("")}</tr>`).join("");
-  return `${repTitle(title)}<div class="rep-scroll"><table class="rep-table rep-matrix"><thead><tr>${head}</tr></thead><tbody>${rows || `<tr><td class="rep-none">No data.</td></tr>`}</tbody></table></div>`;
+// Head-to-head reports. These two are mirror images, not the same table:
+// "Batsman Vs Bowler" groups by BATSMAN and lists each bowler he faced;
+// "Bowler Vs Batsman" groups by BOWLER and lists each batsman he bowled to.
+// Each group shows the parent's totals, then one indented row per opponent.
+// Unc / Btn come from the per-ball coding tags (uncontrolled / beaten).
+function vsTally() { return { balls: 0, runs: 0, dots: 0, ones: 0, twos: 0, fours: 0, unc: 0, btn: 0, wkts: 0 }; }
+function vsAdd(t, b) {
+  if (isLegal(b)) t.balls += 1;
+  const bat = ballBat(b);
+  t.runs += bat;
+  if (bat === 0 && isLegal(b)) t.dots += 1;
+  else if (bat === 1) t.ones += 1;
+  else if (bat === 2) t.twos += 1;
+  if (bat === 4) t.fours += 1;
+  const tg = b.tags || {};
+  if (tg.unc) t.unc += 1;
+  if (tg.btn) t.btn += 1;
+  if (bowlerWicket(b) && b.outBatsman === b.striker) t.wkts += 1;
+}
+const vsCells = (t) => `<td>${t.dots}</td><td>${t.ones}</td><td>${t.twos}</td><td>${t.fours}</td><td>${t.unc}</td><td>${t.btn}</td><td>${t.balls}</td><td>${t.runs}</td><td>${num(pct(t.runs, t.balls))}</td>`;
+
+function reportVs(inns, axis) {
+  const parentOf = (b) => (axis === "batsman" ? b.striker : b.bowler) || "";
+  const childOf = (b) => (axis === "batsman" ? b.bowler : b.striker) || "";
+  const groups = new Map(); // parent -> { tot, inns:Set, kids: Map(child -> {tot, inns:Set, team, match}) }
+  inns.forEach((i) => i.balls.forEach((b) => {
+    const p = parentOf(b), c = childOf(b);
+    if (!p || !c) return;
+    if (!groups.has(p)) groups.set(p, { tot: vsTally(), inns: new Set(), kids: new Map() });
+    const g = groups.get(p);
+    vsAdd(g.tot, b); g.inns.add(i.innings);
+    if (!g.kids.has(c)) g.kids.set(c, { tot: vsTally(), inns: new Set(), team: axis === "batsman" ? i.bowlCode : i.batCode });
+    const k = g.kids.get(c);
+    vsAdd(k.tot, b); k.inns.add(i.innings);
+  }));
+  const matchName = (rep.match || {}).matchName || "";
+  const parentLabel = axis === "batsman" ? "Batsman" : "Bowler";
+  const childLabel = axis === "batsman" ? "Bowler" : "Batsman";
+  const body = [...groups.entries()]
+    .sort((a, b) => b[1].tot.runs - a[1].tot.runs)
+    .map(([name, g]) => {
+      const head = `<tr class="rep-vs-parent"><td class="rep-l"><span class="rep-exp">−</span> ${esc(name)}</td><td>${g.inns.size}</td>${vsCells(g.tot)}</tr>`;
+      const kidHead = `<tr class="rep-subhead"><th class="rep-l">${childLabel}</th><th>Match</th><th>InnsNo</th><th>Team</th><th>0</th><th>1</th><th>2</th><th>B4'S</th><th>Unc</th><th>Btn</th><th>Balls</th><th>Runs</th><th>SR</th></tr>`;
+      const kids = [...g.kids.entries()].sort((a, b) => b[1].tot.runs - a[1].tot.runs)
+        .map(([cn, k]) => `<tr class="rep-vs-child"><td class="rep-l">${esc(cn)}</td><td class="rep-l">${esc(matchName)}</td><td>${[...k.inns].join(",")}</td><td>${esc(k.team)}</td>${vsCells(k.tot)}</tr>`).join("");
+      return head + kidHead + kids;
+    }).join("");
+  return `${repTitle(axis === "batsman" ? "Batsman vs Bowler" : "Bowler vs Batsman")}
+    <div class="rep-scroll"><table class="rep-table rep-vs"><thead><tr><th class="rep-l">${parentLabel}</th><th>TotalInnsNo</th><th>0</th><th>1</th><th>2</th><th>B4'S</th><th>Unc</th><th>Btn</th><th>Balls</th><th>Runs</th><th>SR</th></tr></thead>
+    <tbody>${body || `<tr><td colspan="11" class="rep-none">No data.</td></tr>`}</tbody></table></div>`;
 }
 
-// TenBall summary — group deliveries into blocks of ten.
+// TenBall summary — running totals every ten deliveries (reference columns:
+// Teamname, Overs, Balls, Runs, Dots, Wicket, B4'S, B6'S, Total Score).
 function reportTenBall(inns) {
   return inns.map((i) => {
-    const legal = i.balls.filter(() => true); const blocks = [];
-    for (let s = 0; s < legal.length; s += 10) { const bs = legal.slice(s, s + 10); blocks.push({ from: s + 1, to: s + bs.length, runs: bs.reduce((a, b) => a + ballTeam(b), 0), w: bs.filter(isWicket).length, fours: bs.filter((b) => ballBat(b) === 4).length, sixes: bs.filter((b) => ballBat(b) === 6).length }); }
-    const rows = blocks.map((b) => `<tr><td>${b.from}–${b.to}</td><td>${b.runs}</td><td>${b.w}</td><td>${b.fours}</td><td>${b.sixes}</td></tr>`).join("");
-    return `<div class="rep-inns-head">${esc(i.batName)} — Ten Ball Summary</div><div class="rep-scroll"><table class="rep-table"><thead><tr><th>Balls</th><th>Runs</th><th>Wkts</th><th>4s</th><th>6s</th></tr></thead><tbody>${rows || `<tr><td colspan="5" class="rep-none">No data.</td></tr>`}</tbody></table></div>`;
+    const blocks = []; let cumR = 0, cumW = 0;
+    for (let s = 0; s < i.balls.length; s += 10) {
+      const bs = i.balls.slice(s, s + 10);
+      const runs = bs.reduce((a, b) => a + ballTeam(b), 0), w = bs.filter(isWicket).length;
+      cumR += runs; cumW += w;
+      blocks.push({
+        overs: bs.length ? bs[bs.length - 1].num : "", balls: s + bs.length, runs,
+        dots: bs.filter((b) => ballTeam(b) === 0 && isLegal(b)).length, w,
+        b4: bs.filter((b) => ballBat(b) === 4).length, b6: bs.filter((b) => ballBat(b) === 6).length,
+        total: `${cumR}/${cumW}`,
+      });
+    }
+    const rows = blocks.map((b) => `<tr><td class="rep-l">${esc(i.batCode)}</td><td>${esc(String(b.overs))}</td><td>${b.balls}</td><td>${b.runs}</td><td>${b.dots}</td><td>${b.w}</td><td>${b.b4}</td><td>${b.b6}</td><td>${b.total}</td></tr>`).join("");
+    return `<div class="rep-inns-head">${esc(i.batName)} — Ten Ball Summary</div><div class="rep-scroll"><table class="rep-table"><thead><tr><th class="rep-l">Teamname</th><th>Overs</th><th>Balls</th><th>Runs</th><th>Dots</th><th>Wicket</th><th>B4'S</th><th>B6'S</th><th>Total Score</th></tr></thead><tbody>${rows || `<tr><td colspan="9" class="rep-none">No data.</td></tr>`}</tbody></table></div>`;
   }).join("");
+}
+
+// Match Over Slab — phase-of-innings aggregates per team (T20 slabs 1-6 / 7-10 /
+// 11-15 / 16-20; ten-over slabs on longer formats).
+function reportMatchOverSlab(inns) {
+  const rows = [];
+  inns.forEach((i) => {
+    const maxOver = Math.max(1, ...i.balls.map((b) => overIndexOf(b.num) + 1));
+    const slabs = maxOver <= 20 ? [[1, 6], [7, 10], [11, 15], [16, 20]] : [[1, 10], [11, 20], [21, 30], [31, 40], [41, 50]];
+    for (const [f, t] of slabs) {
+      const bs = i.balls.filter((b) => { const o = overIndexOf(b.num) + 1; return o >= f && o <= t; });
+      if (!bs.length) continue;
+      const s = scoringSummary(bs);
+      const bdry = s.runs ? pct(s.fours * 4 + s.sixes * 6, s.runs) : 0;
+      rows.push(`<tr><td class="rep-l">${esc(i.batCode)}</td><td>${f}</td><td>${t}</td><td>${s.runs}</td><td>${s.balls}</td><td>${s.wkts}</td><td>${num(pct(s.runs, s.balls))}</td><td>${s.dots}</td><td>${s.ones}</td><td>${s.twos}</td><td>${s.threes}</td><td>${s.fours}</td><td>${s.sixes}</td><td>${num(pct(s.dots, s.balls))}</td><td>${num(bdry)}</td></tr>`);
+    }
+  });
+  return `${repTitle("Match Over Slab")}<div class="rep-scroll"><table class="rep-table"><thead><tr><th class="rep-l">Teamname</th><th>FMOV</th><th>TOOV</th><th>Runs</th><th>Balls</th><th>Wicket</th><th>SR</th><th>Dots</th><th>Ones</th><th>Twos</th><th>Threes</th><th>Fours</th><th>Sixes</th><th>DB%</th><th>BDRY%</th></tr></thead><tbody>${rows.join("") || `<tr><td colspan="15" class="rep-none">No data.</td></tr>`}</tbody></table></div>`;
+}
+
+// Spell report — each bowler's overs grouped into spells (a gap of more than
+// one resting over starts a new spell), with per-spell scoring breakdown.
+function reportSpell(inns) {
+  const out = [];
+  inns.forEach((i) => {
+    const byBowler = new Map();
+    i.balls.forEach((b) => {
+      if (!b.bowler) return;
+      if (!byBowler.has(b.bowler)) byBowler.set(b.bowler, new Map());
+      const overs = byBowler.get(b.bowler), oi = overIndexOf(b.num);
+      if (!overs.has(oi)) overs.set(oi, []);
+      overs.get(oi).push(b);
+    });
+    const names = [...byBowler.keys()].sort();
+    if (!names.length) return;
+    const rows = [];
+    names.forEach((name) => {
+      const overIdx = [...byBowler.get(name).keys()].sort((a, b) => a - b);
+      const spells = []; let spell = [];
+      overIdx.forEach((oi, k) => {
+        // bowlers alternate ends, so consecutive spell overs sit 2 over-numbers apart
+        if (k && oi - overIdx[k - 1] > 2) { spells.push(spell); spell = []; }
+        spell.push(oi);
+      });
+      if (spell.length) spells.push(spell);
+      rows.push(`<tr class="rep-subhead"><th class="rep-l" colspan="17">${esc(name)}</th></tr>`);
+      spells.forEach((ovs, si) => {
+        const bs = ovs.flatMap((oi) => byBowler.get(name).get(oi));
+        const s = scoringSummary(bs);
+        const legal = bs.filter(isLegal).length, wkts = bs.filter(bowlerWicket).length;
+        const scoring = s.scoring, bdries = s.fours + s.sixes;
+        rows.push(`<tr><td class="rep-l">${esc(name)}</td><td>${si + 1}</td><td>${i.innings}</td><td>1</td><td>${Math.floor(legal / 6)}.${legal % 6}</td><td>${s.dots}</td><td>${s.ones}</td><td>${s.twos}</td><td>${s.fours}</td><td>${s.sixes}</td><td>${bdries}</td><td>${num(pct(bdries, legal))}</td><td>${scoring}</td><td>${s.runs}</td><td>${scoring ? num(s.runs / scoring) : "0.00"}</td><td>${wkts}</td><td>${legal ? num(s.runs / (legal / 6)) : "0.00"}</td></tr>`);
+      });
+    });
+    out.push(`<div class="rep-inns-head">${esc(i.bowlName)} — Bowling Spells (Innings ${i.innings})</div>
+      <div class="rep-scroll"><table class="rep-table"><thead><tr><th class="rep-l">Bowler</th><th>Spell</th><th>Inns</th><th>Day</th><th>Overs</th><th>Dot Balls</th><th>1's</th><th>2's</th><th>4's</th><th>6's</th><th>Boundary</th><th>Boundaries %</th><th>SB</th><th>Runs</th><th>RSS</th><th>Wickets</th><th>Economy</th></tr></thead><tbody>${rows.join("")}</tbody></table></div>`);
+  });
+  return out.join("") || `${repTitle("Spell Report")}<div class="rep-none">No bowling data.</div>`;
+}
+
+// Bowl / shot breakdown matrices ("… - Bowl & Shot"): one row per player, one
+// column per shot (or ball) type actually used, plus the balls/4s/6s/wkts head.
+// `axis` picks which player the rows key on, `kind` which vocabulary the
+// columns come from.
+function reportBowlShot(inns, title, axis, kind) {
+  const balls = allBalls(inns);
+  const key = (b) => (axis === "bowler" ? b.bowler : b.striker) || "";
+  const val = (b) => (kind === "shot" ? b.shot : b.bowl) || "";
+  const players = [], types = [], grid = new Map(), head = new Map();
+  for (const b of balls) {
+    const p = key(b); if (!p) continue;
+    if (!players.includes(p)) players.push(p);
+    if (!head.has(p)) head.set(p, { balls: 0, fours: 0, sixes: 0, wkts: 0 });
+    const h = head.get(p);
+    if (isLegal(b)) h.balls += 1;
+    if (ballBat(b) === 4) h.fours += 1;
+    if (ballBat(b) === 6) h.sixes += 1;
+    if (isWicket(b)) h.wkts += 1;
+    const t = val(b); if (!t) continue;
+    if (!types.includes(t)) types.push(t);
+    const k = p + "|" + t;
+    grid.set(k, (grid.get(k) || 0) + 1);
+  }
+  const rows = players.map((p) => {
+    const h = head.get(p);
+    return `<tr><td class="rep-l">${esc(p)}</td><td>${h.balls}</td><td>${h.fours}</td><td>${h.sixes}</td><td>${h.wkts}</td>${types.map((t) => `<td>${grid.get(p + "|" + t) || 0}</td>`).join("")}</tr>`;
+  }).join("");
+  const label = kind === "shot" ? "SHOT TYPE" : "BALL TYPE";
+  return `${repTitle(title)}<div class="rep-toggle"><span class="rep-pill active">${label}</span></div>
+    <div class="rep-scroll"><table class="rep-table"><thead><tr><th class="rep-l">${axis === "bowler" ? "Bowler" : "Batsman"}</th><th>Balls</th><th>4's</th><th>6's</th><th>Wkts</th>${types.map((t) => `<th>${esc(t)}</th>`).join("")}</tr></thead>
+    <tbody>${rows || `<tr><td colspan="${types.length + 5}" class="rep-none">No data.</td></tr>`}</tbody></table></div>`;
+}
+
+// Shot Selection — how often each shot was played and what it produced.
+// scope "batsman" gives a row per batsman × shot; "match" aggregates by shot.
+function reportShotSelection(inns, scope) {
+  const balls = allBalls(inns);
+  const agg = new Map();
+  for (const b of balls) {
+    const shot = b.shot || "";
+    if (!shot) continue;
+    const k = scope === "batsman" ? (b.striker || "") + "|" + shot : shot;
+    if (!agg.has(k)) agg.set(k, { player: b.striker || "", shot, balls: 0, runs: 0, dots: 0, fours: 0, sixes: 0, wkts: 0 });
+    const r = agg.get(k);
+    if (isLegal(b)) r.balls += 1;
+    r.runs += ballBat(b);
+    if (ballTeam(b) === 0 && isLegal(b)) r.dots += 1;
+    if (ballBat(b) === 4) r.fours += 1;
+    if (ballBat(b) === 6) r.sixes += 1;
+    if (isWicket(b)) r.wkts += 1;
+  }
+  const rows = [...agg.values()].sort((a, b) => b.runs - a.runs).map((r) =>
+    `<tr>${scope === "batsman" ? `<td class="rep-l">${esc(r.player)}</td>` : ""}<td class="rep-l">${esc(r.shot)}</td><td>${r.balls}</td><td>${r.runs}</td><td>${num(pct(r.runs, r.balls))}</td><td>${r.dots}</td><td>${r.fours}</td><td>${r.sixes}</td><td>${r.wkts}</td></tr>`).join("");
+  const cols = (scope === "batsman" ? 9 : 8);
+  return `${repTitle(scope === "batsman" ? "Shot Selection - Batsman" : "Shot Selection - Match")}
+    <div class="rep-scroll"><table class="rep-table"><thead><tr>${scope === "batsman" ? `<th class="rep-l">Batsman</th>` : ""}<th class="rep-l">Shot</th><th>Balls</th><th>Runs</th><th>S/R</th><th>Dots</th><th>4's</th><th>6's</th><th>Wkts</th></tr></thead>
+    <tbody>${rows || `<tr><td colspan="${cols}" class="rep-none">No shot types recorded.</td></tr>`}</tbody></table></div>`;
+}
+
+// Ball types are grouped Fast / Spin on the coding screen; classify a saved
+// ball back to its pace family so the fast-vs-spin split can be reported.
+const SPIN_BALLS = ["Off Spin", "Doosra", "Faster One", "Leg Spin", "Googly", "Flipper", "Orthodox",
+  "Chinaman", "Arm Ball", "Straighter One", "No turn", "Wrong One", "Top Spin", "Carrom Ball",
+  "Drifter", "Under Spin", "Slider", "Back Spin", "W Yorker"];
+const paceOf = (b) => (b.bowl ? (SPIN_BALLS.includes(b.bowl) ? "Spin" : "Fast") : "");
+
+// Fast vs Spin — how the batting side fared against each bowling family.
+function reportFastVsSpin(inns) {
+  const rows = [];
+  inns.forEach((i) => {
+    ["Fast", "Spin"].forEach((pace) => {
+      const bs = i.balls.filter((b) => paceOf(b) === pace);
+      if (!bs.length) return;
+      const s = scoringSummary(bs);
+      rows.push(`<tr><td class="rep-l">${esc(i.batName)}</td><td>${i.innings}</td><td>${pace}</td><td>${s.balls}</td><td>${s.runs}</td><td>${num(pct(s.runs, s.balls))}</td><td>${s.wkts}</td><td>${s.dots}</td><td>${num(pct(s.dots, s.balls))}</td><td>${s.fours}</td><td>${s.sixes}</td><td>${s.balls ? num(s.runs / (s.balls / 6)) : "0.00"}</td></tr>`);
+    });
+  });
+  return `${repTitle("Day Fast Vs Spin Report")}<div class="rep-scroll"><table class="rep-table"><thead><tr><th class="rep-l">Team</th><th>Inns</th><th>Type</th><th>Balls</th><th>Runs</th><th>S/R</th><th>Wkts</th><th>Dots</th><th>DB%</th><th>4's</th><th>6's</th><th>RPO</th></tr></thead>
+    <tbody>${rows.join("") || `<tr><td colspan="12" class="rep-none">No ball types recorded.</td></tr>`}</tbody></table></div>`;
+}
+
+// Bowler session report — each bowler's figures split by session (a session is
+// a third of the innings' overs, matching the reference's day/session split).
+function reportBowlerSession(inns) {
+  const out = [];
+  inns.forEach((i) => {
+    const maxOver = Math.max(1, ...i.balls.map((b) => overIndexOf(b.num) + 1));
+    const per = Math.max(1, Math.ceil(maxOver / 3));
+    const rows = [];
+    for (let s = 0; s < 3; s++) {
+      const bs = i.balls.filter((b) => { const o = overIndexOf(b.num); return o >= s * per && o < (s + 1) * per; });
+      if (!bs.length) continue;
+      bowlingCard(bs).forEach((r) => {
+        rows.push(`<tr><td class="rep-l">${esc(r.name)}</td><td>${i.innings}</td><td>${s + 1}</td><td>${s * per + 1}–${Math.min(maxOver, (s + 1) * per)}</td><td>${r.overs}</td><td>${r.runs}</td><td>${r.wkts}</td><td>${num(r.econ)}</td><td>${r.dots}</td><td>${num(r.dbPct)}</td><td>${r.fours}</td><td>${r.sixes}</td></tr>`);
+      });
+    }
+    if (rows.length) out.push(`<div class="rep-inns-head">${esc(i.bowlName)} — Bowling by Session (Innings ${i.innings})</div>
+      <div class="rep-scroll"><table class="rep-table"><thead><tr><th class="rep-l">Bowler</th><th>Inns</th><th>Session</th><th>Overs</th><th>Ov Bowled</th><th>Runs</th><th>Wkts</th><th>Eco</th><th>DB</th><th>DB%</th><th>4's</th><th>6's</th></tr></thead><tbody>${rows.join("")}</tbody></table></div>`);
+  });
+  return out.join("") || `${repTitle("Day Wise Bowler Session Report")}<div class="rep-none">No bowling data.</div>`;
+}
+
+// Boundary NextBall — what happened on the delivery immediately after each
+// boundary (the reference's "did the bowler respond?" report).
+function reportBoundaryNextBall(inns) {
+  const rows = [];
+  inns.forEach((i) => {
+    i.balls.forEach((b, ix) => {
+      const bat = ballBat(b);
+      if (bat !== 4 && bat !== 6) return;
+      const nx = i.balls[ix + 1];
+      rows.push(`<tr><td class="rep-l">${esc(i.batCode)}</td><td>${esc(b.num)}</td><td class="rep-l">${esc(b.bowler || "")}</td><td class="rep-l">${esc(b.striker || "")}</td><td>${bat}</td>
+        <td>${nx ? esc(nx.num) : "—"}</td><td class="rep-l">${nx ? esc(nx.striker || "") : "—"}</td><td>${nx ? ballBat(nx) : "—"}</td>
+        <td>${nx ? (isWicket(nx) ? "W" : (parseExt(nx.ext).type || "")) : ""}</td><td class="rep-l">${nx ? esc(nx.shot || "") : ""}</td></tr>`);
+    });
+  });
+  const summary = (() => {
+    const all = allBalls(inns);
+    let bdry = 0, next = 0, nextRuns = 0, nextDots = 0, nextWkts = 0;
+    inns.forEach((i) => i.balls.forEach((b, ix) => {
+      const bat = ballBat(b);
+      if (bat !== 4 && bat !== 6) return;
+      bdry += 1;
+      const nx = i.balls[ix + 1]; if (!nx) return;
+      next += 1; nextRuns += ballTeam(nx);
+      if (ballTeam(nx) === 0) nextDots += 1;
+      if (isWicket(nx)) nextWkts += 1;
+    }));
+    return `<div class="rep-foot">${bdry} boundaries · next ball: ${nextRuns} runs off ${next} · ${nextDots} dots (${num(pct(nextDots, next), 1)}%) · ${nextWkts} wkts</div>`;
+  })();
+  return `${repTitle("Boundary NextBall")}<div class="rep-scroll"><table class="rep-table"><thead><tr><th class="rep-l">Team</th><th>Over</th><th class="rep-l">Bowler</th><th class="rep-l">Batsman</th><th>Runs</th><th>Next Over</th><th class="rep-l">Next Batsman</th><th>Next Runs</th><th>Next Event</th><th class="rep-l">Next Shot</th></tr></thead>
+    <tbody>${rows.join("") || `<tr><td colspan="10" class="rep-none">No boundaries recorded.</td></tr>`}</tbody></table></div>${rows.length ? summary : ""}`;
+}
+
+// The two standing umpires for the loaded match, resolved from the officials
+// master (the match record only stores their ids).
+function matchUmpires() {
+  const m = rep.match || {};
+  const nameOf = (id, fallback) => {
+    const o = (rep.officials || []).find((x) => x.id === id);
+    return (o && o.name) || fallback;
+  };
+  return [nameOf(m.umpire1Id, "Umpire 1"), nameOf(m.umpire2Id, "Umpire 2")];
+}
+
+// Fielder Report — one row per fielder, from the fielding events the coding
+// screen records on right-click (position → event → fielder). Those live at
+// match level (`state.fieldingEvents`), not per ball, so this report reads the
+// saved state directly and honours only the over-range filter.
+function reportFielder() {
+  const st = (rep.match && rep.match.state) || {};
+  const evs = Array.isArray(st.fieldingEvents) ? st.fieldingEvents : [];
+  const f = rep.filters;
+  const from = f.fromOver ? +f.fromOver - 1 : null, to = f.toOver ? +f.toOver - 1 : null;
+  const inRange = evs.filter((e) => {
+    const oi = overIndexOf(e.over);
+    return !((from != null && oi < from) || (to != null && oi > to));
+  });
+  // Column → the fielding events that count towards it.
+  const COLS = [
+    ["Caught", ["Caught", "Catch Taken", "Airborne Catch"]],
+    ["Direct Hit", ["Direct Hit", "Thrown at Stumps"]],
+    ["Dive And Miss", ["Dive and Miss"]],
+    ["Fumble", ["Fumble", "Bad Throw"]],
+    ["Missfield", ["Missfield", "Chase and Miss", "Slide and Miss", "Slow to the Ball", "Catch Dropped"]],
+    ["Slide And Stop", ["Slide and Stop", "Dive and Stop", "Chase and Stop", "Airborne Stop"]],
+    ["Well Fielded", ["Well Fielded", "Good Throw", "Pick and Throw", "One Hand Pick and Throw", "Relay Throw", "Run Out Made", "Well Kept", "BACK UP", "GREAT EFFORT"]],
+  ];
+  const agg = new Map();
+  for (const e of inRange) {
+    const name = e.fielder || "";
+    if (!agg.has(name)) agg.set(name, { name, cost: 0, saved: 0, balls: 0, cells: COLS.map(() => 0) });
+    const r = agg.get(name);
+    r.balls += 1;
+    const nrs = +e.netRunsSaved || 0;
+    if (nrs > 0) r.saved += nrs; else r.cost += -nrs;
+    COLS.forEach(([, evts], ci) => { if (evts.includes(e.event)) r.cells[ci] += 1; });
+  }
+  const rows = [...agg.values()].sort((a, b) => a.name.localeCompare(b.name))
+    .map((r) => `<tr><td class="rep-l">${esc(r.name)}</td><td>${r.cost}</td><td>${r.saved}</td><td>${r.balls}</td>${r.cells.map((c) => `<td>${c}</td>`).join("")}</tr>`).join("");
+  return `${repTitle("Fielder Report")}<div class="rep-scroll"><table class="rep-table"><thead><tr><th class="rep-l">Player</th><th>Runs Cost</th><th>Runs Saved</th><th>Total Balls</th>${COLS.map(([l]) => `<th>${l}</th>`).join("")}</tr></thead>
+    <tbody>${rows || `<tr><td colspan="${COLS.length + 4}" class="rep-none">No fielding events recorded. Right-click the wagon wheel while coding to record them.</td></tr>`}</tbody></table></div>`;
+}
+
+// Appeal Report — every delivery the scorer flagged as an appeal, with the
+// umpire standing at that end and how it was decided.
+function reportAppeal(inns) {
+  const umps = matchUmpires();
+  const rows = [];
+  inns.forEach((i) => i.balls.forEach((b) => {
+    if (!b.appeals) return;
+    // umpires swap ends each over, so the standing umpire alternates with it
+    const ump = umps[overIndexOf(b.num) % 2];
+    rows.push(`<tr><td class="rep-l">${esc(i.batCode)}</td><td>${i.innings}</td><td class="rep-l">${esc(ump)}</td><td>${esc(b.num)}</td><td class="rep-l">${esc(b.striker || "")}</td><td class="rep-l">${esc(b.bowler || "")}</td><td>${esc(b.dismissal || (isWicket(b) ? "Out" : "LBW"))}</td><td>${b.review ? "Hawk Eye" : ""}</td><td>${b.review ? "YES" : "NO"}</td><td>${isWicket(b) ? "Up Held" : "Turned Down"}</td></tr>`);
+  }));
+  return `${repTitle("Appeal Report")}<div class="rep-scroll"><table class="rep-table"><thead><tr><th class="rep-l">Team Name</th><th>Inningsno</th><th class="rep-l">Umpire Name</th><th>Overs</th><th class="rep-l">Batsman</th><th class="rep-l">Bowler</th><th>Appeal Type</th><th>Appeal Components</th><th>Referred</th><th>Decision</th></tr></thead>
+    <tbody>${rows.join("") || `<tr><td colspan="10" class="rep-none">No appeals recorded. Use the Appeals control while coding a ball.</td></tr>`}</tbody></table></div>`;
+}
+
+// Umpire Report — the match header plus the three umpire-facing tallies the
+// reference shows: appeals, extras and penalties, grouped per umpire.
+function reportUmpire(inns) {
+  const m = rep.match || {}, st = m.state || {};
+  const umps = matchUmpires();
+  const header = `<div class="rep-ump-head"><span>${esc(m.matchName || "")}</span><span>${esc(String(m.matchDate || "").split("T")[0])}</span><span>${esc(m.venueName || "")}</span><span>${esc(m.matchType || "")}</span></div>`;
+  const balls = allBalls(inns);
+  const penalties = Array.isArray(st.penalties) ? st.penalties : [];
+  const block = (ump, ui) => {
+    // umpires alternate ends over by over
+    const mine = balls.filter((b) => overIndexOf(b.num) % 2 === ui);
+    const appeals = mine.filter((b) => b.appeals);
+    const extras = mine.filter((b) => parseExt(b.ext).type);
+    const pens = penalties.filter((p, pi) => pi % 2 === ui);
+    const rows = [
+      ...appeals.map((b) => ["Appeal", b.num, b.striker, b.nonstr, b.bowler, b.dismissal || "LBW"]),
+      ...extras.map((b) => { const e = parseExt(b.ext); return ["Extra", b.num, b.striker, b.nonstr, b.bowler, `${e.type} ${e.runs}`]; }),
+      ...pens.map((p) => ["Penalty", p.over || "", "", "", "", (p.reasons || []).join(", ") || "5 runs"]),
+    ];
+    const body = rows.map((r) => `<tr><td>${esc(String(r[0]))}</td><td>${esc(String(r[1]))}</td><td class="rep-l">${esc(String(r[2]))}</td><td class="rep-l">${esc(String(r[3]))}</td><td class="rep-l">${esc(String(r[4]))}</td><td class="rep-l">${esc(String(r[5]))}</td></tr>`).join("");
+    return `<div class="rep-inns-head">Umpire Name: ${esc(ump)} &nbsp; <span class="rep-muted">Count: ${rows.length}</span></div>
+      <div class="rep-scroll"><table class="rep-table"><thead><tr><th>Type</th><th>Over</th><th class="rep-l">Striker</th><th class="rep-l">Non Striker</th><th class="rep-l">Bowler</th><th class="rep-l">Detail</th></tr></thead>
+      <tbody>${body || `<tr><td colspan="6" class="rep-none">Nothing recorded for this umpire.</td></tr>`}</tbody></table></div>`;
+  };
+  return `${repTitle("Umpire Report")}${header}${umps.map(block).join("")}`;
+}
+
+// Two-up comparison layouts (Wagon Wheel / Pitchmap Comparison): an innings
+// picker over each half, reference-style.
+function cmpInnsPicker(which, sel, inns) {
+  return `<select class="rep-cmp-pick" data-wwc="${which}">${inns.map((i, ix) => `<option value="${ix}" ${ix === sel ? "selected" : ""}>${esc(i.batName)} — Inns ${i.innings}</option>`).join("")}</select>`;
+}
+function reportWagonComparison(inns) {
+  if (!inns.length) return `${repTitle("Wagon Wheel Comparison")}<div class="rep-none">No data.</div>`;
+  const ia = Math.min(rep.wwcA, inns.length - 1), ib = Math.min(rep.wwcB, inns.length - 1);
+  const side = (which, ix) => { const i = inns[ix]; return `<div class="rep-cmp-side"><div class="rep-cmp-head">${cmpInnsPicker(which, ix, inns)}</div>${wagonFieldSvg(i.balls, "combined")}${tallyChips(i.balls)}</div>`; };
+  return `${repTitle("Wagon Wheel Comparison")}<div class="rep-cmp-grid">${side("A", ia)}${side("B", ib)}</div>`;
+}
+function reportPitchComparison(inns) {
+  if (!inns.length) return `${repTitle("Pitchmap Comparison")}<div class="rep-none">No data.</div>`;
+  const ia = Math.min(rep.wwcA, inns.length - 1), ib = Math.min(rep.wwcB, inns.length - 1);
+  const side = (which, ix) => { const i = inns[ix]; return `<div class="rep-cmp-side"><div class="rep-cmp-head">${cmpInnsPicker(which, ix, inns)}</div>${pitchGrid(i.balls)}</div>`; };
+  return `${repTitle("Pitchmap Comparison")}<div class="rep-cmp-grid">${side("A", ia)}${side("B", ib)}</div>`;
 }
 
 // Map each report tab to its renderer. Tabs without a bespoke renderer fall back
@@ -2078,17 +2585,34 @@ const REPORT_RENDERERS = {
   "Wickets": reportWickets,
   "Spider Wagon": reportSpiderWagon,
   "Sector Wagon": reportSectorWagon,
+  "Spider&Sector Combined": (i) => wagonReport(i, "Spider & Sector Combined Report", "combined"),
+  "Wagon Wheel Comparison": reportWagonComparison,
   "Pitch Map": reportPitchMap,
-  "Pitch Map Impact": reportPitchMap,
+  "Pitch Map Impact": reportPitchImpact,
+  "PitchMap & ImpactPitch": reportPitchBoth,
+  "Pitchmap Comparison": reportPitchComparison,
+  "MatchOverSlab": reportMatchOverSlab,
+  "Spell Report": reportSpell,
+  "Session Report": reportSession,
+  "Fielder Report": reportFielder,
+  "Appeal Report": reportAppeal,
+  "Umpire Report": reportUmpire,
+  "Bowler Vs Batsman - Bowl & Shot": (i) => reportBowlShot(i, "Bowler vs Batsman - Bowl & Shot", "bowler", "shot"),
+  "Batsman Vs Bowler - Bowl & Shot": (i) => reportBowlShot(i, "Batsman vs Bowler - Bowl & Shot", "batsman", "bowl"),
+  "Shot Selection - Batsman": (i) => reportShotSelection(i, "batsman"),
+  "Shot Selection - Match": (i) => reportShotSelection(i, "match"),
+  "Day Fast VS Spin Report": reportFastVsSpin,
+  "Day Wise Bowler Session Report": reportBowlerSession,
+  "Boundary NextBall": reportBoundaryNextBall,
   "Batsman KPI": reportBatsmanKPI,
   "Bowler KPI": reportBowlerKPI,
-  "KPI Report": reportBatsmanKPI,
-  "Recent Performance": reportBatsmanKPI,
+  "KPI Report": reportKpiCombined,
+  "Recent Performance": reportRecentPerformance,
   "Over Comparison": reportOverComparison,
   "Commentary": reportCommentary,
   "TenBall Summary": reportTenBall,
-  "Batsman Vs Bowler": (i) => reportVsMatrix(i, "Batsman vs Bowler"),
-  "Bowler Vs Batsman": (i) => reportVsMatrix(i, "Bowler vs Batsman"),
+  "Batsman Vs Bowler": (i) => reportVs(i, "batsman"),
+  "Bowler Vs Batsman": (i) => reportVs(i, "bowler"),
   "Player Comparison Report": reportPlayerComparison,
 };
 
@@ -2097,7 +2621,7 @@ function renderActiveReport() {
   if (!rep.match || !rep.innings.length) { host.innerHTML = `<div class="rep-empty"><strong>CRIC</strong><span>PRO</span><p>Select a match and press <b>Show Reports</b>.</p></div>`; return; }
   const inns = filteredInnings();
   const fn = REPORT_RENDERERS[rep.activeTab];
-  if (!fn) { host.innerHTML = `${repTitle(rep.activeTab)}<div class="rep-empty rep-soft"><p>This report isn't wired to saved data yet.</p><p class="rep-muted">Available: Statistics, Scorecard, Manhattan, Worm, Partnership, Extras, Wickets, Spider/Sector Wagon, Pitch Map, Batsman/Bowler KPI, Over Comparison, Commentary, Ten Ball, Batsman/Bowler Vs.</p></div>`; return; }
+  if (!fn) { host.innerHTML = `${repTitle(rep.activeTab)}<div class="rep-empty rep-soft"><p>This report isn't wired to saved data yet.</p><p class="rep-muted">Video-clip reports (Video Playlist, Bulk Video Export, Boundary NextBall) need the match video module; the rest are wired under their tab names.</p></div>`; return; }
   try { host.innerHTML = fn(inns); } catch (e) { console.error("report render", e); host.innerHTML = `<div class="rep-empty rep-soft"><p>Could not render this report.</p></div>`; }
 }
 
@@ -2115,11 +2639,13 @@ async function loadReportMatch(matchId) {
 }
 
 async function buildReports() {
-  const [comps, matches] = await Promise.all([dbCall("competitions"), dbCall("matches")]);
+  const [comps, matches, officials] = await Promise.all([dbCall("competitions"), dbCall("matches"), dbCall("officials")]);
   rep.matches = matches || [];
+  rep.officials = officials || [];
   rep.match = null; rep.innings = []; rep.activeTab = "Statistics"; rep.teamView = "both";
+  rep.wagonSide = "all"; rep.statPage = 0; rep.wwcA = 0; rep.wwcB = 1; rep.selFilter = false;
   rep.cmpA = ""; rep.cmpB = ""; rep.scExpanded = new Set();
-  rep.filters = { battingCode: "", striker: "", bowler: "", wicket: "", runs: "", fromOver: "", toOver: "" };
+  rep.filters = { battingCode: "", striker: "", bowler: "", wicket: "", runs: "", misc: "", fromOver: "", toOver: "" };
 
   const field = (label, inner) => `<div class="report-field"><label>${esc(label)}</label>${inner}</div>`;
   const selOpts = (id, items, getV, getL, ph) => `<select id="${id}"><option value="">${ph}</option>${optionList(items || [], getV, getL)}</select>`;
@@ -2146,15 +2672,24 @@ async function buildReports() {
           ${field("Bowler", `<select id="rp-bowler"><option value="">All</option></select>`)}
           ${field("Wicket Type", selOpts("rp-wkt", ["Bowled", "Caught", "Caught & Bowled", "LBW", "Run Out", "Stumped", "Hit Wicket"].map((w) => ({ v: w })), (w) => w.v, (w) => w.v, "All"))}
           ${field("Runs", selOpts("rp-runs", ["0", "1", "2", "3", "4", "6"].map((r) => ({ v: r })), (r) => r.v, (r) => r.v, "All"))}
+          ${field("Misc. Filters", `<select id="rp-misc"><option value="">Select</option><option value="boundaries">Boundaries Only</option><option value="dots">Dot Balls Only</option><option value="wickets">Wickets Only</option></select>`)}
           <div class="report-misc-label">Overs Range</div>
           <div class="report-field" style="flex-direction:row;gap:6px"><select id="rp-from">${overOpts}</select><select id="rp-to">${overOpts}</select></div>
-          <div class="report-actions">
+          <div class="report-actions report-actions-ref">
             <button class="btn-main btn-green" id="rp-show">Show Reports</button>
-            <button class="btn-main btn-yellow" id="rp-reset">Reset Filters</button>
+            <button class="btn-main btn-yellow" id="rp-matchrep">Match Report</button>
+            <button class="btn-main btn-red" id="rp-expvid">Export Video</button>
+            <button class="btn-main btn-red" id="rp-playvid">Play Video</button>
+            <button class="btn-main btn-orange wide2" id="rp-perf">Player Performance</button>
+            <button class="btn-main btn-filter wide2" id="rp-selfilter">Select Filter</button>
+            <button class="rp-reset-link" id="rp-reset">Reset Filters</button>
           </div>
         </aside>
         <div class="report-pane">
           <div class="report-tabs" id="rp-tabs">${tabs}</div>
+          <div class="report-selbar" id="rp-selbar" hidden>
+            ${["Scorecard", "SpiderWagonWheel", "PitchMap", "KPI", "StrikerPerformance", "Partnership", "OverComparison", "WormChart", "ManhattanChart", "Session", "Spell"].map((s) => `<label><input type="checkbox" checked /> ${s}</label>`).join("")}
+          </div>
           <div class="report-content" id="report-content"></div>
         </div>
       </div>
@@ -2164,27 +2699,43 @@ async function buildReports() {
 function initReports(root) {
   const readFilters = () => {
     const g = (id) => { const el = root.querySelector("#" + id); return el ? el.value : ""; };
-    rep.filters = { battingCode: g("rp-batteam"), striker: g("rp-striker"), bowler: g("rp-bowler"), wicket: g("rp-wkt"), runs: g("rp-runs"), fromOver: g("rp-from"), toOver: g("rp-to") };
+    rep.filters = { battingCode: g("rp-batteam"), striker: g("rp-striker"), bowler: g("rp-bowler"), wicket: g("rp-wkt"), runs: g("rp-runs"), misc: g("rp-misc"), fromOver: g("rp-from"), toOver: g("rp-to") };
+    rep.statPage = 0;
   };
 
   root.querySelector("#rp-match").addEventListener("change", async (e) => {
     await loadReportMatch(e.target.value);
+    rep.statPage = 0; rep.wwcA = 0; rep.wwcB = 1;
     renderActiveReport();
   });
 
+  const setTab = (name) => {
+    rep.activeTab = name; rep.teamView = "both"; rep.wagonSide = "all"; rep.statPage = 0;
+    root.querySelectorAll("[data-tab]").forEach((x) => x.classList.toggle("active", x.dataset.tab === name));
+    renderActiveReport();
+  };
+
   root.querySelector("#rp-show").addEventListener("click", () => { readFilters(); renderActiveReport(); });
   root.querySelector("#rp-reset").addEventListener("click", () => {
-    ["rp-batteam", "rp-striker", "rp-bowler", "rp-wkt", "rp-runs", "rp-from", "rp-to"].forEach((id) => { const el = root.querySelector("#" + id); if (el) el.value = ""; });
+    ["rp-batteam", "rp-striker", "rp-bowler", "rp-wkt", "rp-runs", "rp-misc", "rp-from", "rp-to"].forEach((id) => { const el = root.querySelector("#" + id); if (el) el.value = ""; });
     readFilters(); renderActiveReport();
+  });
+  // Reference sidebar actions. Match Report / Player Performance open their
+  // on-screen equivalents; the video pair belongs to the clip subsystem.
+  root.querySelector("#rp-matchrep").addEventListener("click", () => { readFilters(); setTab("Scorecard"); });
+  root.querySelector("#rp-perf").addEventListener("click", () => { readFilters(); setTab("Player Comparison Report"); });
+  const vidMsg = () => toast("Video export/playback needs the match video clips module", true);
+  root.querySelector("#rp-expvid").addEventListener("click", vidMsg);
+  root.querySelector("#rp-playvid").addEventListener("click", vidMsg);
+  root.querySelector("#rp-selfilter").addEventListener("click", () => {
+    rep.selFilter = !rep.selFilter;
+    root.querySelector("#rp-selbar").hidden = !rep.selFilter;
   });
 
   // Tab selection.
   root.querySelector("#rp-tabs").addEventListener("click", (e) => {
     const b = e.target.closest("[data-tab]"); if (!b) return;
-    root.querySelectorAll("[data-tab]").forEach((x) => x.classList.remove("active"));
-    b.classList.add("active");
-    rep.activeTab = b.dataset.tab; rep.teamView = "both";
-    renderActiveReport();
+    setTab(b.dataset.tab);
   });
 
   // Sub-view toggles inside a report (team radios + comparison pickers).
@@ -2193,15 +2744,25 @@ function initReports(root) {
     const tv = e.target.closest("[data-teamview]");
     if (tv) { rep.teamView = tv.dataset.teamview; renderActiveReport(); return; }
     const cmp = e.target.closest("[data-cmp]");
-    if (cmp) { rep[cmp.dataset.cmp === "A" ? "cmpA" : "cmpB"] = cmp.value; renderActiveReport(); }
+    if (cmp) { rep[cmp.dataset.cmp === "A" ? "cmpA" : "cmpB"] = cmp.value; renderActiveReport(); return; }
+    const wwc = e.target.closest("[data-wwc]");
+    if (wwc) { rep[wwc.dataset.wwc === "A" ? "wwcA" : "wwcB"] = +wwc.value; renderActiveReport(); }
   });
-  // Scorecard row expansion.
   content.addEventListener("click", (e) => {
+    // Scorecard row expansion.
     const row = e.target.closest("[data-sc-expand]");
-    if (!row) return;
-    const key = row.dataset.scExpand;
-    rep.scExpanded.has(key) ? rep.scExpanded.delete(key) : rep.scExpanded.add(key);
-    renderActiveReport();
+    if (row) {
+      const key = row.dataset.scExpand;
+      rep.scExpanded.has(key) ? rep.scExpanded.delete(key) : rep.scExpanded.add(key);
+      renderActiveReport();
+      return;
+    }
+    // Statistics grid pagination.
+    const pg = e.target.closest("[data-pg]");
+    if (pg) { rep.statPage = Math.max(0, +pg.dataset.pg || 0); renderActiveReport(); return; }
+    // Wagon off-side / all / on-side toggle.
+    const ws = e.target.closest("[data-wagonside]");
+    if (ws) { rep.wagonSide = ws.dataset.wagonside; renderActiveReport(); }
   });
 
   renderActiveReport();
@@ -3348,6 +3909,11 @@ async function renderScreen() {
   const titleEl = document.getElementById("screen-title");
   const bodyEl = document.getElementById("screen-body");
   const backEl = document.getElementById("back-link");
+
+  // Full-bleed screens (Reports) drop the shell chrome — page title, divider,
+  // badge — and span the whole 1920x1080 canvas so the stage never has to
+  // shrink the app to fit extra chrome height.
+  document.querySelector(".proto-shell").classList.toggle("shell-full", !!def.fullbleed);
 
   titleEl.textContent = def.title;
   backEl.href = def.back || "home.html";
