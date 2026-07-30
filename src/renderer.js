@@ -189,6 +189,7 @@ const state = {
   revisedOvers: [],
   revisedTargets: [],
   penalties: [],
+  appealsLog: [],     // Appeals overlay records: over/type/against/decision etc. (feeds the Appeal Report)
   matchResult: null,  // Match Results form (single record)
   batTimes: [],       // { batsman, inTime, outTime, mins, balls, innings, opener } per batsman spell
   matchStartTime: "", // clock time the 1st innings' first ball is bowled (editable)
@@ -2332,22 +2333,45 @@ function selectEl(label, options, value = "Select", id = "", selected = "") {
 function overlayAppeals() {
   const body = `
     <div class="grid-2">
-      ${selectEl("Appeal Against", [state.striker, state.nonStriker])}
-      ${selectEl("Appeal Type", ["Caught Behind", "LBW", "Run Out", "Stumped", "Bat Pad", "Caught"]) }
-      ${selectEl("Bowler", OMAN_BOWLERS)}
-      ${selectEl("Fielder", FIELDERS)}
+      ${selectEl("Appeal Against", [state.striker, state.nonStriker], "Select", "ap-against", state.striker)}
+      ${selectEl("Appeal Type", ["Caught Behind", "LBW", "Run Out", "Stumped", "Bat Pad", "Caught"], "Select", "ap-type")}
+      ${selectEl("Bowler", OMAN_BOWLERS, "Select", "ap-bowler", state.bowler)}
+      ${selectEl("Fielder", FIELDERS, "Select", "ap-fielder")}
     </div>
     <div class="seg-row">
       <span class="f-label">Decision</span>
-      <div class="seg"><button class="seg-btn active">OUT</button><button class="seg-btn">NOT OUT</button><button class="seg-btn">UMPIRES CALL</button><button class="seg-btn">DRS</button></div>
+      <div class="seg" id="ap-decision"><button class="seg-btn active">OUT</button><button class="seg-btn">NOT OUT</button><button class="seg-btn">UMPIRES CALL</button><button class="seg-btn">DRS</button></div>
     </div>
-    <label class="f-row"><span class="f-label">Comments</span><textarea class="f-textarea" placeholder="Comments"></textarea></label>
+    <label class="f-row"><span class="f-label">Comments</span><textarea class="f-textarea" id="ap-comments" placeholder="Comments"></textarea></label>
     <div class="btn-row-modal">
-      <button class="m-btn m-green" data-close>Save</button>
+      <button class="m-btn m-green" id="ap-save">Save</button>
       <button class="m-btn m-yellow" data-close>Clear</button>
     </div>`;
   openOverlay(popupShell("APPEALS", body));
   wireSeg();
+  // Save records the appeal against the current delivery so the Appeal /
+  // Umpire reports can show type, decision and referral — not just a flag.
+  // (No data-close on the button: closeOverlay wipes the form before a
+  // same-click listener could read it, so read first, close after.)
+  document.getElementById("ap-save")?.addEventListener("click", () => {
+    const v = (id) => { const el = document.getElementById(id); const x = el ? el.value.trim() : ""; return x === "Select" ? "" : x; };
+    state.appealsLog = state.appealsLog || [];
+    state.appealsLog.push({
+      over: `${state.over}.${Math.min(state.ball + 1, 6)}`,
+      innings: state.innings || 1,
+      battingCode: state.battingCode,
+      against: v("ap-against") || state.striker,
+      nonStriker: state.nonStriker,
+      type: v("ap-type") || "LBW",
+      bowler: v("ap-bowler") || shortName(state.bowler),
+      fielder: v("ap-fielder"),
+      decision: document.querySelector("#ap-decision .seg-btn.active")?.textContent || "OUT",
+      comments: document.getElementById("ap-comments")?.value?.trim() || "",
+    });
+    setAppeals(true); // flag the ball itself too (legacy per-ball marker)
+    scheduleSave();
+    closeOverlay();
+  });
 }
 
 // ---- Fielding Events (two-column menu) ------------------------------------
@@ -4157,7 +4181,8 @@ function applyMatch(match) {
   // Fresh match: clear any Match Events left over from a previous one.
   state.breaks = []; state.otherWickets = []; state.powerPlays = [];
   state.ballChanges = []; state.revisedOvers = []; state.revisedTargets = [];
-  state.penalties = []; state.fieldingEvents = []; state.matchResult = null;
+  state.penalties = []; state.fieldingEvents = []; state.appealsLog = [];
+  state.matchResult = null;
   state.batTimes = []; state.matchStartTime = ""; state.matchStartTs = 0;
   state.openersRecorded = false;
 }
@@ -4186,7 +4211,7 @@ function serializeState() {
     powerPlays: state.powerPlays, ballChanges: state.ballChanges,
     revisedOvers: state.revisedOvers, revisedTargets: state.revisedTargets,
     penalties: state.penalties, fieldingEvents: state.fieldingEvents,
-    matchResult: state.matchResult,
+    appealsLog: state.appealsLog, matchResult: state.matchResult,
     // Batsman in/out timing + the (editable) match start time.
     batTimes: state.batTimes, matchStartTime: state.matchStartTime,
     matchStartTs: state.matchStartTs, openersRecorded: state.openersRecorded,

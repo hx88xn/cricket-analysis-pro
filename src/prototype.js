@@ -2206,6 +2206,26 @@ function reportOverComparison(inns) {
 }
 
 // Commentary — over-grouped ball-by-ball narrative.
+// One commentary line carries everything the scorer coded on that ball, in the
+// reference's phrasing: runs, ball type, footwork + shot ("Front Foot Flick"),
+// In Air, the tag flags, the fielding placement, and any fielding event
+// recorded on the same delivery ("Marcus Stoinis has a Fumble").
+const FOOTWORK_LABEL = { ff: "Front Foot", bf: "Back Foot", sd: "Step Down", crm: "Crease Movement" };
+const TAG_LABEL = { pm: "Play and Miss", edge: "Edge", freehit: "Free Hit", keymoment: "Key Moment", bowlvar: "Bowling Variation", unc: "Uncontrolled", btn: "Beaten", wtb: "WTB", rs: "RS" };
+function ballCallouts(b) {
+  const parts = [];
+  if (b.bowl) parts.push(b.bowl);
+  const stroke = [FOOTWORK_LABEL[b.footwork] || "", b.shot || ""].filter(Boolean).join(" ");
+  if (stroke) parts.push(stroke);
+  if (b.inAir) parts.push("In Air");
+  for (const [k, on] of Object.entries(b.tags || {})) if (on && TAG_LABEL[k]) parts.push(TAG_LABEL[k]);
+  if (b.placement) parts.push(b.placement);
+  const st = (rep.match && rep.match.state) || {};
+  for (const f of st.fieldingEvents || []) {
+    if (String(f.over) === String(b.num) && f.fielder) parts.push(`${f.fielder} has a ${f.event || "fielding event"}`);
+  }
+  return parts.map(esc).join(" , ");
+}
 function reportCommentary(inns) {
   return inns.map((i) => {
     const overs = new Map();
@@ -2215,8 +2235,11 @@ function reportCommentary(inns) {
       const lines = bs.slice().reverse().map((b) => {
         const bat = ballBat(b), e = parseExt(b.ext), badge = isWicket(b) ? "W" : (e.type ? e.type : bat);
         const cls = isWicket(b) ? "wk" : bat >= 4 ? "bd" : "";
-        const desc = isWicket(b) ? `OUT! ${esc(b.dismissal || "")}, ${esc(b.outBatsman || b.striker)}` : `${bat} run${bat === 1 ? "" : "s"}${e.type ? ", " + e.type : ""}${b.shot ? ", " + esc(b.shot) : ""}`;
-        return `<div class="rep-cm-ball"><span class="rep-cm-badge ${cls}">${badge}</span><span class="rep-cm-num">${esc(b.num)}</span><span class="rep-cm-txt"><b>${esc(b.bowler)} to ${esc(b.striker)}</b><br>${desc}</span></div>`;
+        const extra = ballCallouts(b);
+        const lead = isWicket(b)
+          ? `OUT ! ${esc(b.dismissal || "Wicket")}, Wicket Player is ${esc(b.outBatsman || b.striker)}`
+          : `${bat === 0 ? "No Runs" : `${bat} Run${bat === 1 ? "" : "s"}`}${e.type ? " , " + e.type : ""}`;
+        return `<div class="rep-cm-ball"><span class="rep-cm-badge ${cls}">${badge}</span><span class="rep-cm-num">${esc(b.num)}</span><span class="rep-cm-txt"><b>${esc(b.bowler)} to ${esc(b.striker)}</b><br>${lead}${extra ? " , " + extra : ""}</span></div>`;
       }).join("");
       return `<div class="rep-cm-over"><div class="rep-cm-overhead">Over ${oi + 1} — ${runs} run${runs === 1 ? "" : "s"}${wk ? `, ${wk} wkt` : ""}</div>${lines}</div>`;
     }).join("");
@@ -2228,7 +2251,12 @@ function reportCommentary(inns) {
 // "Batsman Vs Bowler" groups by BATSMAN and lists each bowler he faced;
 // "Bowler Vs Batsman" groups by BOWLER and lists each batsman he bowled to.
 // Each group shows the parent's totals, then one indented row per opponent.
-// Unc / Btn come from the per-ball coding tags (uncontrolled / beaten).
+// Unc / Btn map from the per-ball coding tags: the coding screen records
+// "Edge" (an uncontrolled shot) and "Play and Miss" (the bowler beats the
+// bat), which are the CAP reference's Uncontrolled / Beaten columns. Legacy
+// logs that stored unc/btn directly still count.
+const tagUnc = (b) => { const t = b.tags || {}; return !!(t.unc || t.edge); };
+const tagBtn = (b) => { const t = b.tags || {}; return !!(t.btn || t.pm); };
 function vsTally() { return { balls: 0, runs: 0, dots: 0, ones: 0, twos: 0, fours: 0, unc: 0, btn: 0, wkts: 0 }; }
 function vsAdd(t, b) {
   if (isLegal(b)) t.balls += 1;
@@ -2238,9 +2266,8 @@ function vsAdd(t, b) {
   else if (bat === 1) t.ones += 1;
   else if (bat === 2) t.twos += 1;
   if (bat === 4) t.fours += 1;
-  const tg = b.tags || {};
-  if (tg.unc) t.unc += 1;
-  if (tg.btn) t.btn += 1;
+  if (tagUnc(b)) t.unc += 1;
+  if (tagBtn(b)) t.btn += 1;
   if (bowlerWicket(b) && b.outBatsman === b.striker) t.wkts += 1;
 }
 const vsCells = (t) => `<td>${t.dots}</td><td>${t.ones}</td><td>${t.twos}</td><td>${t.fours}</td><td>${t.unc}</td><td>${t.btn}</td><td>${t.balls}</td><td>${t.runs}</td><td>${num(pct(t.runs, t.balls))}</td>`;
@@ -2390,28 +2417,38 @@ function reportBowlShot(inns, title, axis, kind) {
 
 // Shot Selection — how often each shot was played and what it produced.
 // scope "batsman" gives a row per batsman × shot; "match" aggregates by shot.
+// Shot Selection, in the reference's matrix shape: one row per batsman.
+// "Batsman" scope: Spin / Fast balls faced, then a count column per shot type.
+// "Match" scope: just the Fast / Spin split with the match total.
 function reportShotSelection(inns, scope) {
-  const balls = allBalls(inns);
-  const agg = new Map();
+  const balls = allBalls(inns).filter((b) => b.striker);
+  const order = [], agg = new Map();
+  const shotOrder = [], shotSeen = new Set();
   for (const b of balls) {
-    const shot = b.shot || "";
-    if (!shot) continue;
-    const k = scope === "batsman" ? (b.striker || "") + "|" + shot : shot;
-    if (!agg.has(k)) agg.set(k, { player: b.striker || "", shot, balls: 0, runs: 0, dots: 0, fours: 0, sixes: 0, wkts: 0 });
-    const r = agg.get(k);
-    if (isLegal(b)) r.balls += 1;
-    r.runs += ballBat(b);
-    if (ballTeam(b) === 0 && isLegal(b)) r.dots += 1;
-    if (ballBat(b) === 4) r.fours += 1;
-    if (ballBat(b) === 6) r.sixes += 1;
-    if (isWicket(b)) r.wkts += 1;
+    if (!agg.has(b.striker)) { agg.set(b.striker, { fast: 0, spin: 0, balls: 0, shots: new Map() }); order.push(b.striker); }
+    const r = agg.get(b.striker);
+    if (isLegal(b)) {
+      r.balls += 1;
+      const p = paceOf(b);
+      if (p === "Fast") r.fast += 1; else if (p === "Spin") r.spin += 1;
+    }
+    if (b.shot) {
+      r.shots.set(b.shot, (r.shots.get(b.shot) || 0) + 1);
+      if (!shotSeen.has(b.shot)) { shotSeen.add(b.shot); shotOrder.push(b.shot); }
+    }
   }
-  const rows = [...agg.values()].sort((a, b) => b.runs - a.runs).map((r) =>
-    `<tr>${scope === "batsman" ? `<td class="rep-l">${esc(r.player)}</td>` : ""}<td class="rep-l">${esc(r.shot)}</td><td>${r.balls}</td><td>${r.runs}</td><td>${num(pct(r.runs, r.balls))}</td><td>${r.dots}</td><td>${r.fours}</td><td>${r.sixes}</td><td>${r.wkts}</td></tr>`).join("");
-  const cols = (scope === "batsman" ? 9 : 8);
-  return `${repTitle(scope === "batsman" ? "Shot Selection - Batsman" : "Shot Selection - Match")}
-    <div class="rep-scroll"><table class="rep-table"><thead><tr>${scope === "batsman" ? `<th class="rep-l">Batsman</th>` : ""}<th class="rep-l">Shot</th><th>Balls</th><th>Runs</th><th>S/R</th><th>Dots</th><th>4's</th><th>6's</th><th>Wkts</th></tr></thead>
-    <tbody>${rows || `<tr><td colspan="${cols}" class="rep-none">No shot types recorded.</td></tr>`}</tbody></table></div>`;
+  if (scope === "match") {
+    const label = (rep.match && (rep.match.matchName || "")) || "Total";
+    const rows = order.map((n) => { const r = agg.get(n); return `<tr><td class="rep-l">${esc(n)}</td><td>${r.fast}</td><td>${r.spin}</td><td>${r.balls}</td></tr>`; }).join("");
+    return `${repTitle("Shot Selection - Match")}<div class="rep-scroll"><table class="rep-table"><thead><tr><th class="rep-l">Batsman</th><th>Fast</th><th>Spin</th><th>${esc(label)}</th></tr></thead>
+      <tbody>${rows || `<tr><td colspan="4" class="rep-none">No deliveries recorded.</td></tr>`}</tbody></table></div>`;
+  }
+  const rows = order.map((n) => {
+    const r = agg.get(n);
+    return `<tr><td class="rep-l">${esc(n)}</td><td>${r.spin}</td><td>${r.fast}</td>${shotOrder.map((s) => `<td>${r.shots.get(s) || 0}</td>`).join("")}</tr>`;
+  }).join("");
+  return `${repTitle("Shot Selection - Batsman")}<div class="rep-scroll"><table class="rep-table"><thead><tr><th class="rep-l">Batsman</th><th>Spin</th><th>Fast</th>${shotOrder.map((s) => `<th>${esc(s)}</th>`).join("")}</tr></thead>
+    <tbody>${rows || `<tr><td colspan="${3 + shotOrder.length}" class="rep-none">No shot types recorded.</td></tr>`}</tbody></table></div>`;
 }
 
 // Ball types are grouped Fast / Spin on the coding screen; classify a saved
@@ -2419,7 +2456,9 @@ function reportShotSelection(inns, scope) {
 const SPIN_BALLS = ["Off Spin", "Doosra", "Faster One", "Leg Spin", "Googly", "Flipper", "Orthodox",
   "Chinaman", "Arm Ball", "Straighter One", "No turn", "Wrong One", "Top Spin", "Carrom Ball",
   "Drifter", "Under Spin", "Slider", "Back Spin", "W Yorker"];
-const paceOf = (b) => (b.bowl ? (SPIN_BALLS.includes(b.bowl) ? "Spin" : "Fast") : "");
+// Prefer the pace family the scorer had selected when the ball was coded
+// (recorded per ball); classify from the type list only for older logs.
+const paceOf = (b) => (b.pace === "Fast" || b.pace === "Spin") ? b.pace : (b.bowl ? (SPIN_BALLS.includes(b.bowl) ? "Spin" : "Fast") : "");
 
 // Fast vs Spin — how the batting side fared against each bowling family.
 function reportFastVsSpin(inns) {
@@ -2539,16 +2578,26 @@ function reportFielder() {
     <tbody>${rows || `<tr><td colspan="${COLS.length + 4}" class="rep-none">No fielding events recorded. Right-click the wagon wheel while coding to record them.</td></tr>`}</tbody></table></div>`;
 }
 
-// Appeal Report — every delivery the scorer flagged as an appeal, with the
-// umpire standing at that end and how it was decided.
+// Appeal Report — the appeals the scorer recorded through the Appeals overlay
+// (type / decision / referral), with the umpire standing at that end. Balls
+// that only carry the legacy per-ball appeal flag still get a row.
 function reportAppeal(inns) {
   const umps = matchUmpires();
+  const st = (rep.match && rep.match.state) || {};
   const rows = [];
+  const decisionLabel = (d) => ({ "OUT": "Up Held", "NOT OUT": "Turned Down", "UMPIRES CALL": "Umpires Call", "DRS": "Up Held" }[d] || d || "");
+  const logged = Array.isArray(st.appealsLog) ? st.appealsLog : [];
+  for (const a of logged) {
+    const ump = umps[overIndexOf(a.over) % 2];
+    const referred = a.decision === "DRS" || a.decision === "UMPIRES CALL";
+    rows.push(`<tr><td class="rep-l">${esc(a.battingCode || "")}</td><td>${a.innings || 1}</td><td class="rep-l">${esc(ump)}</td><td>${esc(a.over || "")}</td><td class="rep-l">${esc(a.against || "")}</td><td class="rep-l">${esc(a.bowler || "")}</td><td>${esc(a.type || "LBW")}</td><td>${esc(referred ? "Hawk Eye" : (a.comments || ""))}</td><td>${referred ? "YES" : "NO"}</td><td>${esc(decisionLabel(a.decision))}</td></tr>`);
+  }
+  const loggedOvers = new Set(logged.map((a) => `${a.innings || 1}|${a.over}`));
   inns.forEach((i) => i.balls.forEach((b) => {
-    if (!b.appeals) return;
+    if (!b.appeals || loggedOvers.has(`${i.innings}|${b.num}`)) return;
     // umpires swap ends each over, so the standing umpire alternates with it
     const ump = umps[overIndexOf(b.num) % 2];
-    rows.push(`<tr><td class="rep-l">${esc(i.batCode)}</td><td>${i.innings}</td><td class="rep-l">${esc(ump)}</td><td>${esc(b.num)}</td><td class="rep-l">${esc(b.striker || "")}</td><td class="rep-l">${esc(b.bowler || "")}</td><td>${esc(b.dismissal || (isWicket(b) ? "Out" : "LBW"))}</td><td>${b.review ? "Hawk Eye" : ""}</td><td>${b.review ? "YES" : "NO"}</td><td>${isWicket(b) ? "Up Held" : "Turned Down"}</td></tr>`);
+    rows.push(`<tr><td class="rep-l">${esc(i.batCode)}</td><td>${i.innings}</td><td class="rep-l">${esc(ump)}</td><td>${esc(b.num)}</td><td class="rep-l">${esc(b.striker || "")}</td><td class="rep-l">${esc(b.bowler || "")}</td><td>${esc(b.dismissal || (isWicket(b) ? "Out" : "LBW"))}</td><td></td><td>NO</td><td>${isWicket(b) ? "Up Held" : "Turned Down"}</td></tr>`);
   }));
   return `${repTitle("Appeal Report")}<div class="rep-scroll"><table class="rep-table"><thead><tr><th class="rep-l">Team Name</th><th>Inningsno</th><th class="rep-l">Umpire Name</th><th>Overs</th><th class="rep-l">Batsman</th><th class="rep-l">Bowler</th><th>Appeal Type</th><th>Appeal Components</th><th>Referred</th><th>Decision</th></tr></thead>
     <tbody>${rows.join("") || `<tr><td colspan="10" class="rep-none">No appeals recorded. Use the Appeals control while coding a ball.</td></tr>`}</tbody></table></div>`;
@@ -2568,8 +2617,12 @@ function reportUmpire(inns) {
     const appeals = mine.filter((b) => b.appeals);
     const extras = mine.filter((b) => parseExt(b.ext).type);
     const pens = penalties.filter((p, pi) => pi % 2 === ui);
+    const appealType = (b) => {
+      const a = (Array.isArray(st.appealsLog) ? st.appealsLog : []).find((x) => String(x.over) === String(b.num));
+      return (a && a.type) || b.dismissal || "LBW";
+    };
     const rows = [
-      ...appeals.map((b) => ["Appeal", b.num, b.striker, b.nonstr, b.bowler, b.dismissal || "LBW"]),
+      ...appeals.map((b) => ["Appeal", b.num, b.striker, b.nonstr, b.bowler, appealType(b)]),
       ...extras.map((b) => { const e = parseExt(b.ext); return ["Extra", b.num, b.striker, b.nonstr, b.bowler, `${e.type} ${e.runs}`]; }),
       ...pens.map((p) => ["Penalty", p.over || "", "", "", "", (p.reasons || []).join(", ") || "5 runs"]),
     ];
