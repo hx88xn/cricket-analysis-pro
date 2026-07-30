@@ -1995,7 +1995,9 @@ textarea {
 .rep-pm-cell { aspect-ratio: 1 / 0.7; display: grid; place-items: center; font-size: 13px; font-weight: 700; color: #fff; border-radius: 3px; }
 .rep-pm-cols { display: grid; grid-template-columns: 80px repeat(5, 1fr); gap: 2px; max-width: 460px; margin-top: 4px; }
 .rep-pm-cols span { grid-column: span 1; text-align: center; font-size: 9px; color: var(--muted); }
-.rep-pm-cols span:first-child { grid-column: 1; }
+/* the 80px first track mirrors the row-label gutter above: the five lane
+   labels start in track 2 so each sits under its column of cells */
+.rep-pm-cols span:first-child { grid-column: 2; }
 
 /* commentary */
 .rep-cm-over { margin-bottom: 16px; }
