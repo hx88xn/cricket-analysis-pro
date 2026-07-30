@@ -354,6 +354,13 @@ const screenDefs = {
     build: buildReports,
     init: initReports,
   },
+  "player-performance": {
+    title: "Player Performance",
+    back: "prototype.html?screen=reports",
+    fullbleed: true, // same full-canvas shell as Reports (own topbar with back arrow)
+    build: buildPlayerPerf,
+    init: initPlayerPerf,
+  },
 
   // ---- data-driven screens ----
   "team-master": { title: "Team Master", back: "prototype.html?screen=masters-menu", build: buildTeamMaster, init: initTeamMaster },
@@ -2839,7 +2846,8 @@ function initReports(root) {
   // Reference sidebar actions. Match Report / Player Performance open their
   // on-screen equivalents; the video pair belongs to the clip subsystem.
   root.querySelector("#rp-matchrep").addEventListener("click", () => { readFilters(); setTab("Scorecard"); });
-  root.querySelector("#rp-perf").addEventListener("click", () => { readFilters(); setTab("Player Comparison Report"); });
+  // Player Performance is its own screen in the reference, not a report tab.
+  root.querySelector("#rp-perf").addEventListener("click", () => { window.location.href = "prototype.html?screen=player-performance"; });
   const vidMsg = () => toast("Video export/playback needs the match video clips module", true);
   root.querySelector("#rp-expvid").addEventListener("click", vidMsg);
   root.querySelector("#rp-playvid").addEventListener("click", vidMsg);
@@ -4012,6 +4020,365 @@ function normalizeIconBadges(root) {
     const label = card.querySelector(".label");
     if (icon && label) icon.textContent = abbreviateLabel(label.textContent);
   });
+}
+
+// ===========================================================================
+// Player Performance — the dedicated screen the reference opens from the
+// Reports sidebar (own topbar + back arrow). "Generate" aggregates one
+// player's batting across every saved match that passes the filters, in the
+// PlayerReports.pdf section order: Overall (with Avg/SR/Bdry% bars),
+// Tournament Wise, Position Wise, vs Different Bowlers, Over Slab, Recent
+// Performance (last 10 innings), last-5-match wagon wheels, pitch-map quads.
+// ===========================================================================
+
+const pp = { matches: [], comps: [], player: "" };
+
+// A player's ball-facing stats over an arbitrary ball list (batting-card
+// rules: wides aren't faced, byes are faced but score nothing for the bat).
+function ppStats(balls) {
+  const s = { runs: 0, balls: 0, dots: 0, ones: 0, twos: 0, threes: 0, fours: 0, sixes: 0 };
+  for (const b of balls) {
+    const e = parseExt(b.ext), bat = ballBat(b);
+    if (e.legal && e.type !== "WD") {
+      s.balls += 1;
+      if (bat === 0) s.dots += 1;
+    }
+    if (e.type !== "WD") s.runs += bat;
+    if (bat === 1) s.ones += 1; else if (bat === 2) s.twos += 1; else if (bat === 3) s.threes += 1;
+    else if (bat === 4) s.fours += 1; else if (bat === 6) s.sixes += 1;
+  }
+  s.sb = s.balls - s.dots;
+  s.bdryRuns = s.fours * 4 + s.sixes * 6;
+  return s;
+}
+
+const ppNum = (v, d = 2) => (Number.isFinite(v) ? v.toFixed(d) : "-");
+const ppPct = (n, d) => (d ? ppNum((n / d) * 100) : "-");
+
+// One innings the player batted in, with his batting-card row + his balls.
+function ppInningsLines() {
+  const f = pp.filters || {};
+  const lines = [];
+  for (const m of pp.matches) {
+    if (!m.state || !Array.isArray(m.state.log)) continue;
+    if (f.matchType && (m.matchType || "") !== f.matchType) continue;
+    if (f.year && String(m.matchDate || "").slice(0, 4) !== f.year) continue;
+    if (f.comp && (m.competitionName || "") !== f.comp) continue;
+    if (f.match && m.id !== f.match) continue;
+    if (f.venue && (m.venueName || "") !== f.venue) continue;
+    for (const i of assembleInnings(m)) {
+      if (f.innings && String(i.innings) !== String(f.innings)) continue;
+      if (f.batTeam && i.batCode !== f.batTeam) continue;
+      if (f.bowlTeam && i.bowlCode !== f.bowlTeam) continue;
+      const card = battingCard(i.log);
+      const idx = card.findIndex((r) => sameBatsman(r.name, pp.player));
+      if (idx < 0) continue;
+      const hisBalls = i.log.filter((b) => sameBatsman(b.striker, pp.player));
+      lines.push({ match: m, inningsNo: i.innings, oppCode: i.bowlCode, row: card[idx], position: idx + 1, balls: hisBalls, allBalls: i.log });
+    }
+  }
+  return lines;
+}
+
+// Section 1 helpers — the PDF's Overall columns from a set of innings lines.
+function ppAggregate(lines) {
+  const a = { matches: new Set(), inns: 0, no: 0, runs: 0, balls: 0, dots: 0, fours: 0, sixes: 0, h100: 0, h50: 0, h30: 0, hs: 0 };
+  for (const l of lines) {
+    a.matches.add(l.match.id); a.inns += 1;
+    if (!l.row.out) a.no += 1;
+    a.runs += l.row.runs; a.balls += l.row.balls; a.dots += l.row.dots;
+    a.fours += l.row.fours; a.sixes += l.row.sixes;
+    if (l.row.runs >= 100) a.h100 += 1; else if (l.row.runs >= 50) a.h50 += 1; else if (l.row.runs >= 30) a.h30 += 1;
+    if (l.row.runs > a.hs) a.hs = l.row.runs;
+  }
+  const outs = a.inns - a.no, sb = a.balls - a.dots, bdry = a.fours * 4 + a.sixes * 6;
+  return {
+    ...a, outs, sb,
+    avg: outs ? a.runs / outs : a.runs, sr: a.balls ? (a.runs / a.balls) * 100 : 0,
+    bdryPct: a.runs ? (bdry / a.runs) * 100 : 0, dbPct: a.balls ? (a.dots / a.balls) * 100 : 0,
+    sbPct: a.balls ? (sb / a.balls) * 100 : 0, rpss: sb ? a.runs / sb : 0,
+  };
+}
+
+function ppOverallRow(label, a) {
+  if (!a.inns) return `<tr><td class="rep-l">${esc(label)}</td><td colspan="19" class="pp-dash">—</td></tr>`;
+  return `<tr><td class="rep-l">${esc(label)}</td><td>${a.matches.size}</td><td>${a.inns}</td><td>${a.no}</td><td>${a.runs}</td><td>${a.balls}</td>
+    <td>${a.h100}</td><td>${a.h50}</td><td>${a.h30}</td><td>${a.fours}</td><td>${a.sixes}</td><td>${ppNum(a.bdryPct)}</td>
+    <td>${ppNum(a.avg)}</td><td>${ppNum(a.sr)}</td><td>${a.hs}</td><td>${a.dots}</td><td>${ppNum(a.dbPct)}</td><td>${a.sb}</td><td>${ppNum(a.sbPct)}</td><td>${ppNum(a.rpss)}</td></tr>`;
+}
+
+// Small grouped bar chart (Average / Strike Rate / Boundaries % trio).
+function ppBarChart(axisLabel, bars, color) {
+  const data = bars.filter((b) => b.value != null);
+  const W = 320, H = 210, padL = 40, padB = 30, padT = 12;
+  const max = Math.max(1, ...data.map((b) => b.value)) * 1.15;
+  const bw = Math.min(70, (W - padL - 20) / Math.max(1, data.length) - 24);
+  const x = (i) => padL + 24 + i * ((W - padL - 30) / Math.max(1, data.length));
+  const y = (v) => padT + (H - padT - padB) * (1 - v / max);
+  const bar = (b, i) => `<rect x="${x(i)}" y="${y(b.value)}" width="${bw}" height="${H - padB - y(b.value)}" fill="${color}"/>
+    <text x="${x(i) + bw / 2}" y="${(y(b.value) + H - padB) / 2}" text-anchor="middle" fill="#04121f" font-size="12" font-weight="700">${ppNum(b.value)}</text>
+    <text x="${x(i) + bw / 2}" y="${H - padB + 16}" text-anchor="middle" fill="var(--text-soft)" font-size="11">${esc(b.label)}</text>`;
+  return `<div class="pp-chart"><svg viewBox="0 0 ${W} ${H}">
+    <line x1="${padL}" y1="${H - padB}" x2="${W - 6}" y2="${H - padB}" stroke="rgba(124,157,196,.4)"/>
+    <line x1="${padL}" y1="${padT}" x2="${padL}" y2="${H - padB}" stroke="rgba(124,157,196,.4)"/>
+    <text x="12" y="${(H - padB + padT) / 2}" text-anchor="middle" fill="var(--muted)" font-size="11" transform="rotate(-90 12 ${(H - padB + padT) / 2})">${esc(axisLabel)}</text>
+    ${data.map(bar).join("")}</svg></div>`;
+}
+
+const PP_OVERALL_HEAD = `<tr><th class="rep-l">Performance</th><th>Match</th><th>Inns</th><th>NO</th><th>Runs</th><th>Balls</th><th>100+</th><th>50+</th><th>30+</th><th>B4s</th><th>B6s</th><th>Bdry %</th><th>Avg</th><th>S/R</th><th>HS</th><th>DB</th><th>DB%</th><th>SB</th><th>SB %</th><th>RPSS</th></tr>`;
+
+function ppSectionOverall(lines) {
+  const all = ppAggregate(lines);
+  const first = ppAggregate(lines.filter((l) => l.inningsNo === 1));
+  const second = ppAggregate(lines.filter((l) => l.inningsNo === 2));
+  const bars = (get) => [
+    { label: "Overall", value: get(all) },
+    first.inns ? { label: "1st Inn", value: get(first) } : null,
+    second.inns ? { label: "2nd Inn", value: get(second) } : null,
+  ].filter(Boolean);
+  return `<div class="pp-h">Overall Performance</div>
+    <div class="rep-scroll"><table class="rep-table pp-table"><thead>${PP_OVERALL_HEAD}</thead><tbody>
+      ${ppOverallRow("Overall", all)}${ppOverallRow("1st Inn", first)}${ppOverallRow("2nd Inn", second)}
+    </tbody></table></div>
+    <div class="pp-charts">
+      ${ppBarChart("Average", bars((a) => a.avg), "#d543b8")}
+      ${ppBarChart("Strike Rate", bars((a) => a.sr), "#e0903a")}
+      ${ppBarChart("Boundaries %", bars((a) => a.bdryPct), "#4dd0e8")}
+    </div>`;
+}
+
+function ppSectionGrouped(title, lines, keyOf, keyLabel) {
+  const groups = new Map();
+  for (const l of lines) { const k = keyOf(l); if (!groups.has(k)) groups.set(k, []); groups.get(k).push(l); }
+  const rows = [...groups.entries()].map(([k, ls]) => {
+    const a = ppAggregate(ls);
+    return `<tr><td class="rep-l">${esc(k)}</td><td>${a.matches.size}</td><td>${a.inns}</td><td>${a.no}</td><td>${a.runs}</td><td>${a.balls}</td>
+      <td>${a.h100}</td><td>${a.h50}</td><td>${a.fours}</td><td>${a.sixes}</td><td>${ppNum(a.bdryPct)}</td><td>${a.outs ? ppNum(a.avg) : "-"}</td><td>${ppNum(a.sr)}</td><td>${a.hs}</td><td>${a.dots}</td><td>${ppNum(a.dbPct)}</td></tr>`;
+  }).join("");
+  return `<div class="pp-h">${esc(title)}</div>
+    <div class="rep-scroll"><table class="rep-table pp-table"><thead><tr><th class="rep-l">${esc(keyLabel)}</th><th>Match</th><th>Inns</th><th>NO</th><th>Runs</th><th>Balls</th><th>100+</th><th>50+</th><th>B4s</th><th>B6s</th><th>Bdry %</th><th>Avg</th><th>S/R</th><th>HS</th><th>DB</th><th>DB %</th></tr></thead>
+    <tbody>${rows || `<tr><td colspan="16" class="rep-none">No data.</td></tr>`}</tbody></table></div>`;
+}
+
+function ppSectionVsBowlers(hisBalls) {
+  const total = ppStats(hisBalls).runs;
+  const groups = new Map();
+  for (const b of hisBalls) { const k = b.bowler || "?"; if (!groups.has(k)) groups.set(k, []); groups.get(k).push(b); }
+  const rows = [...groups.entries()].map(([k, bs]) => {
+    const s = ppStats(bs);
+    return `<tr><td class="rep-l">${esc(k)}</td><td>${s.runs}</td><td>${ppPct(s.runs, total)}</td><td>${s.balls}</td><td>${ppPct(s.runs, s.balls)}</td>
+      <td>${s.dots}</td><td>${ppPct(s.dots, s.balls)}</td><td>${s.fours}</td><td>${s.sixes}</td><td>${ppPct(s.bdryRuns, s.runs)}</td><td>${s.ones}</td><td>${s.twos}</td><td>${s.threes}</td></tr>`;
+  }).join("");
+  return `<div class="pp-h">Performance vs Different Bowlers</div>
+    <div class="rep-scroll"><table class="rep-table pp-table"><thead><tr><th class="rep-l">Bowlers</th><th>Runs</th><th>Runs %</th><th>Balls</th><th>S/R</th><th>DB</th><th>DB %</th><th>B4s</th><th>B6s</th><th>Bdry %</th><th>1s</th><th>2s</th><th>3s</th></tr></thead>
+    <tbody>${rows || `<tr><td colspan="13" class="rep-none">No data.</td></tr>`}</tbody></table></div>`;
+}
+
+function ppSectionOverSlab(hisBalls, player) {
+  const SLABS = [["1-6", 0, 5], ["7-10", 6, 9], ["11-15", 10, 14], ["16-20", 15, 999]];
+  const total = ppStats(hisBalls).runs;
+  const rows = SLABS.map(([label, lo, hi]) => {
+    const bs = hisBalls.filter((b) => { const o = overIndexOf(b.num); return o >= lo && o <= hi; });
+    if (!bs.length) return "";
+    const s = ppStats(bs);
+    const wkts = bs.filter((b) => isWicket(b) && sameBatsman(b.outBatsman, player)).length;
+    return `<tr><td class="rep-l">${label}</td><td>${s.runs}</td><td>${ppPct(s.runs, total)}</td><td>${s.balls}</td><td>${ppPct(s.runs, s.balls)}</td><td>${wkts}</td>
+      <td>${s.dots}</td><td>${ppPct(s.dots, s.balls)}</td><td>${s.ones}</td><td>${s.twos}</td><td>${s.threes}</td><td>${s.fours}</td><td>${s.sixes}</td><td>${ppPct(s.bdryRuns, s.runs)}</td></tr>`;
+  }).join("");
+  return `<div class="pp-h">Over Slab Performance</div>
+    <div class="rep-scroll"><table class="rep-table pp-table"><thead><tr><th class="rep-l">Over Slab</th><th>Runs</th><th>Runs%</th><th>Balls</th><th>S/R</th><th>Wkts</th><th>DB</th><th>DB%</th><th>1s</th><th>2s</th><th>3s</th><th>B4s</th><th>B6s</th><th>Bdry %</th></tr></thead>
+    <tbody>${rows || `<tr><td colspan="14" class="rep-none">No data.</td></tr>`}</tbody></table></div>`;
+}
+
+// Most-frequent helper for the recent-performance tiles.
+function ppTop(map) {
+  let best = "-", n = 0;
+  for (const [k, v] of map) if (k && v > n) { best = k; n = v; }
+  return best;
+}
+
+function ppSectionRecent(lines, player) {
+  const sorted = lines.slice().sort((a, b) => String(b.match.matchDate || "").localeCompare(String(a.match.matchDate || "")));
+  const last10 = sorted.slice(0, 10);
+  const shotRuns = new Map(), regionRuns = new Map(), outModes = new Map(), outRegions = new Map();
+  for (const l of lines) for (const b of l.balls) {
+    const bat = ballBat(b);
+    if (b.shot) shotRuns.set(b.shot, (shotRuns.get(b.shot) || 0) + bat);
+    if (b.placement) regionRuns.set(b.placement, (regionRuns.get(b.placement) || 0) + bat);
+    if (isWicket(b) && sameBatsman(b.outBatsman, player)) {
+      outModes.set(b.dismissal || "Out", (outModes.get(b.dismissal || "Out") || 0) + 1);
+      if (b.placement) outRegions.set(b.placement, (outRegions.get(b.placement) || 0) + 1);
+    }
+  }
+  const rows = last10.map((l) => {
+    const wktBall = l.balls.find((b) => isWicket(b) && sameBatsman(b.outBatsman, player));
+    const strip = l.balls.slice(-10).map((b) => `<span class="pp-cell">${ballBat(b)}</span>`).join("");
+    const prodShot = ppTop(l.balls.reduce((m, b) => { if (b.shot) m.set(b.shot, (m.get(b.shot) || 0) + ballBat(b)); return m; }, new Map()));
+    const bestRegion = ppTop(l.balls.reduce((m, b) => { if (b.placement) m.set(b.placement, (m.get(b.placement) || 0) + ballBat(b)); return m; }, new Map()));
+    return `<tr><td class="rep-l">${esc(l.oppCode)}-${esc(String(l.match.matchDate || "").split("T")[0])}</td><td>${l.inningsNo}</td>
+      <td class="pp-strip">${strip}</td><td>${l.row.runs}</td><td>${l.row.balls}</td><td>${l.row.fours}</td><td>${l.row.sixes}</td>
+      <td>${esc(l.row.out ? l.row.out.how : "-")}</td><td>${esc(wktBall && wktBall.placement ? wktBall.placement : "-")}</td><td>${esc(wktBall ? wktBall.num : "-")}</td>
+      <td class="rep-l">${esc(prodShot)}</td><td class="rep-l">${esc(bestRegion)}</td></tr>`;
+  }).join("");
+  const l10Stats = ppAggregate(last10);
+  const battingFirst = lines.filter((l) => l.inningsNo === 1).reduce((a, l) => a + l.row.runs, 0);
+  const battingSecond = lines.filter((l) => l.inningsNo === 2).reduce((a, l) => a + l.row.runs, 0);
+  const tile = (label, value) => `<div class="pp-tile"><span>${esc(label)}</span><b>${esc(String(value))}</b></div>`;
+  return `<div class="pp-h">Batting Recent Performance (Last 10 innings)</div>
+    <div class="rep-scroll"><table class="rep-table pp-table"><thead><tr><th class="rep-l">Opposition</th><th>Batting 1st/2nd</th><th>Last 10 Balls</th><th>Runs</th><th>Balls</th><th>B4s</th><th>B6s</th><th>Dismissals</th><th>Dismissed Region</th><th>FOW</th><th class="rep-l">Most Productive Shots</th><th class="rep-l">Most Runs Scored Region</th></tr></thead>
+    <tbody>${rows || `<tr><td colspan="12" class="rep-none">No innings.</td></tr>`}</tbody></table></div>
+    <div class="pp-tiles">
+      ${tile("Total Number of 50+ Runs Scoring Games", lines.filter((l) => l.row.runs >= 50).length)}
+      ${tile("Total Runs Scored While Batting First", battingFirst)}
+      ${tile("Most Dismissed Mode", ppTop(outModes))}
+      ${tile("Most Productive Shots Played", ppTop(shotRuns))}
+      ${tile("Total Number of 30+ Runs Scoring Games", lines.filter((l) => l.row.runs >= 30).length)}
+      ${tile("Total Runs Scored While Batting Second", battingSecond)}
+      ${tile("Most Dismissed Regions", ppTop(outRegions))}
+      ${tile("Most Runs Scored Regions", ppTop(regionRuns))}
+      ${tile("Last 10 Games Boundaries %", ppNum(l10Stats.bdryPct))}
+      ${tile("Last 10 Games Striker Rate", ppNum(l10Stats.sr))}
+    </div>`;
+}
+
+function ppSectionWagons(lines) {
+  // one wheel per match (latest five), DNP when the player didn't bat in it
+  const byMatch = new Map();
+  for (const l of lines) { if (!byMatch.has(l.match.id)) byMatch.set(l.match.id, []); byMatch.get(l.match.id).push(...l.balls); }
+  const latest = pp.matches
+    .filter((m) => m.state && Array.isArray(m.state.log))
+    .sort((a, b) => String(b.matchDate || "").localeCompare(String(a.matchDate || "")))
+    .slice(0, 5);
+  const wheel = (m) => {
+    const balls = byMatch.get(m.id);
+    const label = `<div class="pp-bar">${esc(m.matchName || m.id)}</div>`;
+    if (!balls || !balls.length) return `<div class="pp-wheel">${label}<div class="pp-dnp-wrap">${wagonFieldSvg([], false)}<div class="pp-dnp">DNP</div></div></div>`;
+    const off = sideBalls(balls, "off").reduce((a, b) => a + ballBat(b), 0);
+    const on = sideBalls(balls, "on").reduce((a, b) => a + ballBat(b), 0);
+    return `<div class="pp-wheel">${label}${wagonFieldSvg(balls, false)}
+      <div class="pp-sides"><span>${off} RUNS<br>OFF SIDE</span><span>${on} RUNS<br>ON SIDE</span></div></div>`;
+  };
+  return `<div class="pp-h">Runs Scored Spider Wagon Wheel (Last 5 Matches)</div>
+    <div class="pp-wheels">${latest.map(wheel).join("") || `<div class="rep-none">No matches.</div>`}</div>`;
+}
+
+function ppSectionPitchQuads(hisBalls, player) {
+  const quad = (title, balls) => `<div class="pp-quad"><div class="pp-bar">${esc(title)}</div>${pitchGrid(balls)}</div>`;
+  const block = (title, balls) => `<div class="pp-h">${esc(title)}</div><div class="pp-quads">
+    ${quad("Runs", balls.filter((b) => ballBat(b) > 0))}
+    ${quad("Dot Balls", balls.filter((b) => ballTeam(b) === 0 && isLegal(b)))}
+    ${quad("Balls", balls)}
+    ${quad("Wickets", balls.filter((b) => isWicket(b) && sameBatsman(b.outBatsman, player)))}
+  </div>`;
+  return block("Pitch Map - Over All", hisBalls)
+    + block("Pitch Map - Against Fast Bowler", hisBalls.filter((b) => paceOf(b) === "Fast"))
+    + block("Pitch Map - Against Spin Bowler", hisBalls.filter((b) => paceOf(b) === "Spin"));
+}
+
+function ppGenerate(root) {
+  const g = (id) => { const el = root.querySelector("#" + id); const v = el ? el.value : ""; return v === "Select" ? "" : v; };
+  pp.player = g("pp-player");
+  // the top Match select holds display names — resolve back to the match id
+  const matchName = g("pp-tmatch");
+  const matchId = matchName ? ((pp.matches.find((m) => (m.matchName || m.id) === matchName) || {}).id || "") : "";
+  pp.filters = {
+    matchType: g("pp-type"), year: g("pp-year"), comp: g("pp-comp") || g("pp-tcomp"),
+    batTeam: g("pp-batteam") || g("pp-tbatteam"), match: matchId, innings: g("pp-tinns"),
+    bowlTeam: g("pp-tbowlteam"), venue: g("pp-tvenue"),
+  };
+  const host = root.querySelector("#pp-content");
+  if (!pp.player) { toast("Pick a player first", true); return; }
+  const lines = ppInningsLines();
+  if (!lines.length) {
+    host.innerHTML = `<div class="rep-empty rep-soft"><p>No innings found for <b>${esc(pp.player)}</b> with these filters.</p></div>`;
+    return;
+  }
+  const hisBalls = lines.flatMap((l) => l.balls);
+  host.innerHTML = `<div class="pp-player-head">${esc(pp.player)} <span class="rep-muted">— ${lines.length} innings, ${new Set(lines.map((l) => l.match.id)).size} match(es)</span></div>`
+    + ppSectionOverall(lines)
+    + ppSectionGrouped("Tournament Wise Performance", lines, (l) => l.match.competitionName || "—", "Tournament")
+    + ppSectionGrouped("Position Wise Performance", lines, (l) => `Bat @ No.${l.position}`, "Batting Position")
+    + ppSectionVsBowlers(hisBalls)
+    + ppSectionOverSlab(hisBalls, pp.player)
+    + ppSectionRecent(lines, pp.player)
+    + ppSectionWagons(lines)
+    + ppSectionPitchQuads(hisBalls, pp.player);
+  host.scrollTop = 0;
+}
+
+async function buildPlayerPerf() {
+  const [comps, matches] = await Promise.all([dbCall("competitions"), dbCall("matches")]);
+  pp.comps = comps || [];
+  pp.matches = (matches || []).filter((m) => m && m.state);
+  pp.player = ""; pp.filters = {};
+
+  const sel = (id, opts, ph = "Select") => `<select id="${id}"><option>${ph}</option>${opts.map((o) => `<option>${esc(o)}</option>`).join("")}</select>`;
+  const uniq = (arr) => [...new Set(arr.filter(Boolean))];
+  const types = uniq(pp.matches.map((m) => m.matchType));
+  const years = uniq(pp.matches.map((m) => String(m.matchDate || "").slice(0, 4)));
+  const compNames = uniq(pp.matches.map((m) => m.competitionName));
+  const teams = uniq(pp.matches.flatMap((m) => [(m.teamA || {}).code, (m.teamB || {}).code]));
+  const venues = uniq(pp.matches.map((m) => m.venueName));
+  const matchOpts = pp.matches.map((m) => m.matchName || m.id);
+  const fld = (label, inner) => `<div class="report-field"><label>${esc(label)}</label>${inner}</div>`;
+
+  return `
+    <section class="reports-screen reports-full pp-screen">
+      <div class="report-topbar">
+        <div class="report-brand"><a class="pp-back" href="prototype.html?screen=reports" title="Back to Reports">&#8592;</a>PLAYER PERFORMANCE<img class="report-brand-mark" src="assets/logo-mark.svg" alt="" /></div>
+        <div class="report-top-actions"><a class="report-icon" href="home.html" title="Close" style="text-decoration:none;display:grid;place-items:center">&#10005;</a></div>
+      </div>
+      <div class="reports-body">
+        <aside class="report-sidebar">
+          <div class="report-fields">
+            ${fld("Match Type", sel("pp-type", types))}
+            ${fld("Year", sel("pp-year", years))}
+            ${fld("Competition", sel("pp-comp", compNames))}
+            ${fld("Batting Team", sel("pp-batteam", teams))}
+            ${fld("Player", sel("pp-player", []))}
+          </div>
+          <div class="report-actions">
+            <button class="btn-main btn-green" id="pp-generate">Generate</button>
+          </div>
+        </aside>
+        <div class="report-pane">
+          <div class="pp-topfilters">
+            <label>Competition</label>${sel("pp-tcomp", compNames)}
+            <label>Match</label>${sel("pp-tmatch", matchOpts)}
+            <label>Innings</label>${sel("pp-tinns", ["1", "2"])}
+            <label>Batting Team</label>${sel("pp-tbatteam", teams)}
+            <label>Bowling Team</label>${sel("pp-tbowlteam", teams)}
+            <label>Venue</label>${sel("pp-tvenue", venues)}
+          </div>
+          <div class="report-content" id="pp-content">
+            <div class="rep-empty"><strong>CRIC</strong><span>PRO</span><p>Pick a player and press <b>Generate</b>.</p></div>
+          </div>
+        </div>
+      </div>
+    </section>`;
+}
+
+function initPlayerPerf(root) {
+  // The player list follows the sidebar filters (team narrows it down).
+  const refreshPlayers = () => {
+    const team = (() => { const v = root.querySelector("#pp-batteam").value; return v === "Select" ? "" : v; })();
+    const names = new Set();
+    for (const m of pp.matches) for (const i of assembleInnings(m)) {
+      if (team && i.batCode !== team) continue;
+      for (const b of i.log) if (b.striker) names.add(b.striker);
+    }
+    const cur = root.querySelector("#pp-player").value;
+    root.querySelector("#pp-player").innerHTML = `<option>Select</option>` + [...names].sort().map((n) => `<option${n === cur ? " selected" : ""}>${esc(n)}</option>`).join("");
+  };
+  refreshPlayers();
+  root.querySelector("#pp-batteam").addEventListener("change", refreshPlayers);
+  // The top Match list follows the top Competition pick.
+  root.querySelector("#pp-tcomp").addEventListener("change", (e) => {
+    const comp = e.target.value === "Select" ? "" : e.target.value;
+    const opts = pp.matches.filter((m) => !comp || (m.competitionName || "") === comp).map((m) => m.matchName || m.id);
+    root.querySelector("#pp-tmatch").innerHTML = `<option>Select</option>` + opts.map((o) => `<option>${esc(o)}</option>`).join("");
+  });
+  root.querySelector("#pp-generate").addEventListener("click", () => ppGenerate(root));
 }
 
 function getScreenKey() {

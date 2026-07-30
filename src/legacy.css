@@ -1931,6 +1931,58 @@ textarea {
 .report-selbar label { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 600; color: #3a2b05; }
 .report-selbar input { accent-color: #2f8f43; }
 
+/* ---- Player Performance screen (reference: PlayerReports.pdf) ---------- */
+.pp-back {
+  display: inline-grid; place-items: center; width: 30px; height: 30px; margin-right: 10px;
+  border: 1px solid var(--border); border-radius: 8px; color: var(--text-soft);
+  text-decoration: none; font-size: 15px;
+}
+.pp-back:hover { color: #fff; border-color: var(--border-strong); }
+.pp-topfilters {
+  display: grid; grid-template-columns: repeat(3, auto 1fr); gap: 10px 12px; align-items: center;
+  padding: 10px 16px; border-bottom: 1px solid var(--border); background: rgba(7, 14, 23, 0.5);
+}
+.pp-topfilters label { font-size: 12px; color: var(--muted); white-space: nowrap; }
+.pp-topfilters select {
+  width: 100%; padding: 7px 10px; border-radius: 8px; font-size: 12px;
+  border: 1px solid var(--border); background: rgba(10, 20, 33, 0.9); color: var(--text);
+}
+.pp-player-head { font-size: 16px; font-weight: 700; color: var(--text); margin-bottom: 6px; }
+.pp-h {
+  margin: 18px 0 8px; font-size: 15px; font-weight: 700; color: #e0903a;
+}
+.pp-h:first-of-type { margin-top: 6px; }
+.pp-table thead th { background: #4f4fae; color: #fff; }
+.pp-dash { color: var(--muted); }
+.pp-charts { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px; margin-top: 12px; }
+.pp-chart svg { width: 100%; height: auto; }
+.pp-tiles { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; margin-top: 12px; }
+.pp-tile {
+  display: flex; align-items: center; justify-content: space-between; gap: 10px;
+  padding: 10px 12px; border: 1px solid var(--border); border-radius: 8px; background: rgba(6, 12, 20, 0.7);
+}
+.pp-tile span { font-size: 11px; color: var(--text-soft); }
+.pp-tile b { font-size: 13px; color: #e7c53a; text-align: right; }
+.pp-strip { white-space: nowrap; }
+.pp-cell {
+  display: inline-grid; place-items: center; width: 18px; height: 18px; margin: 0 1px;
+  background: #b02020; color: #fff; font-size: 10px; font-weight: 700; border-radius: 3px;
+}
+.pp-bar {
+  padding: 6px 10px; margin-bottom: 6px; text-align: center; font-size: 12px; font-weight: 600;
+  color: #fff; background: #4f4fae; border-radius: 4px;
+}
+.pp-wheels { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 18px; }
+.pp-wheel .rep-field { width: 100%; height: auto; }
+.pp-dnp-wrap { position: relative; }
+.pp-dnp {
+  position: absolute; inset: 0; display: grid; place-items: center;
+  font-size: 34px; font-weight: 700; color: rgba(255, 255, 255, 0.85); letter-spacing: 0.06em;
+}
+.pp-sides { display: flex; justify-content: space-between; font-size: 11px; font-weight: 700; color: var(--text-soft); text-align: center; margin-top: 4px; }
+.pp-quads { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px 26px; }
+.pp-quad .rep-pitchmap, .pp-quad .rep-pm-cols { max-width: 420px; margin-left: auto; margin-right: auto; }
+
 /* Inside/Outside 30-yard-circle filter under the wagon wheel chips */
 .rep-circle-toggle { display: flex; justify-content: center; gap: 22px; margin-top: 8px; }
 .rep-circ { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; color: var(--text-soft); cursor: pointer; }
