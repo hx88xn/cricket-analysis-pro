@@ -1532,7 +1532,13 @@ const rep = {
 // Decode a stored `ext` value. Legal deliveries advance the over; WD/NB do not.
 // B/LB are byes (not credited to the batter). Penalty defaults to 5.
 function parseExt(ext) {
-  const s = String(ext == null ? "" : ext).trim();
+  let s = String(ext == null ? "" : ext).trim();
+  // Overthrows ride along as an "OTn" suffix ("OT2", "NBOT1", "B2OT1"). They
+  // annotate the ball but never score (the coding screen adds no runs for
+  // them), so strip before decoding — the letter-greedy match below would
+  // otherwise read "NBOT" as an unknown LEGAL type, or "OT2" as 2 phantom
+  // extra runs.
+  s = s.replace(/OT\d*/gi, "");
   if (!s || s === "0") return { type: "", runs: 0, legal: true, bye: false };
   const m = /^([A-Za-z]+)(\d*)/.exec(s);
   const type = (m ? m[1] : "").toUpperCase();
@@ -1546,6 +1552,11 @@ const ballExtra = (b) => parseExt(b.ext).runs;
 const ballTeam = (b) => ballBat(b) + ballExtra(b);
 const isLegal = (b) => parseExt(b.ext).legal;
 const isWicket = (b) => !!b.wicket || b.tally === "W";
+// Log rows carry two-word short names (shortName on the coding screen) while
+// outBatsman keeps the full roster name — compare on the short form so a
+// three-word name still matches its own dismissal.
+const shortName2 = (n) => String(n || "").split(" ").slice(0, 2).join(" ");
+const sameBatsman = (a, b) => !!a && !!b && (a === b || shortName2(a) === shortName2(b));
 // Wickets credited to the bowler (run-outs / retired / obstruction are not).
 const bowlerWicket = (b) => isWicket(b) && !/run\s*out|retired|obstruct|timed|handled/i.test(b.dismissal || "");
 
@@ -1626,13 +1637,17 @@ function battingCard(balls) {
       else if (bat === 4) r.fours += 1;
       else if (bat === 6) r.sixes += 1;
       r.runs += bat;
+    } else if (e.legal && e.bye) {
+      // a legal bye is still a ball faced (the coding screen counts it), just
+      // never credited to the batter — a dot from his point of view
+      r.balls += 1; r.dots += 1;
     } else if (e.type === "NB") { r.runs += ballBat(b); }
   }
-  // dismissals
+  // dismissals (outBatsman is the full roster name; row keys are short names)
   for (const b of balls) {
-    if (isWicket(b) && b.outBatsman && m.has(b.outBatsman)) {
-      m.get(b.outBatsman).out = { how: b.dismissal || "Out", bowler: b.bowler };
-    }
+    if (!isWicket(b) || !b.outBatsman) continue;
+    const key = m.has(b.outBatsman) ? b.outBatsman : (m.has(shortName2(b.outBatsman)) ? shortName2(b.outBatsman) : null);
+    if (key) m.get(key).out = { how: b.dismissal || "Out", bowler: b.bowler };
   }
   return order.map((n) => {
     const r = m.get(n), scoring = r.balls - r.dots;
@@ -1906,9 +1921,17 @@ function reportWickets(inns) {
 }
 
 // Wagon-ball helpers. A saved wagon point lives in the coding screen's 642x640
-// overlay space (centre 324.5,312.5); off side is the left half as drawn.
+// overlay space (centre 324.5,312.5) — but in the orientation of whichever
+// field artwork was active: the coding screen mirrors the wheel and pitch map
+// with the striker's handedness (b.mirrored, true = right-hander / flipped
+// artwork, where the off side is the RIGHT half of the screen). Reports draw
+// everything in the reference's fixed orientation (off side left, like the
+// unflipped artwork), so x flips for mirrored balls. Legacy balls without the
+// flag are treated as right-handed — the common case.
 const hasWagon = (b) => b.wagon && typeof b.wagon.x === "number";
-const wagonIsOff = (b) => hasWagon(b) && b.wagon.x < 324.5;
+const ballMirrored = (b) => (b.mirrored !== undefined ? !!b.mirrored : true);
+const wagonCanonX = (b) => (ballMirrored(b) ? 649 - b.wagon.x : b.wagon.x);
+const wagonIsOff = (b) => hasWagon(b) && wagonCanonX(b) < 324.5;
 // Filter a ball list by the active off/all/on side toggle (balls without a
 // wagon point stay in "all" only).
 function sideBalls(balls, side) {
@@ -1949,8 +1972,8 @@ function wagonFieldSvg(balls, mode) {
   let wagonBalls = 0;
   for (const b of balls) {
     if (!hasWagon(b)) continue;
-    // rebase from the 642x640 overlay space onto our field circle
-    const dx = (b.wagon.x - 324.5) * (R / 290), dy = (b.wagon.y - 312.5) * (R / 290);
+    // rebase from the 642x640 overlay space (handedness-normalised) onto our field circle
+    const dx = (wagonCanonX(b) - 324.5) * (R / 290), dy = (b.wagon.y - 312.5) * (R / 290);
     const c = runColor(ballBat(b));
     if (shots) lines += `<line x1="${CX}" y1="${CY}" x2="${CX + dx}" y2="${CY + dy}" stroke="${c}" stroke-width="2.5" opacity="0.9"/>`;
     const si = (Math.floor(((Math.atan2(dy, dx) + Math.PI / 2) / (Math.PI / 4)) % 8) + 8) % 8;
@@ -2039,8 +2062,11 @@ function pitchGrid(balls, which = "pitch") {
   let plotted = 0;
   for (const b of balls) {
     const p = pitchPointOf(b, which); if (!p) continue;
+    // pitch-map.png (right-hander) runs WIDE D.L → WIDE O.O left-to-right —
+    // the reverse of the report's lanes — so mirrored balls flip x
+    const px = ballMirrored(b) ? 100 - p.x : p.x;
     const row = Math.min(5, Math.max(0, Math.floor((p.y / 100) * 6)));
-    const col = Math.min(4, Math.max(0, Math.floor((p.x / 100) * 5)));
+    const col = Math.min(4, Math.max(0, Math.floor((px / 100) * 5)));
     grid[row][col] += 1; plotted += 1;
   }
   const maxCell = Math.max(1, ...grid.flat());
@@ -2212,7 +2238,7 @@ function reportOverComparison(inns) {
 // recorded on the same delivery ("Marcus Stoinis has a Fumble").
 const FOOTWORK_LABEL = { ff: "Front Foot", bf: "Back Foot", sd: "Step Down", crm: "Crease Movement" };
 const TAG_LABEL = { pm: "Play and Miss", edge: "Edge", freehit: "Free Hit", keymoment: "Key Moment", bowlvar: "Bowling Variation", unc: "Uncontrolled", btn: "Beaten", wtb: "WTB", rs: "RS" };
-function ballCallouts(b) {
+function ballCallouts(b, innings) {
   const parts = [];
   if (b.bowl) parts.push(b.bowl);
   const stroke = [FOOTWORK_LABEL[b.footwork] || "", b.shot || ""].filter(Boolean).join(" ");
@@ -2221,8 +2247,12 @@ function ballCallouts(b) {
   for (const [k, on] of Object.entries(b.tags || {})) if (on && TAG_LABEL[k]) parts.push(TAG_LABEL[k]);
   if (b.placement) parts.push(b.placement);
   const st = (rep.match && rep.match.state) || {};
+  // Join fielding events to their delivery; "+" marks an illegal ball's number
+  // and the live-ball stamp can't know legality yet, so compare without it.
+  const num = String(b.num).replace(/\+$/, "");
   for (const f of st.fieldingEvents || []) {
-    if (String(f.over) === String(b.num) && f.fielder) parts.push(`${f.fielder} has a ${f.event || "fielding event"}`);
+    if (f.innings && innings && f.innings !== innings) continue;
+    if (String(f.over).replace(/\+$/, "") === num && f.fielder) parts.push(`${f.fielder} has a ${f.event || "fielding event"}`);
   }
   return parts.map(esc).join(" , ");
 }
@@ -2235,7 +2265,7 @@ function reportCommentary(inns) {
       const lines = bs.slice().reverse().map((b) => {
         const bat = ballBat(b), e = parseExt(b.ext), badge = isWicket(b) ? "W" : (e.type ? e.type : bat);
         const cls = isWicket(b) ? "wk" : bat >= 4 ? "bd" : "";
-        const extra = ballCallouts(b);
+        const extra = ballCallouts(b, i.innings);
         const lead = isWicket(b)
           ? `OUT ! ${esc(b.dismissal || "Wicket")}, Wicket Player is ${esc(b.outBatsman || b.striker)}`
           : `${bat === 0 ? "No Runs" : `${bat} Run${bat === 1 ? "" : "s"}`}${e.type ? " , " + e.type : ""}`;
@@ -2268,7 +2298,7 @@ function vsAdd(t, b) {
   if (bat === 4) t.fours += 1;
   if (tagUnc(b)) t.unc += 1;
   if (tagBtn(b)) t.btn += 1;
-  if (bowlerWicket(b) && b.outBatsman === b.striker) t.wkts += 1;
+  if (bowlerWicket(b) && sameBatsman(b.outBatsman, b.striker)) t.wkts += 1;
 }
 const vsCells = (t) => `<td>${t.dots}</td><td>${t.ones}</td><td>${t.twos}</td><td>${t.fours}</td><td>${t.unc}</td><td>${t.btn}</td><td>${t.balls}</td><td>${t.runs}</td><td>${num(pct(t.runs, t.balls))}</td>`;
 
@@ -2616,7 +2646,9 @@ function reportUmpire(inns) {
     const mine = balls.filter((b) => overIndexOf(b.num) % 2 === ui);
     const appeals = mine.filter((b) => b.appeals);
     const extras = mine.filter((b) => parseExt(b.ext).type);
-    const pens = penalties.filter((p, pi) => pi % 2 === ui);
+    // penalties carry the over they were awarded in — same end-alternation
+    // rule as balls, not "every other list entry"
+    const pens = penalties.filter((p) => overIndexOf(p.over) % 2 === ui);
     const appealType = (b) => {
       const a = (Array.isArray(st.appealsLog) ? st.appealsLog : []).find((x) => String(x.over) === String(b.num));
       return (a && a.type) || b.dismissal || "LBW";

@@ -895,8 +895,16 @@ function onDocDownForMenu(e) {
 
 function recordFieldingEvent(position, event, fielder, p, netRunsSaved = "") {
   state.fieldingEvents = state.fieldingEvents || [];
+  // Stamp the DELIVERY the event belongs to, matching how logBall numbers the
+  // ball (state.ball + 1 while it is live). Recorded between balls, the event
+  // belongs to the delivery that just ended — the last logged row. The old
+  // `state.over.state.ball` stamp was one ball behind, so reports could never
+  // join an event back to its ball.
+  const over = state.ballStarted
+    ? `${state.over}.${Math.min(state.ball + 1, 6)}`
+    : (state.log.length ? state.log[state.log.length - 1].num : `${state.over}.${state.ball}`);
   state.fieldingEvents.push({ position, event, fielder, netRunsSaved,
-    over: `${state.over}.${state.ball}`, x: p?.x, y: p?.y, ball: state.log.length });
+    over, innings: state.innings || 1, x: p?.x, y: p?.y, ball: state.log.length });
   scheduleSave(); // persist fielding events to the DB
   const label = document.getElementById("wagon-region");
   if (label) {
@@ -1248,6 +1256,10 @@ function logBall({ runs = 0, ext = 0, boundary = false, legal = true, bye = fals
   const logged = state.log[state.log.length - 1];
   logged.wagon = state.lastWagon ? { ...state.lastWagon } : null;
   logged.pitch = (state.pitchInputs || []).slice();
+  // Wagon/pitch coords are raw screen space, and the artwork mirrors with the
+  // striker's handedness — record which orientation this ball was coded in so
+  // reports can normalise (true = right-hander / flipped field artwork).
+  logged.mirrored = !!state.fieldMirrored;
   // also persist the coding context so the ball can be fully reviewed later
   logged.tags = { ...state.tags };
   logged.footwork = state.footwork;
