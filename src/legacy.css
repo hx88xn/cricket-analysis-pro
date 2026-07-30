@@ -1762,27 +1762,46 @@ textarea {
 .reports-full .report-sidebar {
   display: flex;
   flex-direction: column;
-  gap: 10px;
-  padding: 14px;
+  gap: 0;
+  padding: 0;
   min-height: 0;
-  overflow-y: auto;
+  overflow: hidden;
   background: rgba(8, 16, 27, 0.6);
   border-right: 1px solid var(--border);
 }
-.reports-full .report-field { display: flex; flex-direction: column; gap: 4px; }
+/* The filter fields scroll; the action buttons stay pinned below them so
+   "Show Reports" is always visible (matches the CAP reference sidebar). */
+.reports-full .report-fields {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px 14px;
+}
+.reports-full .report-field { display: flex; flex-direction: column; gap: 4px; margin-bottom: 0; }
 .reports-full .report-field label {
   font-size: 11px; font-weight: 700; letter-spacing: 0.04em; color: var(--muted);
+  margin-bottom: 0;
 }
 .reports-full .report-field select {
-  width: 100%; padding: 8px 10px; border-radius: 8px;
+  width: 100%; padding: 7px 10px; border-radius: 8px;
   border: 1px solid var(--border); background: rgba(10, 20, 33, 0.9); color: var(--text);
   font-size: 12px;
+  /* the generic .report-field select rule sets min-height: 52px — far too
+     tall for the compact reference sidebar */
+  min-height: 0;
 }
 .report-misc-label {
   margin-top: 6px; font-size: 11px; font-weight: 700; letter-spacing: 0.08em;
   color: var(--muted); text-transform: uppercase;
 }
-.reports-full .report-actions { display: flex; flex-direction: column; gap: 8px; margin-top: 2px; }
+.reports-full .report-actions {
+  display: flex; flex-direction: column; gap: 8px; margin-top: 0;
+  padding: 10px 14px 12px; border-top: 1px solid var(--border);
+  background: rgba(8, 16, 27, 0.9);
+}
 .reports-full .report-actions .btn-main,
 .reports-full .btn-filter { padding: 9px 12px; font-size: 12px; }
 .btn-pink { background: linear-gradient(180deg, #e0607f, #b8466a); color: #fff; }
@@ -1906,11 +1925,19 @@ textarea {
   display: flex; flex-wrap: wrap; gap: 6px 16px; padding: 8px 12px;
   background: linear-gradient(180deg, #e7c53a, #d9a52a); border-bottom: 1px solid var(--border);
 }
+/* display:flex above would otherwise beat the UA [hidden] rule, leaving the
+   bar permanently visible — it must only show after "Select Filter". */
+.report-selbar[hidden] { display: none; }
 .report-selbar label { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 600; color: #3a2b05; }
 .report-selbar input { accent-color: #2f8f43; }
 
+/* Inside/Outside 30-yard-circle filter under the wagon wheel chips */
+.rep-circle-toggle { display: flex; justify-content: center; gap: 22px; margin-top: 8px; }
+.rep-circ { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; color: var(--text-soft); cursor: pointer; }
+.rep-circ input { width: 14px; height: 14px; accent-color: #2f8f43; }
+
 /* off side / all / on side toggle under the wagon wheels */
-.rep-side-runs { display: flex; justify-content: space-between; max-width: 420px; margin: 8px auto 4px; font-size: 12px; font-weight: 700; text-align: center; color: var(--text-soft); }
+.rep-side-runs { display: flex; justify-content: space-between; width: 100%; max-width: 420px; margin: 8px auto 4px; font-size: 12px; font-weight: 700; text-align: center; color: var(--text-soft); }
 .rep-side-bar { display: flex; justify-content: center; gap: 2px; margin: 0 auto 8px; max-width: 420px; }
 .rep-side-btn {
   appearance: none; flex: 1; border: 1px solid rgba(124, 157, 196, 0.2); cursor: pointer;

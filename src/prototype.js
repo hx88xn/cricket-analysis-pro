@@ -1936,6 +1936,15 @@ function wagonFieldSvg(balls, mode) {
   let sect = "";
   if (sectors) { for (let s = 0; s < 8; s++) { const a = (Math.PI / 4) * s - Math.PI / 2; sect += `<line x1="${CX}" y1="${CY}" x2="${CX + R * Math.cos(a)}" y2="${CY + R * Math.sin(a)}" stroke="rgba(255,255,255,.25)"/>`; } }
   let lines = "", labels = "";
+  // Fielding-position labels around the outfield (reference spider wagon):
+  // octant midpoints clockwise from behind square on the off side.
+  if (shots) {
+    const POS = ["THIRD MAN", "FINE LEG", "SQUARE LEG", "MID WICKET", "LONG ON", "LONG OFF", "COVERS", "POINT"];
+    POS.forEach((p, i) => {
+      const a = ((-112.5 + i * 45) * Math.PI) / 180, lr = R * 0.78;
+      labels += `<text x="${CX + lr * Math.cos(a)}" y="${CY + lr * Math.sin(a)}" text-anchor="middle" fill="rgba(255,255,255,.55)" font-size="17" font-weight="700" letter-spacing="1">${p}</text>`;
+    });
+  }
   const secAgg = Array.from({ length: 8 }, () => ({ runs: 0, balls: 0 }));
   let wagonBalls = 0;
   for (const b of balls) {
@@ -1988,8 +1997,26 @@ function tallyChips(balls) {
 // Spider / Sector / Combined wagon reports share one layout: the wheel with the
 // off/all/on side toggle + run chips on the left, Summary/Extras panels right.
 function wagonReport(inns, title, sectors) {
-  const balls = allBalls(inns), view = sideBalls(balls, rep.wagonSide);
-  return `${repTitle(title)}<div class="rep-wagon-grid"><div class="rep-wagon-main">${wagonFieldSvg(view, sectors)}${sideToggleBar(balls)}${tallyChips(view)}</div><div class="rep-panels">${scoringPanel(view)}</div></div>`;
+  const balls = allBalls(inns), view = circleBalls(sideBalls(balls, rep.wagonSide));
+  return `${repTitle(title)}<div class="rep-wagon-grid"><div class="rep-wagon-main">${wagonFieldSvg(view, sectors)}${sideToggleBar(balls)}${tallyChips(view)}${circleToggleBar()}</div><div class="rep-panels">${scoringPanel(view)}</div></div>`;
+}
+
+// Inside/Outside 30-yard-circle filter (reference wagon reports). With neither
+// or both boxes ticked everything shows; one box narrows to that region.
+function circleBalls(balls) {
+  const c = rep.wagonCirc || {};
+  if (!!c.inside === !!c.outside) return balls;
+  const IN_R = 290 * 0.55; // inner-circle radius in the 642x640 overlay space
+  return balls.filter((b) => {
+    if (!hasWagon(b)) return false;
+    const inside = Math.hypot(b.wagon.x - 324.5, b.wagon.y - 312.5) <= IN_R;
+    return c.inside ? inside : !inside;
+  });
+}
+function circleToggleBar() {
+  const c = rep.wagonCirc || {};
+  const box = (key, label) => `<label class="rep-circ"><input type="checkbox" data-wcirc="${key}" ${c[key] ? "checked" : ""}/> ${label}</label>`;
+  return `<div class="rep-circle-toggle">${box("inside", "Inside Circle")}${box("outside", "Outside Circle")}</div>`;
 }
 const reportSpiderWagon = (inns) => wagonReport(inns, "Spider Wagon Wheel Report", false);
 const reportSectorWagon = (inns) => wagonReport(inns, "Sector Wagon Wheel Report", true);
@@ -2643,7 +2670,8 @@ async function buildReports() {
   rep.matches = matches || [];
   rep.officials = officials || [];
   rep.match = null; rep.innings = []; rep.activeTab = "Statistics"; rep.teamView = "both";
-  rep.wagonSide = "all"; rep.statPage = 0; rep.wwcA = 0; rep.wwcB = 1; rep.selFilter = false;
+  rep.wagonSide = "all"; rep.wagonCirc = { inside: false, outside: false };
+  rep.statPage = 0; rep.wwcA = 0; rep.wwcB = 1; rep.selFilter = false;
   rep.cmpA = ""; rep.cmpB = ""; rep.scExpanded = new Set();
   rep.filters = { battingCode: "", striker: "", bowler: "", wicket: "", runs: "", misc: "", fromOver: "", toOver: "" };
 
@@ -2664,6 +2692,7 @@ async function buildReports() {
       </div>
       <div class="reports-body">
         <aside class="report-sidebar">
+          <div class="report-fields">
           ${field("Match Type", selOpts("rp-type", ["Test", "ODI", "T20I", "T20D", "First Class"].map((m) => ({ v: m })), (m) => m.v, (m) => m.v, "All"))}
           ${field("Competition", selOpts("rp-comp", comps, (c) => c.id, (c) => c.name, "All"))}
           ${field("Match", selOpts("rp-match", rep.matches, (m) => m.id, (m) => m.matchName || `${(m.teamA || {}).code || "?"} v ${(m.teamB || {}).code || "?"}`, "Select"))}
@@ -2675,6 +2704,7 @@ async function buildReports() {
           ${field("Misc. Filters", `<select id="rp-misc"><option value="">Select</option><option value="boundaries">Boundaries Only</option><option value="dots">Dot Balls Only</option><option value="wickets">Wickets Only</option></select>`)}
           <div class="report-misc-label">Overs Range</div>
           <div class="report-field" style="flex-direction:row;gap:6px"><select id="rp-from">${overOpts}</select><select id="rp-to">${overOpts}</select></div>
+          </div>
           <div class="report-actions report-actions-ref">
             <button class="btn-main btn-green" id="rp-show">Show Reports</button>
             <button class="btn-main btn-yellow" id="rp-matchrep">Match Report</button>
@@ -2710,7 +2740,8 @@ function initReports(root) {
   });
 
   const setTab = (name) => {
-    rep.activeTab = name; rep.teamView = "both"; rep.wagonSide = "all"; rep.statPage = 0;
+    rep.activeTab = name; rep.teamView = "both"; rep.wagonSide = "all";
+    rep.wagonCirc = { inside: false, outside: false }; rep.statPage = 0;
     root.querySelectorAll("[data-tab]").forEach((x) => x.classList.toggle("active", x.dataset.tab === name));
     renderActiveReport();
   };
@@ -2746,7 +2777,9 @@ function initReports(root) {
     const cmp = e.target.closest("[data-cmp]");
     if (cmp) { rep[cmp.dataset.cmp === "A" ? "cmpA" : "cmpB"] = cmp.value; renderActiveReport(); return; }
     const wwc = e.target.closest("[data-wwc]");
-    if (wwc) { rep[wwc.dataset.wwc === "A" ? "wwcA" : "wwcB"] = +wwc.value; renderActiveReport(); }
+    if (wwc) { rep[wwc.dataset.wwc === "A" ? "wwcA" : "wwcB"] = +wwc.value; renderActiveReport(); return; }
+    const wc = e.target.closest("[data-wcirc]");
+    if (wc) { rep.wagonCirc[wc.dataset.wcirc] = wc.checked; renderActiveReport(); }
   });
   content.addEventListener("click", (e) => {
     // Scorecard row expansion.
