@@ -1993,6 +1993,13 @@ textarea {
 .mr-section { margin-top: 22px; border-top: 1px solid var(--border); padding-top: 10px; }
 .pp-wtoggle { margin-left: 18px; font-size: 12px; font-weight: 400; color: var(--text-soft); cursor: pointer; }
 .pp-wtoggle input { accent-color: #2f8f43; }
+/* compulsory filters (Main Filters.docx): Match Type + Player */
+.pp-req { color: #d9534f; margin-left: 3px; font-weight: 700; }
+.pp-reqnote { margin: 2px 0 0; font-size: 10px; color: var(--muted); }
+.reports-full .report-field select.pp-invalid {
+  border-color: #d9534f;
+  box-shadow: 0 0 0 2px rgba(217, 83, 79, 0.25);
+}
 
 /* Inside/Outside 30-yard-circle filter under the wagon wheel chips */
 .rep-circle-toggle { display: flex; justify-content: center; gap: 22px; margin-top: 8px; }

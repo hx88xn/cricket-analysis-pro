@@ -4425,7 +4425,21 @@ function ppGenerate(root) {
     bowlTeam: g("pp-tbowlteam"), venue: g("pp-tvenue"),
   };
   const host = root.querySelector("#pp-content");
-  if (!pp.player) { toast("Pick a player first", true); return; }
+  // Compulsory filters (Main Filters.docx): Match Type and Player.
+  const missing = [];
+  if (!pp.filters.matchType) missing.push(["Match Type", "pp-type"]);
+  if (!pp.player) missing.push(["Player", "pp-player"]);
+  if (missing.length) {
+    missing.forEach(([, id]) => {
+      const el = root.querySelector("#" + id);
+      if (!el) return;
+      el.classList.add("pp-invalid");
+      setTimeout(() => el.classList.remove("pp-invalid"), 1600);
+    });
+    toast(`Select ${missing.map(([l]) => l).join(" and ")} to generate`, true);
+    root.querySelector("#" + missing[0][1])?.focus();
+    return;
+  }
   const lines = ppInningsLines();
   if (!lines.length) {
     host.innerHTML = `<div class="rep-empty rep-soft"><p>No innings found for <b>${esc(pp.player)}</b> with these filters.</p></div>`;
@@ -4450,15 +4464,13 @@ async function buildPlayerPerf() {
   pp.matches = (matches || []).filter((m) => m && m.state);
   pp.player = ""; pp.filters = {};
 
-  const sel = (id, opts, ph = "Select") => `<select id="${id}"><option>${ph}</option>${opts.map((o) => `<option>${esc(o)}</option>`).join("")}</select>`;
-  const uniq = (arr) => [...new Set(arr.filter(Boolean))];
-  const types = uniq(pp.matches.map((m) => m.matchType));
-  const years = uniq(pp.matches.map((m) => String(m.matchDate || "").slice(0, 4)));
-  const compNames = uniq(pp.matches.map((m) => m.competitionName));
-  const teams = uniq(pp.matches.flatMap((m) => [(m.teamA || {}).code, (m.teamB || {}).code]));
-  const venues = uniq(pp.matches.map((m) => m.venueName));
-  const matchOpts = pp.matches.map((m) => m.matchName || m.id);
-  const fld = (label, inner) => `<div class="report-field"><label>${esc(label)}</label>${inner}</div>`;
+  // Every list is populated by ppRefreshOptions() on init and after each
+  // change, so the choices only ever include what the other picks allow.
+  const sel = (id) => `<select id="${id}"><option value="">Select</option></select>`;
+  // Main Filters.docx: Match Type and Player are compulsory, Team and
+  // Competition optional — required ones carry the * marker.
+  const fld = (label, inner, req = false) =>
+    `<div class="report-field"><label>${esc(label)}${req ? `<span class="pp-req">*</span>` : ""}</label>${inner}</div>`;
 
   return `
     <section class="reports-screen reports-full pp-screen">
@@ -4469,11 +4481,12 @@ async function buildPlayerPerf() {
       <div class="reports-body">
         <aside class="report-sidebar">
           <div class="report-fields">
-            ${fld("Match Type", sel("pp-type", types))}
-            ${fld("Year", sel("pp-year", years))}
-            ${fld("Competition", sel("pp-comp", compNames))}
-            ${fld("Batting Team", sel("pp-batteam", teams))}
-            ${fld("Player", sel("pp-player", []))}
+            ${fld("Match Type", sel("pp-type"), true)}
+            ${fld("Year", sel("pp-year"))}
+            ${fld("Competition", sel("pp-comp"))}
+            ${fld("Batting Team", sel("pp-batteam"))}
+            ${fld("Player", sel("pp-player"), true)}
+            <p class="pp-reqnote"><span class="pp-req">*</span> required</p>
           </div>
           <div class="report-actions">
             <button class="btn-main btn-green" id="pp-generate">Generate</button>
@@ -4481,12 +4494,12 @@ async function buildPlayerPerf() {
         </aside>
         <div class="report-pane">
           <div class="pp-topfilters">
-            <label>Competition</label>${sel("pp-tcomp", compNames)}
-            <label>Match</label>${sel("pp-tmatch", matchOpts)}
-            <label>Innings</label>${sel("pp-tinns", ["1", "2"])}
-            <label>Batting Team</label>${sel("pp-tbatteam", teams)}
-            <label>Bowling Team</label>${sel("pp-tbowlteam", teams)}
-            <label>Venue</label>${sel("pp-tvenue", venues)}
+            <label>Competition</label>${sel("pp-tcomp")}
+            <label>Match</label>${sel("pp-tmatch")}
+            <label>Innings</label>${sel("pp-tinns")}
+            <label>Batting Team</label>${sel("pp-tbatteam")}
+            <label>Bowling Team</label>${sel("pp-tbowlteam")}
+            <label>Venue</label>${sel("pp-tvenue")}
           </div>
           <div class="report-content" id="pp-content">
             <div class="rep-empty"><strong>CRIC</strong><span>PRO</span><p>Pick a player and press <b>Generate</b>.</p></div>
@@ -4496,29 +4509,98 @@ async function buildPlayerPerf() {
     </section>`;
 }
 
+// The sidebar and top rows hold two controls for the same filter
+// (Competition, Batting Team) — the reference shows both, so they mirror.
+const PP_MIRRORS = [["pp-comp", "pp-tcomp"], ["pp-batteam", "pp-tbatteam"]];
+
 function initPlayerPerf(root) {
-  // The player list follows the sidebar filters (team narrows it down).
-  const refreshPlayers = () => {
-    const team = (() => { const v = root.querySelector("#pp-batteam").value; return v === "Select" ? "" : v; })();
+  const $ = (id) => root.querySelector("#" + id);
+  const val = (id) => { const el = $(id); return el ? el.value : ""; };
+
+  // Matches that satisfy every scope filter EXCEPT the one being populated —
+  // so each list offers exactly what the other picks still allow (e.g. the
+  // team lists only show teams that actually play in the chosen tournament).
+  const pool = (except = "") => {
+    const type = except === "type" ? "" : val("pp-type");
+    const year = except === "year" ? "" : val("pp-year");
+    const comp = except === "comp" ? "" : (val("pp-comp") || val("pp-tcomp"));
+    const venue = except === "venue" ? "" : val("pp-tvenue");
+    const matchName = except === "match" ? "" : val("pp-tmatch");
+    const team = except === "team" ? "" : (val("pp-batteam") || val("pp-tbatteam"));
+    const bowlTeam = except === "bowlteam" ? "" : val("pp-tbowlteam");
+    return pp.matches.filter((m) => {
+      if (type && (m.matchType || "") !== type) return false;
+      if (year && String(m.matchDate || "").slice(0, 4) !== year) return false;
+      if (comp && (m.competitionName || "") !== comp) return false;
+      if (venue && (m.venueName || "") !== venue) return false;
+      if (matchName && (m.matchName || m.id) !== matchName) return false;
+      const codes = [(m.teamA || {}).code, (m.teamB || {}).code];
+      if (team && !codes.includes(team)) return false;
+      if (bowlTeam && !codes.includes(bowlTeam)) return false;
+      return true;
+    });
+  };
+
+  const uniq = (arr) => [...new Set(arr.filter(Boolean))].sort();
+  // Repopulate a select, keeping the current pick when it is still offered.
+  const fill = (id, pairs) => {
+    const el = $(id); if (!el) return;
+    const cur = el.value;
+    const keep = pairs.some(([v]) => v === cur);
+    el.innerHTML = `<option value="">Select</option>`
+      + pairs.map(([v, label]) => `<option value="${esc(v)}"${v === cur && keep ? " selected" : ""}>${esc(label)}</option>`).join("");
+    if (!keep) el.value = "";
+  };
+  const plain = (arr) => arr.map((v) => [v, v]);
+  // Teams as code → display name, taken only from the matches in scope.
+  const teamPairs = (ms) => {
+    const m2 = new Map();
+    for (const m of ms) for (const t of [m.teamA, m.teamB]) if (t && t.code) m2.set(t.code, t.name || t.code);
+    return [...m2.entries()].sort((a, b) => a[1].localeCompare(b[1]));
+  };
+
+  const refreshOptions = () => {
+    fill("pp-type", plain(uniq(pool("type").map((m) => m.matchType))));
+    fill("pp-year", plain(uniq(pool("year").map((m) => String(m.matchDate || "").slice(0, 4)))));
+    const compPairs = plain(uniq(pool("comp").map((m) => m.competitionName)));
+    fill("pp-comp", compPairs); fill("pp-tcomp", compPairs);
+    // Only teams actually participating in whatever tournament/scope is picked.
+    const tp = teamPairs(pool("team"));
+    fill("pp-batteam", tp); fill("pp-tbatteam", tp);
+    fill("pp-tbowlteam", teamPairs(pool("bowlteam")));
+    fill("pp-tvenue", plain(uniq(pool("venue").map((m) => m.venueName))));
+    fill("pp-tmatch", pool("match").map((m) => [m.matchName || m.id, m.matchName || m.id]));
+    // Innings actually present in the scoped matches.
+    const innSet = new Set();
+    for (const m of pool()) for (const i of assembleInnings(m)) innSet.add(String(i.innings));
+    fill("pp-tinns", plain([...innSet].sort()));
+    // Players who batted in the scoped innings (team-side aware).
+    const team = val("pp-batteam") || val("pp-tbatteam");
+    const innings = val("pp-tinns");
     const names = new Set();
-    for (const m of pp.matches) for (const i of assembleInnings(m)) {
+    for (const m of pool()) for (const i of assembleInnings(m)) {
       if (team && i.batCode !== team) continue;
+      if (innings && String(i.innings) !== innings) continue;
       for (const b of i.log) if (b.striker) names.add(b.striker);
     }
-    const cur = root.querySelector("#pp-player").value;
-    root.querySelector("#pp-player").innerHTML = `<option>Select</option>` + [...names].sort().map((n) => `<option${n === cur ? " selected" : ""}>${esc(n)}</option>`).join("");
+    fill("pp-player", plain([...names].sort()));
   };
-  refreshPlayers();
-  root.querySelector("#pp-batteam").addEventListener("change", refreshPlayers);
-  // The top Match list follows the top Competition pick.
-  root.querySelector("#pp-tcomp").addEventListener("change", (e) => {
-    const comp = e.target.value === "Select" ? "" : e.target.value;
-    const opts = pp.matches.filter((m) => !comp || (m.competitionName || "") === comp).map((m) => m.matchName || m.id);
-    root.querySelector("#pp-tmatch").innerHTML = `<option>Select</option>` + opts.map((o) => `<option>${esc(o)}</option>`).join("");
+
+  // A change anywhere re-derives every list; mirrored pairs sync first.
+  root.querySelectorAll(".report-fields select, .pp-topfilters select").forEach((el) => {
+    el.addEventListener("change", () => {
+      for (const [a, b] of PP_MIRRORS) {
+        if (el.id === a && $(b)) $(b).value = el.value;
+        else if (el.id === b && $(a)) $(a).value = el.value;
+      }
+      refreshOptions();
+    });
   });
-  root.querySelector("#pp-generate").addEventListener("click", () => ppGenerate(root));
+  refreshOptions();
+
+  $("pp-generate").addEventListener("click", () => ppGenerate(root));
   // Spider / Sector wheel-mode checkboxes inside the generated report
-  root.querySelector("#pp-content").addEventListener("change", (e) => {
+  $("pp-content").addEventListener("change", (e) => {
     const w = e.target.closest("[data-ppwagon]");
     if (w) { pp.wagonMode = w.dataset.ppwagon; ppGenerate(root); }
   });
