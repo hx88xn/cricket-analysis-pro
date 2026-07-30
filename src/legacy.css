@@ -1982,6 +1982,17 @@ textarea {
 .pp-sides { display: flex; justify-content: space-between; font-size: 11px; font-weight: 700; color: var(--text-soft); text-align: center; margin-top: 4px; }
 .pp-quads { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px 26px; }
 .pp-quad .rep-pitchmap, .pp-quad .rep-pm-cols { max-width: 420px; margin-left: auto; margin-right: auto; }
+.pp-pitch { display: block; width: 100%; max-width: 380px; aspect-ratio: 1 / 1; margin: 0 auto; }
+
+/* Match Report cover header (MatchReports.pdf page 1) */
+.mr-cover { text-align: center; padding: 18px 0 8px; }
+.mr-title { font-family: "Sora", "Manrope", sans-serif; font-size: 22px; font-weight: 700; letter-spacing: 0.12em; color: var(--text); }
+.mr-teams { margin: 10px 0 14px; font-size: 18px; font-weight: 700; color: var(--accent); letter-spacing: 0.04em; }
+.mr-meta { margin: 4px 0; font-size: 13px; color: var(--text-soft); }
+.mr-meta span { color: #d9534f; font-weight: 700; margin-right: 6px; }
+.mr-section { margin-top: 22px; border-top: 1px solid var(--border); padding-top: 10px; }
+.pp-wtoggle { margin-left: 18px; font-size: 12px; font-weight: 400; color: var(--text-soft); cursor: pointer; }
+.pp-wtoggle input { accent-color: #2f8f43; }
 
 /* Inside/Outside 30-yard-circle filter under the wagon wheel chips */
 .rep-circle-toggle { display: flex; justify-content: center; gap: 22px; margin-top: 8px; }
