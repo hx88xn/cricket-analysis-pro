@@ -4,6 +4,7 @@ const fs = require("fs");
 const os = require("os");
 const { execFile } = require("child_process");
 const db = require("./src/db");
+const pdf = require("./src/pdf");
 
 // Locate ffmpeg/ffprobe: prefer common install paths (a packaged app's PATH may
 // not include Homebrew), else fall back to a bare PATH lookup.
@@ -430,6 +431,26 @@ ipcMain.handle("movie:export", async (event, folderName, segments, defaultName) 
     return { ok: false, reason: "ffmpeg-failed", error: String((e && e.message) || e) };
   } finally {
     try { await fs.promises.rm(work, { recursive: true, force: true }); } catch { /* ignore */ }
+  }
+});
+
+// ---- Report PDF export ----------------------------------------------------
+ipcMain.handle("report:export-pdf", async (event, { html, title, defaultName } = {}) => {
+  const win = BrowserWindow.fromWebContents(event.sender);
+  if (!html) return { ok: false, reason: "no-content" };
+
+  const { filePath, canceled } = await dialog.showSaveDialog(win, {
+    defaultPath: defaultName || "report.pdf",
+    filters: [{ name: "PDF document", extensions: ["pdf"] }],
+  });
+  if (canceled || !filePath) return { ok: false, canceled: true };
+
+  try {
+    const data = await pdf.renderPdfBuffer(BrowserWindow, html, title);
+    await fs.promises.writeFile(filePath, data);
+    return { ok: true, filePath };
+  } catch (e) {
+    return { ok: false, reason: "print-failed", error: String((e && e.message) || e) };
   }
 });
 

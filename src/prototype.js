@@ -1839,8 +1839,15 @@ function reportStatistics(inns) {
   }));
   const SIZE = 18, pages = Math.max(1, Math.ceil(rows.length / SIZE));
   const cur = Math.min(rep.statPage, pages - 1);
-  const body = rows.slice(cur * SIZE, (cur + 1) * SIZE)
+  // Exporting to PDF takes the whole grid, not just the page on screen.
+  const shown = rep.exportMode ? rows : rows.slice(cur * SIZE, (cur + 1) * SIZE);
+  const body = shown
     .map((r) => `<tr>${r.map((c, ci) => `<td${leftCols.has(ci) ? ' class="rep-l"' : ""}>${esc(String(c))}</td>`).join("")}</tr>`).join("");
+  if (rep.exportMode) {
+    return `<div class="rep-scroll"><table class="rep-table"><thead><tr>${cols.map((c, ci) => `<th${leftCols.has(ci) ? ' class="rep-l"' : ""}>${c}</th>`).join("")}</tr></thead>
+      <tbody>${body || `<tr><td colspan="${cols.length}" class="rep-none">No deliveries recorded.</td></tr>`}</tbody></table></div>
+      <div class="rep-foot">${rows.length} deliveries</div>`;
+  }
   const nums = [];
   for (let p = Math.max(0, Math.min(cur - 2, pages - 5)); p < pages && nums.length < 5; p++) nums.push(p);
   const pager = `<div class="report-pager">
@@ -2737,6 +2744,45 @@ const REPORT_RENDERERS = {
   "Player Comparison Report": reportPlayerComparison,
 };
 
+// Download whatever report is currently on screen as a PDF. The visible
+// container's markup is handed to the main process, which lays it out in a
+// hidden window and prints it — so the PDF holds the whole report, not just
+// the part that fits the viewport.
+async function exportReportPdf(hostId, title, fileBase, rerender) {
+  const host = document.getElementById(hostId);
+  if (!host) return;
+  const empty = host.querySelector(".rep-empty:not(.rep-soft)");
+  if (!host.innerHTML.trim() || empty) { toast("Nothing to export — generate a report first", true); return; }
+  if (!window.cricketApp?.exportReportPdf) { toast("PDF export needs the desktop app", true); return; }
+  const stamp = new Date().toISOString().slice(0, 10);
+  const safe = String(fileBase || title || "report").replace(/[^\w\- ]+/g, "").trim().replace(/\s+/g, "-") || "report";
+  toast("Preparing PDF…");
+
+  // Capture the FULL report: re-render with pagination expanded (the
+  // Statistics grid pages through the deliveries on screen), take the markup,
+  // then put the on-screen view back exactly as it was.
+  let markup = host.innerHTML;
+  if (rerender) {
+    rep.exportMode = true;
+    try { rerender(); markup = host.innerHTML; }
+    catch (e) { console.error("export render", e); }
+    finally { rep.exportMode = false; try { rerender(); } catch { /* keep going */ } }
+  }
+
+  try {
+    const res = await window.cricketApp.exportReportPdf({
+      html: `<h1 class="pdf-title">${esc(title || "")}</h1>` + markup,
+      title: title || "Report",
+      defaultName: `${safe}-${stamp}.pdf`,
+    });
+    if (res && res.ok) toast("Saved " + res.filePath.split(/[\\/]/).pop());
+    else if (!res || !res.canceled) toast("Could not save the PDF" + (res && res.error ? `: ${res.error}` : ""), true);
+  } catch (e) {
+    console.error("pdf export", e);
+    toast("Could not save the PDF", true);
+  }
+}
+
 // ---- Match Report (combined document) -------------------------------------
 // The sidebar's Match Report button reveals the yellow section-filter bar and
 // renders the checked sections as one continuous report, per MatchReports.pdf:
@@ -2858,7 +2904,7 @@ async function buildReports() {
         <div class="report-brand"><img class="report-brand-mark" src="assets/logo-mark.svg" alt="" />CRICPRO REPORTS</div>
         <div class="report-top-actions">
           <label class="report-check"><input type="checkbox" checked /> Trimmed Video</label>
-          <button class="report-icon" title="Export">⤓</button>
+          <button class="report-icon" id="rp-export" title="Download this report as PDF">⤓</button>
           <a class="report-icon" href="home.html" title="Close" style="text-decoration:none;display:grid;place-items:center">✕</a>
         </div>
       </div>
@@ -2931,6 +2977,14 @@ function initReports(root) {
   };
   fromSel.addEventListener("change", () => guardOvers(fromSel));
   toSel.addEventListener("change", () => guardOvers(toSel));
+
+  // Download the report currently on screen (tab report or Match Report).
+  root.querySelector("#rp-export").addEventListener("click", () => {
+    const match = (rep.match && (rep.match.matchName || rep.match.id)) || "";
+    const name = rep.matchReportMode ? "Match Report" : rep.activeTab;
+    exportReportPdf("report-content", `${name}${match ? " — " + match : ""}`, `${match || "CRICPRO"}-${name}`,
+      () => (rep.matchReportMode ? renderMatchReport() : renderActiveReport()));
+  });
 
   root.querySelector("#rp-show").addEventListener("click", () => { rep.matchReportMode = false; readFilters(); renderActiveReport(); });
   root.querySelector("#rp-reset").addEventListener("click", () => {
@@ -4476,7 +4530,10 @@ async function buildPlayerPerf() {
     <section class="reports-screen reports-full pp-screen">
       <div class="report-topbar">
         <div class="report-brand"><a class="pp-back" href="prototype.html?screen=reports" title="Back to Reports">&#8592;</a>PLAYER PERFORMANCE<img class="report-brand-mark" src="assets/logo-mark.svg" alt="" /></div>
-        <div class="report-top-actions"><a class="report-icon" href="home.html" title="Close" style="text-decoration:none;display:grid;place-items:center">&#10005;</a></div>
+        <div class="report-top-actions">
+          <button class="report-icon" id="pp-export" title="Download this report as PDF">&#10515;</button>
+          <a class="report-icon" href="home.html" title="Close" style="text-decoration:none;display:grid;place-items:center">&#10005;</a>
+        </div>
       </div>
       <div class="reports-body">
         <aside class="report-sidebar">
@@ -4599,6 +4656,8 @@ function initPlayerPerf(root) {
   refreshOptions();
 
   $("pp-generate").addEventListener("click", () => ppGenerate(root));
+  $("pp-export").addEventListener("click", () =>
+    exportReportPdf("pp-content", `Player Performance${pp.player ? " — " + pp.player : ""}`, `${pp.player || "Player"}-Performance`));
   // Spider / Sector wheel-mode checkboxes inside the generated report
   $("pp-content").addEventListener("change", (e) => {
     const w = e.target.closest("[data-ppwagon]");

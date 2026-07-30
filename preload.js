@@ -29,6 +29,7 @@ contextBridge.exposeInMainWorld("cricketApp", {
     ipcRenderer.invoke("recordings:clipBytes", folderName, name),
   exportMovie: (folderName, segments, defaultName) =>
     ipcRenderer.invoke("movie:export", folderName, segments, defaultName),
+  exportReportPdf: (payload) => ipcRenderer.invoke("report:export-pdf", payload),
   db: {
     teams: () => ipcRenderer.invoke("db:teams"),
     players: (teamId) => ipcRenderer.invoke("db:players", teamId),

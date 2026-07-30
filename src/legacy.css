@@ -1984,6 +1984,12 @@ textarea {
 .pp-quad .rep-pitchmap, .pp-quad .rep-pm-cols { max-width: 420px; margin-left: auto; margin-right: auto; }
 .pp-pitch { display: block; width: 100%; max-width: 380px; aspect-ratio: 1 / 1; margin: 0 auto; }
 
+/* PDF export document (rendered off-screen by the main process) */
+.pdf-title {
+  margin: 0 0 14px; font-family: "Sora", "Manrope", sans-serif; font-size: 20px;
+  font-weight: 700; color: #e0903a; letter-spacing: 0.02em;
+}
+
 /* Match Report cover header (MatchReports.pdf page 1) */
 .mr-cover { text-align: center; padding: 18px 0 8px; }
 .mr-title { font-family: "Sora", "Manrope", sans-serif; font-size: 22px; font-weight: 700; letter-spacing: 0.12em; color: var(--text); }
