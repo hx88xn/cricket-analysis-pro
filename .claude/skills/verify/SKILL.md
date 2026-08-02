@@ -38,7 +38,15 @@ Node ≥22 has a global `WebSocket`; a ~40-line script can drive the page over C
 
 - **Scoring persists.** Dev DB is the repo's `data/cricket.sqlite` (userData only when
   packaged) and `scheduleSave` writes the driven state into it — expect the sqlite file
-  to show modified after a verification run.
+  to show modified after a verification run. Driving a match **overwrites that match's
+  saved `match_state` row**; drive a throwaway match if the existing progress matters.
+- **The DB is in WAL mode**, so `data/cricket.sqlite` alone is not the whole database —
+  recent writes live in `cricket.sqlite-wal`. Copying just the main file makes a backup
+  that silently omits them, and restoring just the main file leaves the newer WAL in
+  place (so the "restore" reads back as the driven state). Back up all three
+  (`.sqlite`, `-wal`, `-shm`) together, or run
+  `sqlite3 data/cricket.sqlite "pragma wal_checkpoint(TRUNCATE);"` first and copy the
+  single file.
 - `stageRun` stages `ext:0, legal:true`, so clicking a run key after NB/WD replaces the
   extra rather than combining (runs on a no-ball go in via the ball-edit overlay).
 - Kill with `pkill -f "electron .*cricket-analysis-pro"`.

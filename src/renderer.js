@@ -4150,6 +4150,20 @@ function applyMatch(match) {
   if (match.state) {
     // resume an in-progress innings
     Object.assign(state, match.state);
+    // Matches saved before overStarted was persisted carry no flag at all, and
+    // the in-memory one is whatever the last match left behind. Infer it: the
+    // over is open if anything has been bowled in it and no new bowler is due.
+    if (match.state.overStarted === undefined) {
+      state.overStarted = !state.pendingBowler
+        && (state.ball > 0 || (state.thisOver || []).length > 0);
+    }
+    // An open over survives the resume (overStarted comes back from the save),
+    // so the button reads "End Over" and the scorer carries on where they left
+    // off. A ball in progress does not: pending/staged are never saved, so the
+    // delivery is re-started rather than resumed half-entered.
+    state.ballStarted = false;
+    state.pending = null;
+    state.staged = null;
     return;
   }
 
@@ -4214,6 +4228,12 @@ function serializeState() {
     // innings/target/overs so a resumed 2nd innings still shows the chase panel
     innings: state.innings, target: state.target, overs: state.overs,
     matchOver: state.matchOver, // keep a completed match locked when reopened
+    // Whether the current over is still open. Without this a match resumed
+    // mid-over came back with the button on "Start Over" — pressing it would
+    // have re-opened an over that was never closed. Only the over flag is kept;
+    // a half-entered ball (pending/staged) is never persisted, so ballStarted is
+    // deliberately reset on resume (see loadMatchIntoState).
+    overStarted: state.overStarted,
     // Match Info Edit — toss + venue (venue may be edited away from the ground name)
     tossWonBy: state.tossWonBy, tossDecision: state.tossDecision, venue: state.venue,
     // batting-order tracking so the right batsman comes in after a resume
