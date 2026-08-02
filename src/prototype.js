@@ -1619,7 +1619,12 @@ function filterBalls(log) {
 function filteredInnings() {
   return rep.innings
     .filter((i) => !rep.filters.battingCode || i.batCode === rep.filters.battingCode)
-    .map((i) => ({ ...i, balls: filterBalls(i.log) }));
+    // Each ball is copied with its innings number attached. allBalls() flattens
+    // the innings apart for match-wide reports, and a delivery has to stay
+    // self-identifying past that point so its video clip (stored per innings)
+    // can still be found. The copy is deliberate — these balls come straight
+    // from the saved log, which reports must not mutate.
+    .map((i) => ({ ...i, balls: filterBalls(i.log).map((b) => ({ ...b, _inn: i.innings })) }));
 }
 // Flatten to a single ball pool (for match-wide summaries).
 const allBalls = (inns) => inns.reduce((a, i) => a.concat(i.balls), []);
@@ -1825,6 +1830,131 @@ function toggledInnings(inns) {
 
 function repTitle(t) { return `<h2 class="rep-title">${esc(t)}</h2>`; }
 
+// ---------------------------------------------------------------------------
+// Ball video. Reports that show individual deliveries mark each one with
+// data-ball / data-inn (via ballVidAttrs); one delegated click handler on the
+// report host pulls that delivery's saved clip off disk and plays it in an
+// overlay. Aggregate marks — pitch-map cells, ten-ball blocks, over slabs,
+// Manhattan bars — cover many deliveries at once and are deliberately NOT
+// clickable: there is no single clip to play.
+// ---------------------------------------------------------------------------
+
+// Attributes that make one rendered delivery clickable. `num` is the coding
+// screen's ball stamp ("4.3", "4.3+" on an illegal ball); innings is 1 or 2.
+// Returns "" when the ball can't be addressed, so the element stays inert.
+// Deliberately carries no class: these attributes are spliced into elements
+// that already have one (rows, wagon lines), and a second class attribute would
+// be dropped as a duplicate. The cursor / hover affordance hangs off the
+// [data-ball] selector in CSS instead.
+function ballVidAttrs(b, innings) {
+  const num = String((b && b.num) || "");
+  const inn = innings || (b && b._inn);
+  // No innings means the clip can't be addressed (the Player Performance wagons
+  // reuse these renderers with balls that carry none) — leave the mark inert.
+  if (!inn || !/^\d+\.\d+/.test(num)) return "";
+  return ` data-ball="${esc(num)}" data-inn="${esc(String(inn))}"`
+    + ` title="Play video for ball ${esc(num)}"`;
+}
+
+let repClipUrl = null; // object URL of the clip on screen, revoked on close
+
+function closeBallVideo() {
+  document.getElementById("rep-vid-backdrop")?.remove();
+  if (repClipUrl) { URL.revokeObjectURL(repClipUrl); repClipUrl = null; }
+}
+
+// Open the overlay with a message (no clip yet) and return its body element, so
+// the fetch can swap in the player or an explanation without flashing.
+function openBallVideoShell(num) {
+  closeBallVideo();
+  const backdrop = document.createElement("div");
+  backdrop.className = "rep-vid-backdrop";
+  backdrop.id = "rep-vid-backdrop";
+  backdrop.innerHTML = `
+    <div class="rep-vid-card" role="dialog" aria-modal="true" aria-label="Ball video">
+      <button type="button" class="rep-vid-close" aria-label="Close">×</button>
+      <div class="rep-vid-title">Ball ${esc(String(num))}</div>
+      <div class="rep-vid-body" id="rep-vid-body"><p class="rep-vid-msg">Loading clip…</p></div>
+    </div>`;
+  document.body.appendChild(backdrop);
+  const onKey = (e) => { if (e.key === "Escape") { document.removeEventListener("keydown", onKey); closeBallVideo(); } };
+  document.addEventListener("keydown", onKey);
+  backdrop.addEventListener("mousedown", (e) => { if (e.target === backdrop) closeBallVideo(); });
+  backdrop.querySelector(".rep-vid-close").addEventListener("click", closeBallVideo);
+  return backdrop.querySelector("#rep-vid-body");
+}
+
+// Get a just-loaded clip playing.
+//
+// Two things are wrong with a raw capture that both show up as "no video":
+//
+//  * The coding screen records with MediaRecorder, which writes WebM as it goes
+//    and so never fills in the Duration element or the Cues seek index. Chromium
+//    reports duration Infinity, leaves the scrub bar dead and paints nothing.
+//    Seeking far past the end makes it walk the clusters to find the real end;
+//    seeking back to 0 then gives a normal, seekable clip showing its first
+//    frame. (ffprobe confirms it: duration=N/A on every saved clip.)
+//  * play() with sound is blocked here — the click's user activation has expired
+//    across the await that fetched the bytes — so an unmuted autoplay silently
+//    does nothing. Fall back to muted playback rather than a dead player; the
+//    controls let the viewer turn sound on.
+function startClip(v) {
+  if (!v) return;
+  const play = () => v.play().catch(() => { v.muted = true; v.play().catch(() => {}); });
+  const finite = () => Number.isFinite(v.duration) && v.duration > 0;
+  const onMeta = () => {
+    if (finite()) { play(); return; }
+    let timer = 0;
+    const onDur = () => {
+      if (!finite()) return;
+      v.removeEventListener("durationchange", onDur);
+      clearTimeout(timer);
+      v.currentTime = 0;
+      play();
+    };
+    v.addEventListener("durationchange", onDur);
+    // Never leave the player stuck if the scan doesn't resolve a duration.
+    timer = setTimeout(() => { v.removeEventListener("durationchange", onDur); play(); }, 3000);
+    try { v.currentTime = 1e101; } catch { play(); }
+  };
+  if (v.readyState >= 1) onMeta();
+  else v.addEventListener("loadedmetadata", onMeta, { once: true });
+}
+
+async function playBallVideo(num, innings) {
+  // The clip filename carries the over and the 1-based ball within it, which is
+  // exactly the leading "<over>.<ball>" of the stamp. The trailing "+" on an
+  // illegal ball is dropped: the coding screen labels a wide's clip with the
+  // ball number it will still bowl, so the two share a label and the first
+  // match on disk wins — the same resolution the coding screen's player uses.
+  const m = /^(\d+)\.(\d+)/.exec(String(num));
+  if (!m) return;
+  const body = openBallVideoShell(num);
+  const say = (msg) => { body.innerHTML = `<p class="rep-vid-msg">${esc(msg)}</p>`; };
+
+  if (!window.cricketApp?.getBallClip) { say("Ball video needs the desktop app."); return; }
+  if (!rep.match) { say("Load a match first."); return; }
+  const folder = window.recordingFolderPath(rep.match);
+
+  try {
+    const res = await window.cricketApp.getBallClip(folder, Number(innings) || 1, Number(m[1]), Number(m[2]));
+    if (!document.getElementById("rep-vid-backdrop")) return; // closed while loading
+    if (!res?.ok || !res.bytes) {
+      say(res?.reason === "no-root"
+        ? "No recordings folder is set — choose one in video settings."
+        : `No clip saved for ball ${num} of innings ${innings}.`);
+      return;
+    }
+    repClipUrl = URL.createObjectURL(new Blob([res.bytes], { type: res.mime || "video/webm" }));
+    body.innerHTML = `<video class="rep-vid-player" src="${repClipUrl}" controls playsinline preload="auto"></video>
+      <div class="rep-vid-name">${esc(res.name || "")}</div>`;
+    startClip(body.querySelector("video"));
+  } catch (e) {
+    console.error("ball clip load failed", e);
+    say("Could not load the clip for this ball.");
+  }
+}
+
 // Statistics — the paged ball-by-ball data grid (default tab; mirrors the
 // reference grid with the match metadata columns and pager bar).
 function reportStatistics(inns) {
@@ -1833,16 +1963,24 @@ function reportStatistics(inns) {
   const cols = ["Competition", "Match", "Venue", "Date", "InnsNo", "Team", "Over", "Striker", "Nonstriker", "Bowler", "Bowl", "Shot", "Run", "Extras", "Wkt", "Dismissal"];
   const leftCols = new Set([0, 1, 2, 7, 8, 9]);
   const rows = [];
+  // Each row keeps a handle on the delivery it came from so the row can be made
+  // clickable (play that ball's video) without re-deriving it from the cells.
+  const src = [];
   inns.forEach((i) => i.balls.forEach((b) => {
     const e = parseExt(b.ext);
     rows.push([...meta, i.innings, i.batCode, b.num, b.striker, b.nonstr, b.bowler, b.bowl || "", b.shot || "", ballBat(b), e.type ? e.type + (e.runs > 1 ? e.runs : "") : "", isWicket(b) ? "W" : "", b.dismissal || ""]);
+    src.push({ b, innings: i.innings });
   }));
   const SIZE = 18, pages = Math.max(1, Math.ceil(rows.length / SIZE));
   const cur = Math.min(rep.statPage, pages - 1);
   // Exporting to PDF takes the whole grid, not just the page on screen.
-  const shown = rep.exportMode ? rows : rows.slice(cur * SIZE, (cur + 1) * SIZE);
+  const offset = rep.exportMode ? 0 : cur * SIZE;
+  const shown = rep.exportMode ? rows : rows.slice(offset, offset + SIZE);
   const body = shown
-    .map((r) => `<tr>${r.map((c, ci) => `<td${leftCols.has(ci) ? ' class="rep-l"' : ""}>${esc(String(c))}</td>`).join("")}</tr>`).join("");
+    .map((r, ri) => {
+      const s = src[offset + ri];
+      return `<tr${s ? ballVidAttrs(s.b, s.innings) : ""}>${r.map((c, ci) => `<td${leftCols.has(ci) ? ' class="rep-l"' : ""}>${esc(String(c))}</td>`).join("")}</tr>`;
+    }).join("");
   if (rep.exportMode) {
     return `<div class="rep-scroll"><table class="rep-table"><thead><tr>${cols.map((c, ci) => `<th${leftCols.has(ci) ? ' class="rep-l"' : ""}>${c}</th>`).join("")}</tr></thead>
       <tbody>${body || `<tr><td colspan="${cols.length}" class="rep-none">No deliveries recorded.</td></tr>`}</tbody></table></div>
@@ -1991,7 +2129,14 @@ function wagonFieldSvg(balls, mode) {
     // rebase from the 642x640 overlay space (handedness-normalised) onto our field circle
     const dx = (wagonCanonX(b) - 324.5) * (R / 290), dy = (b.wagon.y - 312.5) * (R / 290);
     const c = runColor(ballBat(b));
-    if (shots) lines += `<line x1="${CX}" y1="${CY}" x2="${CX + dx}" y2="${CY + dy}" stroke="${c}" stroke-width="2.5" opacity="0.9"/>`;
+    if (shots) {
+      // Two lines per shot: the visible 2.5px stroke, plus a transparent wide
+      // one over it that carries the click target — a 2.5px line is close to
+      // unhittable with a mouse, especially once the stage scales the SVG down.
+      lines += `<line x1="${CX}" y1="${CY}" x2="${CX + dx}" y2="${CY + dy}" stroke="${c}" stroke-width="2.5" opacity="0.9"/>`;
+      const hit = ballVidAttrs(b);
+      if (hit) lines += `<line x1="${CX}" y1="${CY}" x2="${CX + dx}" y2="${CY + dy}" stroke="transparent" stroke-width="12" class="rep-wagon-hit"${hit}/>`;
+    }
     const si = (Math.floor(((Math.atan2(dy, dx) + Math.PI / 2) / (Math.PI / 4)) % 8) + 8) % 8;
     secAgg[si].runs += ballBat(b); secAgg[si].balls += 1; wagonBalls += 1;
   }
@@ -2285,7 +2430,7 @@ function reportCommentary(inns) {
         const lead = isWicket(b)
           ? `OUT ! ${esc(b.dismissal || "Wicket")}, Wicket Player is ${esc(b.outBatsman || b.striker)}`
           : `${bat === 0 ? "No Runs" : `${bat} Run${bat === 1 ? "" : "s"}`}${e.type ? " , " + e.type : ""}`;
-        return `<div class="rep-cm-ball"><span class="rep-cm-badge ${cls}">${badge}</span><span class="rep-cm-num">${esc(b.num)}</span><span class="rep-cm-txt"><b>${esc(b.bowler)} to ${esc(b.striker)}</b><br>${lead}${extra ? " , " + extra : ""}</span></div>`;
+        return `<div class="rep-cm-ball"${ballVidAttrs(b, i.innings)}><span class="rep-cm-badge ${cls}">${badge}</span><span class="rep-cm-num">${esc(b.num)}</span><span class="rep-cm-txt"><b>${esc(b.bowler)} to ${esc(b.striker)}</b><br>${lead}${extra ? " , " + extra : ""}</span></div>`;
       }).join("");
       return `<div class="rep-cm-over"><div class="rep-cm-overhead">Over ${oi + 1} — ${runs} run${runs === 1 ? "" : "s"}${wk ? `, ${wk} wkt` : ""}</div>${lines}</div>`;
     }).join("");
@@ -2551,8 +2696,10 @@ function reportBoundaryNextBall(inns) {
       const bat = ballBat(b);
       if (bat !== 4 && bat !== 6) return;
       const nx = i.balls[ix + 1];
-      rows.push(`<tr><td class="rep-l">${esc(i.batCode)}</td><td>${esc(b.num)}</td><td class="rep-l">${esc(b.bowler || "")}</td><td class="rep-l">${esc(b.striker || "")}</td><td>${bat}</td>
-        <td>${nx ? esc(nx.num) : "—"}</td><td class="rep-l">${nx ? esc(nx.striker || "") : "—"}</td><td>${nx ? ballBat(nx) : "—"}</td>
+      // A row spans two deliveries, so the two ball-number cells are clickable
+      // individually rather than the row as a whole.
+      rows.push(`<tr><td class="rep-l">${esc(i.batCode)}</td><td${ballVidAttrs(b, i.innings)}>${esc(b.num)}</td><td class="rep-l">${esc(b.bowler || "")}</td><td class="rep-l">${esc(b.striker || "")}</td><td>${bat}</td>
+        <td${nx ? ballVidAttrs(nx, i.innings) : ""}>${nx ? esc(nx.num) : "—"}</td><td class="rep-l">${nx ? esc(nx.striker || "") : "—"}</td><td>${nx ? ballBat(nx) : "—"}</td>
         <td>${nx ? (isWicket(nx) ? "W" : (parseExt(nx.ext).type || "")) : ""}</td><td class="rep-l">${nx ? esc(nx.shot || "") : ""}</td></tr>`);
     });
   });
@@ -2636,14 +2783,14 @@ function reportAppeal(inns) {
   for (const a of logged) {
     const ump = umps[overIndexOf(a.over) % 2];
     const referred = a.decision === "DRS" || a.decision === "UMPIRES CALL";
-    rows.push(`<tr><td class="rep-l">${esc(a.battingCode || "")}</td><td>${a.innings || 1}</td><td class="rep-l">${esc(ump)}</td><td>${esc(a.over || "")}</td><td class="rep-l">${esc(a.against || "")}</td><td class="rep-l">${esc(a.bowler || "")}</td><td>${esc(a.type || "LBW")}</td><td>${esc(referred ? "Hawk Eye" : (a.comments || ""))}</td><td>${referred ? "YES" : "NO"}</td><td>${esc(decisionLabel(a.decision))}</td></tr>`);
+    rows.push(`<tr${ballVidAttrs({ num: a.over }, a.innings || 1)}><td class="rep-l">${esc(a.battingCode || "")}</td><td>${a.innings || 1}</td><td class="rep-l">${esc(ump)}</td><td>${esc(a.over || "")}</td><td class="rep-l">${esc(a.against || "")}</td><td class="rep-l">${esc(a.bowler || "")}</td><td>${esc(a.type || "LBW")}</td><td>${esc(referred ? "Hawk Eye" : (a.comments || ""))}</td><td>${referred ? "YES" : "NO"}</td><td>${esc(decisionLabel(a.decision))}</td></tr>`);
   }
   const loggedOvers = new Set(logged.map((a) => `${a.innings || 1}|${a.over}`));
   inns.forEach((i) => i.balls.forEach((b) => {
     if (!b.appeals || loggedOvers.has(`${i.innings}|${b.num}`)) return;
     // umpires swap ends each over, so the standing umpire alternates with it
     const ump = umps[overIndexOf(b.num) % 2];
-    rows.push(`<tr><td class="rep-l">${esc(i.batCode)}</td><td>${i.innings}</td><td class="rep-l">${esc(ump)}</td><td>${esc(b.num)}</td><td class="rep-l">${esc(b.striker || "")}</td><td class="rep-l">${esc(b.bowler || "")}</td><td>${esc(b.dismissal || (isWicket(b) ? "Out" : "LBW"))}</td><td></td><td>NO</td><td>${isWicket(b) ? "Up Held" : "Turned Down"}</td></tr>`);
+    rows.push(`<tr${ballVidAttrs(b, i.innings)}><td class="rep-l">${esc(i.batCode)}</td><td>${i.innings}</td><td class="rep-l">${esc(ump)}</td><td>${esc(b.num)}</td><td class="rep-l">${esc(b.striker || "")}</td><td class="rep-l">${esc(b.bowler || "")}</td><td>${esc(b.dismissal || (isWicket(b) ? "Out" : "LBW"))}</td><td></td><td>NO</td><td>${isWicket(b) ? "Up Held" : "Turned Down"}</td></tr>`);
   }));
   return `${repTitle("Appeal Report")}<div class="rep-scroll"><table class="rep-table"><thead><tr><th class="rep-l">Team Name</th><th>Inningsno</th><th class="rep-l">Umpire Name</th><th>Overs</th><th class="rep-l">Batsman</th><th class="rep-l">Bowler</th><th>Appeal Type</th><th>Appeal Components</th><th>Referred</th><th>Decision</th></tr></thead>
     <tbody>${rows.join("") || `<tr><td colspan="10" class="rep-none">No appeals recorded. Use the Appeals control while coding a ball.</td></tr>`}</tbody></table></div>`;
@@ -2669,12 +2816,14 @@ function reportUmpire(inns) {
       const a = (Array.isArray(st.appealsLog) ? st.appealsLog : []).find((x) => String(x.over) === String(b.num));
       return (a && a.type) || b.dismissal || "LBW";
     };
+    // `src` is the delivery a row came from (penalties have none), so appeal and
+    // extra rows can play their ball's clip on click.
     const rows = [
-      ...appeals.map((b) => ["Appeal", b.num, b.striker, b.nonstr, b.bowler, appealType(b)]),
-      ...extras.map((b) => { const e = parseExt(b.ext); return ["Extra", b.num, b.striker, b.nonstr, b.bowler, `${e.type} ${e.runs}`]; }),
-      ...pens.map((p) => ["Penalty", p.over || "", "", "", "", (p.reasons || []).join(", ") || "5 runs"]),
+      ...appeals.map((b) => ({ cells: ["Appeal", b.num, b.striker, b.nonstr, b.bowler, appealType(b)], src: b })),
+      ...extras.map((b) => { const e = parseExt(b.ext); return { cells: ["Extra", b.num, b.striker, b.nonstr, b.bowler, `${e.type} ${e.runs}`], src: b }; }),
+      ...pens.map((p) => ({ cells: ["Penalty", p.over || "", "", "", "", (p.reasons || []).join(", ") || "5 runs"], src: null })),
     ];
-    const body = rows.map((r) => `<tr><td>${esc(String(r[0]))}</td><td>${esc(String(r[1]))}</td><td class="rep-l">${esc(String(r[2]))}</td><td class="rep-l">${esc(String(r[3]))}</td><td class="rep-l">${esc(String(r[4]))}</td><td class="rep-l">${esc(String(r[5]))}</td></tr>`).join("");
+    const body = rows.map(({ cells: r, src }) => `<tr${src ? ballVidAttrs(src) : ""}><td>${esc(String(r[0]))}</td><td>${esc(String(r[1]))}</td><td class="rep-l">${esc(String(r[2]))}</td><td class="rep-l">${esc(String(r[3]))}</td><td class="rep-l">${esc(String(r[4]))}</td><td class="rep-l">${esc(String(r[5]))}</td></tr>`).join("");
     return `<div class="rep-inns-head">Umpire Name: ${esc(ump)} &nbsp; <span class="rep-muted">Count: ${rows.length}</span></div>
       <div class="rep-scroll"><table class="rep-table"><thead><tr><th>Type</th><th>Over</th><th class="rep-l">Striker</th><th class="rep-l">Non Striker</th><th class="rep-l">Bowler</th><th class="rep-l">Detail</th></tr></thead>
       <tbody>${body || `<tr><td colspan="6" class="rep-none">Nothing recorded for this umpire.</td></tr>`}</tbody></table></div>`;
@@ -2863,6 +3012,7 @@ function renderMatchReport() {
 
 function renderActiveReport() {
   const host = document.getElementById("report-content"); if (!host) return;
+  closeBallVideo(); // a clip belongs to the view that was on screen
   if (!rep.match || !rep.innings.length) { host.innerHTML = `<div class="rep-empty"><strong>CRIC</strong><span>PRO</span><p>Select a match and press <b>Show Reports</b>.</p></div>`; return; }
   const inns = filteredInnings();
   const fn = REPORT_RENDERERS[rep.activeTab];
@@ -3052,7 +3202,11 @@ function initReports(root) {
     if (pg) { rep.statPage = Math.max(0, +pg.dataset.pg || 0); renderActiveReport(); return; }
     // Wagon off-side / all / on-side toggle.
     const ws = e.target.closest("[data-wagonside]");
-    if (ws) { rep.wagonSide = ws.dataset.wagonside; renderActiveReport(); }
+    if (ws) { rep.wagonSide = ws.dataset.wagonside; renderActiveReport(); return; }
+    // A single delivery was clicked — play its saved clip. Checked last so the
+    // controls above (which can sit inside a ball row) keep their own action.
+    const bv = e.target.closest("[data-ball]");
+    if (bv) { playBallVideo(bv.dataset.ball, bv.dataset.inn); }
   });
 
   renderActiveReport();

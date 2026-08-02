@@ -2104,3 +2104,61 @@ textarea {
 .rep-cmp-cell span { background: linear-gradient(180deg, #2f76b7, #1d537f); color: #fff; padding: 5px 8px; font-weight: 600; }
 .rep-cmp-cell b { padding: 5px 10px; color: var(--text); }
 .rep-cmp-side .rep-field { max-width: 300px; margin: 0 auto; }
+
+/* ---- Ball video ---------------------------------------------------------
+   Reports mark every individually-rendered delivery with data-ball; clicking
+   one plays that ball's saved clip. The affordance hangs off the attribute
+   rather than a class so it can be spliced into elements that already have
+   one (table rows, commentary lines, wagon shot lines). */
+#report-content [data-ball] { cursor: pointer; }
+#report-content tr[data-ball]:hover > td { background: rgba(77, 179, 255, 0.13); }
+#report-content td[data-ball] { text-decoration: underline dotted rgba(124, 157, 196, 0.6); text-underline-offset: 3px; }
+#report-content td[data-ball]:hover { background: rgba(77, 179, 255, 0.18); color: #fff; }
+#report-content .rep-cm-ball[data-ball]:hover { background: rgba(77, 179, 255, 0.1); }
+/* The wagon hit line is transparent and sits over the visible stroke. */
+#report-content .rep-wagon-hit:hover { stroke: rgba(255, 255, 255, 0.28); }
+
+.rep-vid-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 70;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  background: rgba(3, 8, 15, 0.78);
+  backdrop-filter: blur(3px);
+}
+
+.rep-vid-card {
+  position: relative;
+  width: min(880px, 100%);
+  max-height: 100%;
+  overflow: auto;
+  padding: 20px 22px 18px;
+  border-radius: var(--radius-xl);
+  border: 1px solid var(--border-strong);
+  background: var(--surface-3);
+  box-shadow: var(--shadow-lg);
+}
+
+.rep-vid-close {
+  position: absolute;
+  top: 10px;
+  right: 12px;
+  width: 30px;
+  height: 30px;
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+  color: var(--text-dim);
+  font-size: 20px;
+  line-height: 1;
+  cursor: pointer;
+}
+.rep-vid-close:hover { background: rgba(255, 255, 255, 0.08); color: var(--text); }
+
+.rep-vid-title { font-size: 15px; font-weight: 700; letter-spacing: 0.4px; margin-bottom: 12px; }
+.rep-vid-body { min-height: 120px; display: grid; place-items: center; }
+.rep-vid-player { width: 100%; max-height: 68vh; border-radius: 8px; background: #000; display: block; }
+.rep-vid-name { margin-top: 8px; font-size: 11px; color: var(--text-dim); word-break: break-all; }
+.rep-vid-msg { font-size: 13px; color: var(--text-dim); text-align: center; padding: 24px 8px; }

@@ -1638,17 +1638,34 @@ function chaseTarget() {
 // Swap which side is batting and rebuild the batting order / bowler pool /
 // fielders / openers from the two loaded playing XIs (or the standalone demo
 // pools). Shared by the innings change and the pre-match toss (Match Info Edit).
+// Point the batting order, bowler pool and fielder list at whichever side
+// state.battingCode says is batting, swapping battingTeam / bowlingTeam first if
+// they disagree. Kept separate from swapBattingSides because it is also how a
+// RESUMED match is re-oriented: applyMatch always builds these pools in the
+// 1st-innings arrangement, and none of them are part of the saved state, so a
+// match reopened during its 2nd innings would otherwise offer the first
+// innings' batsmen and bowlers under the correct (saved) team codes.
+function syncSquadPools() {
+  const bat0 = state.battingTeam, bowl0 = state.bowlingTeam;
+  if (!bat0 || !bowl0) return;
+  if (bat0.code !== state.battingCode && bowl0.code === state.battingCode) {
+    [state.battingTeam, state.bowlingTeam] = [bowl0, bat0];
+  }
+  const bat = state.battingTeam, bowl = state.bowlingTeam;
+  state.bowlPlayers = bowl.playingXIPlayers || [];
+  CANADA = namesOf(bat.playingXIPlayers);
+  const pool = (bowl.playingXIPlayers || []).filter((p) => p.bowlingType);
+  OMAN_BOWLERS = namesOf(pool.length ? pool : bowl.playingXIPlayers);
+  FIELDERS = namesOf(bowl.playingXIPlayers);
+}
+
 function swapBattingSides() {
   if (state.battingTeam && state.bowlingTeam) {
     [state.battingTeam, state.bowlingTeam] = [state.bowlingTeam, state.battingTeam];
     const A = state.battingTeam, B = state.bowlingTeam;
     state.battingCode = A.code;
     state.teamA = A.code; state.teamB = B.code;
-    state.bowlPlayers = B.playingXIPlayers || [];
-    CANADA = namesOf(A.playingXIPlayers);
-    const pool = (B.playingXIPlayers || []).filter((p) => p.bowlingType);
-    OMAN_BOWLERS = namesOf(pool.length ? pool : B.playingXIPlayers);
-    FIELDERS = namesOf(B.playingXIPlayers);
+    syncSquadPools();
     const xi = A.playingXIPlayers || [];
     state.striker = (xi[0] && xi[0].name.toUpperCase()) || "BATSMAN 1";
     state.nonStriker = (xi[1] && xi[1].name.toUpperCase()) || "BATSMAN 2";
@@ -4082,29 +4099,10 @@ async function loadMasters() {
   }
 }
 
-// Build the per-match recordings folder name from home (teamA) vs away (teamB)
-// and the match date, e.g. "M1NAMIBIAVSOMAN040426" (date = DDMMYY). Sanitised to
-// safe filename characters; the main process also re-sanitises before use.
-function recordingFolderName(match) {
-  const A = match.teamA || {}, B = match.teamB || {};
-  const clean = (s) => String(s || "").toUpperCase().replace(/[^A-Z0-9]/g, "");
-  const home = clean(A.name || A.code) || "HOME";
-  const away = clean(B.name || B.code) || "AWAY";
-  const d = new Date(match.matchDate);
-  const date = isNaN(d) ? "" :
-    `${String(d.getDate()).padStart(2, "0")}${String(d.getMonth() + 1).padStart(2, "0")}${String(d.getFullYear()).slice(-2)}`;
-  const num = String(match.matchNo || (match.id || "").match(/\d+/)?.[0] || "").replace(/^0+/, "");
-  const prefix = num ? `M${num}` : "";
-  return `${prefix}${home}VS${away}${date}`;
-}
-
-// Tournament (competition) folder name that the match folder lives under, so
-// recordings nest as <root>/<tournament>/<match>/. Falls back to UNGROUPED when
-// the match has no competition. Sanitised; the main process re-sanitises too.
-function tournamentFolderName(match) {
-  const clean = (s) => String(s || "").toUpperCase().replace(/[^A-Z0-9]/g, "");
-  return clean(match.competitionName) || "UNGROUPED";
-}
+// The per-match recordings folder / filename prefix and the tournament folder
+// it nests under both come from recordings.js — the Reports screen derives the
+// same paths to play a ball's clip back, so the naming is shared rather than
+// duplicated here.
 
 // Create the match folder under the configured recordings root right away, so
 // captures land in it without prompting (when a root is set in video settings).
@@ -4116,8 +4114,8 @@ function ensureRecordingFolder() {
 
 function applyMatch(match) {
   state.matchId = match.id;
-  state.recordingPrefix = recordingFolderName(match); // filename prefix (no slash)
-  state.recordingFolder = `${tournamentFolderName(match)}/${state.recordingPrefix}`; // <tournament>/<match>
+  state.recordingPrefix = window.recordingFolderName(match); // filename prefix (no slash)
+  state.recordingFolder = window.recordingFolderPath(match); // <tournament>/<match>
   ensureRecordingFolder(); // create the match folder as soon as the match opens
   // The toss — recorded in the Toss popup on Match Details before the match is
   // ever opened here — decides who bats first: the winner if they elected to
@@ -4164,6 +4162,9 @@ function applyMatch(match) {
     state.ballStarted = false;
     state.pending = null;
     state.staged = null;
+    // The squads above were built for the 1st innings; re-point them at the
+    // side the saved state says is batting (a no-op on a 1st-innings resume).
+    syncSquadPools();
     return;
   }
 
