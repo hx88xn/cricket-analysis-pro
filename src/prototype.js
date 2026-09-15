@@ -2356,13 +2356,50 @@ function reportSession(inns) {
     <tbody>${rows.join("") || `<tr><td colspan="13" class="rep-none">No data.</td></tr>`}</tbody></table></div>`;
 }
 
+// ---- Revised overs / target (Match Events) --------------------------------
+// The scorer can reduce the overs or reset the chase target mid-match; the
+// latest entry in each list wins, exactly as the coding screen's maxBalls() /
+// chaseTarget() read them. Reports that talk about the chase must use these
+// rather than the registered match format.
+
+// Overs written as overs.balls ("5.4" = 5 overs and 4 balls) as a ball count.
+// NaN when the text isn't a valid overs figure.
+function repOversToBalls(v) {
+  const m = /^(\d+)(?:\.(\d))?$/.exec(String(v == null ? "" : v).trim());
+  if (!m) return NaN;
+  const b = m[2] ? Number(m[2]) : 0;
+  if (b > 5) return NaN;
+  return Number(m[1]) * 6 + b;
+}
+
+// The innings limit as a ball count, following the latest Revised Overs entry.
+function revisedLimitBalls() {
+  const st = (rep.match && rep.match.state) || {};
+  const list = st.revisedOvers || [];
+  const last = list[list.length - 1];
+  const rev = last ? repOversToBalls(last.value) : NaN;
+  if (rev > 0) return rev;
+  return Math.round((+((rep.match || {}).overs) || +st.overs || 0) * 6);
+}
+
+// The runs needed to win, following the latest Revised Target entry.
+function revisedTarget(fallback) {
+  const st = (rep.match && rep.match.state) || {};
+  const list = st.revisedTargets || [];
+  const last = list[list.length - 1];
+  const rev = last && Number(last.value);
+  return rev > 0 ? rev : fallback;
+}
+
 // Over comparison — side-by-side over table for both innings, with the chase
 // columns (rate/runs required, balls remaining) on the second innings.
 function reportOverComparison(inns) {
   const cards = inns.map((i) => ({ i, ov: overAgg(i.balls) }));
   const maxOver = Math.max(1, ...cards.flatMap((c) => c.ov.map((o) => o.over + 1)));
-  const totalOvers = Math.max(maxOver, +((rep.match || {}).overs) || (rep.match && rep.match.state && +rep.match.state.overs) || 0);
-  const target = cards.length > 1 ? totals(inns[0].balls).runs + 1 : 0;
+  const limitBalls = Math.max(maxOver * 6, revisedLimitBalls());
+  // A saved Revised Target (rain/DLS) replaces "1st-innings total + 1" as the
+  // score the chase is measured against.
+  const target = cards.length > 1 ? revisedTarget(totals(inns[0].balls).runs + 1) : 0;
   let cum = inns.map(() => 0), cumBalls = inns.map(() => 0);
   const rows = [];
   for (let o = 0; o < maxOver; o++) {
@@ -2380,7 +2417,7 @@ function reportOverComparison(inns) {
       let extra = "";
       if (chase && target) {
         const runsReq = Math.max(0, target - cum[ci]);
-        const ballsRem = Math.max(0, totalOvers * 6 - cumBalls[ci]);
+        const ballsRem = Math.max(0, limitBalls - cumBalls[ci]);
         const rateReq = ballsRem ? num(runsReq / (ballsRem / 6)) : "0.00";
         extra = `<td>${rateReq}</td><td>${runsReq}</td><td>${ballsRem}</td>`;
       } else if (chase) extra = `<td></td><td></td><td></td>`;

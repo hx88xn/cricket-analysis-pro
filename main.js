@@ -498,6 +498,12 @@ ipcMain.handle("db:competition:delete", (_e, id) => db.deleteCompetition(id));
 ipcMain.handle("db:match:save", (_e, match) => db.saveMatch(match));
 ipcMain.handle("db:match:saveToss", (_e, { id, toss }) => db.saveMatchToss(id, toss));
 ipcMain.handle("db:match:saveState", (_e, { id, state, status }) => db.saveMatchState(id, state, status));
+// Synchronous variant used by the coding screen to flush its debounced save
+// before the page navigates away (see scheduleSave / flushSave in renderer.js).
+ipcMain.on("db:match:saveState:sync", (e, { id, state, status }) => {
+  try { db.saveMatchState(id, state, status); e.returnValue = true; }
+  catch (err) { console.error("saveState sync failed", err); e.returnValue = false; }
+});
 ipcMain.handle("db:match:delete", (_e, id) => db.deleteMatch(id));
 ipcMain.handle("db:report:bowling", (_e, matchId) => db.bowlingFigures(matchId));
 ipcMain.handle("db:report:batting", (_e, matchId) => db.battingCard(matchId));

@@ -63,6 +63,10 @@ contextBridge.exposeInMainWorld("cricketApp", {
     saveMatch: (match) => ipcRenderer.invoke("db:match:save", match),
     saveMatchToss: (id, toss) => ipcRenderer.invoke("db:match:saveToss", { id, toss }),
     saveMatchState: (payload) => ipcRenderer.invoke("db:match:saveState", payload),
+    // Synchronous twin of saveMatchState, for the last write on the way out of
+    // a screen: the async (invoke) version is torn down with the renderer when
+    // the page navigates, so a debounced save flushed on pagehide never lands.
+    saveMatchStateSync: (payload) => ipcRenderer.sendSync("db:match:saveState:sync", payload),
     deleteMatch: (id) => ipcRenderer.invoke("db:match:delete", id),
     reportBowling: (matchId) => ipcRenderer.invoke("db:report:bowling", matchId),
     reportBatting: (matchId) => ipcRenderer.invoke("db:report:batting", matchId),

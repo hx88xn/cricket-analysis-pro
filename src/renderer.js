@@ -168,6 +168,9 @@ const state = {
   dismissed: [],      // names of batsmen already out this innings (can't return)
   overStarted: false, // a new over must be started before any ball
   ballStarted: false, // each ball must be started before it can be entered
+  // Six legal balls landed and the scorer chose to keep the over open, so the
+  // "6 legal balls" prompt has had its answer and must not re-open on the 7th.
+  overSixAnswered: false,
   capturing: false,   // a video capture is currently recording
   // The current ball is staged here as it is entered (runs/extras/wicket/etc.)
   // and only committed to the log when "End Ball" is pressed. `staged` mirrors
@@ -427,6 +430,7 @@ function wirePitchMap() {
       return;
     }
     clearReview();        // leave review mode when placing a live dot
+    if (!editingBall) setReviewOrientation(null); // maps follow the striker again
     state.pitchInputs ||= [];
     // First click = pitch (bounce) point; second = height (stump-passing) point;
     // a third click starts a fresh pair.
@@ -553,6 +557,12 @@ function clearReview() {
 // Redraw a ball's stored wagon line + pitch dots as review elements.
 function drawBallReview(r) {
   clearReview();
+  // Orient the maps to the ball being shown before its line and dots go on
+  // them. Rows saved before the flag existed were all coded right-handed (the
+  // reports engine's ballMirrored makes the same assumption), so default to
+  // mirrored. clearReview deliberately does not release the pin, so stepping
+  // between two reviewed balls never flashes the striker's artwork.
+  setReviewOrientation(r.mirrored === undefined ? true : r.mirrored);
   const wsvg = document.getElementById("wagon-overlay");
   if (wsvg && r.wagon) {
     const color = runColor(Number(r.runs) || 0);
@@ -634,6 +644,7 @@ function exitBallInputEdit() {
   const btn = document.getElementById("btn-editmode");
   if (btn) btn.textContent = "Edit Mode";
   clearReview();
+  setReviewOrientation(null); // maps follow the live striker again
   // back to a clean live-ball tag context
   state.tags = { btn: false, unc: false, wtb: false, rs: false };
   state.footwork = null;
@@ -822,6 +833,7 @@ function wireFieldMap() {
     cancelHoverMenu();
     closeContextMenu();
     clearReview();        // leave review mode when drawing the live ball
+    if (!editingBall) setReviewOrientation(null); // maps follow the striker again
     drawing = true; moved = false;
     const p = clampToField(...posArgs(toPct(e)));
     ensurePreview(runColor(state.pendingRuns || 0));
@@ -1231,6 +1243,16 @@ function shortName(name) {
 
 function logBall({ runs = 0, ext = 0, boundary = false, legal = true, bye = false, wicket = false, extLabel = "", overthrow = 0, rbw = 0, outBatsman = null, dismissal = "" }) {
   if (!ballInputAllowed()) return; // over + ball must be started first
+  // The over already holds its six legal balls — the scorer answered the
+  // six-ball prompt with "Continue Over". That extra time is for illegal
+  // deliveries (wide, no-ball) and for correcting balls already in the log, not
+  // for a seventh legal one: refuse it and leave the delivery staged so it can
+  // still be entered as an extra.
+  if (legal && state.ball >= 6) {
+    toast("6 legal balls are already recorded — enter a wide/no-ball, edit a logged ball, or end the over");
+    flash(document.getElementById("btn-over"));
+    return;
+  }
   recordOpeners();                 // first ball of the innings → log the openers
   pushHistory();
 
@@ -1321,11 +1343,17 @@ function logBall({ runs = 0, ext = 0, boundary = false, legal = true, bye = fals
 
   const allOut = state.wkts >= 10;
   let oversUp = false;
+  let askSixBalls = false;
 
   if (legal && !allOut) {
     state.ball += 1;
     if (runs % 2 === 1) swapStrike();
-    if (state.ball >= 6) completeOver();
+    // Six legal balls are in. The over is NOT closed automatically: the scorer
+    // is asked whether to end it or keep it open (a mis-scored delivery still
+    // to be corrected needs the over to stay open). Skipped while the End Over
+    // confirmation is padding the over out with dot balls, and skipped once the
+    // scorer has already answered "continue" for this over.
+    if (state.ball >= 6 && !fillingOver && !state.overSixAnswered) askSixBalls = true;
     // Checked every legal ball, not just at the end of an over: a Revised Overs
     // limit like 5.4 ends the innings part-way through the 6th over.
     if (ballsBowled() >= maxBalls()) oversUp = true;
@@ -1341,6 +1369,7 @@ function logBall({ runs = 0, ext = 0, boundary = false, legal = true, bye = fals
   state.lastWagon = null;
   clearPitchDots();
   clearReview();
+  setReviewOrientation(null); // the next delivery is coded for the striker on strike
   state.ballStarted = false;
   state.pending = null;
   state.staged = null;
@@ -1363,7 +1392,41 @@ function logBall({ runs = 0, ext = 0, boundary = false, legal = true, bye = fals
   // match ahead of the wickets/overs limits.
   const targetReached = state.innings === 2 && state.runs >= chaseTarget();
 
-  if (allOut || oversUp || targetReached) endInnings();
+  if (allOut || oversUp || targetReached) { endInnings(); return; }
+  // The innings runs on, and the over has just reached six legal balls: ask.
+  if (askSixBalls) confirmSixBalls();
+}
+
+// True while the End Over confirmation is padding an incomplete over out with
+// dot balls — logBall must close the over silently rather than re-asking.
+let fillingOver = false;
+
+// Six legal balls have landed. Rather than closing the over behind the
+// scorer's back, ask: End Over rotates strike/bowler as usual, Continue leaves
+// the over open (and is remembered, so the 7th, 8th … ball does not re-ask).
+function confirmSixBalls() {
+  const body = `
+    <div class="confirm-box">
+      <p>6 legal balls have been recorded for over ${state.over + 1}.
+        End the over, or continue it to add a wide / no-ball or correct a ball
+        already recorded? No further legal ball can be entered either way.</p>
+      <div class="btn-row-modal center">
+        <button class="m-btn m-red" id="sb-end">End Over</button>
+        <button class="m-btn m-green" id="sb-continue">Continue Over</button>
+      </div>
+    </div>`;
+  openOverlay(popupShell("OVER COMPLETE", body));
+  document.getElementById("sb-end")?.addEventListener("click", () => {
+    closeOverlay();
+    completeOver();
+    render();
+    openBowlerPicker();
+  });
+  document.getElementById("sb-continue")?.addEventListener("click", () => {
+    closeOverlay();
+    state.overSixAnswered = true; // don't ask again for this over
+    scheduleSave();
+  });
 }
 
 function swapStrike() {
@@ -1435,15 +1498,45 @@ function bowlerPlainName(b) {
   return String(b || "").split(" -")[0];
 }
 
-// Every bowler in the pool, in batting-card order. Rendered with the spec
-// suffix (via bowlerLabel) so the slot reads exactly as it always has, while
-// still matching state.bowler exactly for selection.
+// Every bowler in the pool, rendered with the spec suffix (via bowlerLabel) so
+// the slot reads exactly as it always has, while still matching state.bowler
+// exactly for selection.
+//
+// Order: bowlers who have already bowled come first, most recent over first —
+// so the last over's bowler sits at the top of the list, where the scorer looks
+// for them — then the rest of the pool in batting-card order.
 function bowlerOptions() {
   const xi = state.bowlPlayers || [];
-  return OMAN_BOWLERS.filter(Boolean).map((n) => {
+  const label = (n) => {
     const p = xi.find((q) => (q.name || "").toUpperCase() === n);
     return p ? bowlerLabel(p) : n;
-  });
+  };
+  const pool = OMAN_BOWLERS.filter(Boolean).map(label);
+  // bowlerHistory holds one entry per completed over, oldest first, as the
+  // labels that were shown in the slot. Walk it backwards, keeping the first
+  // sighting of each bowler, to get "most recently bowled" order.
+  const recent = [];
+  for (let i = (state.bowlerHistory || []).length - 1; i >= 0; i -= 1) {
+    const b = state.bowlerHistory[i];
+    if (b && pool.includes(b) && !recent.includes(b)) recent.push(b);
+  }
+  return [...recent, ...pool.filter((b) => !recent.includes(b))];
+}
+
+// Drop the bowler dropdown open so the next over's bowler can be picked without
+// hunting for the slot. Called when an over closes (the slot is empty then) and
+// when Start Over is blocked because no bowler is set. showPicker() needs a
+// recent user gesture and is not in every Chromium build, so both failure modes
+// fall back to focusing the select.
+function openBowlerPicker() {
+  const sel = document.querySelector("#name-bowler select");
+  if (!sel || sel.disabled) return;
+  setTimeout(() => {
+    try {
+      sel.focus();
+      if (typeof sel.showPicker === "function") sel.showPicker();
+    } catch { /* no user activation — the slot is focused, which is enough */ }
+  }, 0);
 }
 
 function pickNewBowler(label) {
@@ -1701,8 +1794,10 @@ function completeOver() {
   // a fresh over must be started, and each ball within it
   state.overStarted = false;
   state.ballStarted = false;
+  state.overSixAnswered = false; // the next over gets its own six-ball prompt
   setOverButton("Start Over");
   setBallButton("Start Ball");
+  scheduleSave();
 }
 
 // ---- Innings change (all out at 10 wickets) -------------------------------
@@ -1750,7 +1845,7 @@ function endInnings() {
   state.pendingBatsman = null; state.pendingBowler = false; state.bowlerHistory = [];
   state.bowlEnd = "FAR END";
   state.openersRecorded = false; // 2nd-innings openers recorded on its first ball
-  state.overStarted = false; state.ballStarted = false;
+  state.overStarted = false; state.ballStarted = false; state.overSixAnswered = false;
   setOverButton("Start Over"); setBallButton("Start Ball");
   clearWagonLines(); state.pendingWagonLine = null; state.lastWagon = null;
   clearPitchDots();
@@ -1868,12 +1963,29 @@ function strikerLeftHanded() {
   return /^l/i.test(p?.battingStyleCode || p?.battingStyle || "");
 }
 
+// While a saved ball is on the maps (reviewed from the log, or open in Edit
+// Mode) the artwork is pinned to the orientation THAT ball was coded in — the
+// `mirrored` flag stored on its row — rather than the current striker's. Without
+// this a delivery bowled to a left-hander, reviewed while a right-hander is on
+// strike, drew its wagon line and pitch dots over mirrored artwork, so the shot
+// pointed at the opposite side of the ground. null = follow the live striker.
+let reviewMirrored = null;
+
+// Pin the wagon wheel / pitch map to a ball's coded orientation (or pass null to
+// hand them back to the striker on strike).
+function setReviewOrientation(mirrored) {
+  const next = mirrored === null || mirrored === undefined ? null : !!mirrored;
+  if (reviewMirrored === next) return;
+  reviewMirrored = next;
+  updateFieldOrientation();
+}
+
 function updateFieldOrientation() {
-  const leftHanded = strikerLeftHanded();
   // state.fieldMirrored tracks the WAGON WHEEL — it also drives the wagon
   // sector maths (wagonRegion) and fielding placements (placementPoint), which
   // must follow the wheel's artwork, not the pitch map's.
-  const mirrored = !leftHanded;
+  const mirrored = reviewMirrored !== null ? reviewMirrored : !strikerLeftHanded();
+  const leftHanded = !mirrored;
   if (state.fieldMirrored === mirrored) return;
   state.fieldMirrored = mirrored;
   const field = document.querySelector(".field-map-img");
@@ -2143,13 +2255,22 @@ function wireActionButtons() {
       if (state.pendingBowler) {
         toast("Select the next bowler first");
         flash(document.getElementById("name-bowler"));
+        openBowlerPicker();
         return;
       }
       state.overStarted = true;
       setOverButton("End Over");
+      // Persist immediately: leaving the coding form right after Start Over
+      // must bring the open over back, with the button still on End Over.
+      scheduleSave();
+    } else if (state.ball >= 6) {
+      // Six (or more) legal balls are already in — the scorer answered the
+      // six-ball prompt with "Continue" — so End Over just closes the over.
+      completeOver();
+      render();
+      openBowlerPicker();
     } else {
-      // End Over pressed mid-over (a completed over closes itself in
-      // completeOver, so this is always before the 6th legal ball) — confirm.
+      // End Over pressed before the over's six legal balls — confirm.
       confirmEndOver();
     }
   });
@@ -2172,12 +2293,27 @@ function wireActionButtons() {
       closeOverlay();
       state.pending = null; // drop any half-staged delivery
       state.staged = null;
-      let guard = 6; // the over holds at most 6 more legal balls
-      do {
-        state.ballStarted = true;
-        logBall({});
-        guard -= 1;
-      } while (state.ball !== 0 && guard > 0);
+      // Pad the over out to six legal balls, then close it. `fillingOver`
+      // keeps the six-ball prompt from firing on the last padded delivery —
+      // the scorer has already said they want the over ended.
+      fillingOver = true;
+      try {
+        let guard = 6; // the over holds at most 6 more legal balls
+        while (state.ball < 6 && guard > 0 && !state.matchOver && state.overStarted) {
+          state.ballStarted = true;
+          logBall({});
+          guard -= 1;
+        }
+      } finally {
+        fillingOver = false;
+      }
+      // The padding may have ended the innings (a revised-overs limit, the
+      // 10th wicket); only close an over that is still open.
+      if (!state.matchOver && state.overStarted) {
+        completeOver();
+        render();
+        openBowlerPicker();
+      }
     });
   }
 
@@ -2205,6 +2341,8 @@ function wireActionButtons() {
     if (!state.ballStarted && !bothEndsAndBowlerSet()) return;
     if (!state.ballStarted) {
       // Start the ball — begin staging a fresh delivery.
+      clearReview();
+      setReviewOrientation(null); // the maps belong to the striker again
       state.ballStarted = true;
       state.pending = null;
       state.staged = null;
@@ -2894,19 +3032,34 @@ function overlayMatchEvents(active = "Breaks") {
   // Delete removes the most recent one. `save` reads the form, `arr` is the store.
   const val = (id) => document.getElementById(id)?.value?.trim() || "";
   const listScreen = (arr, buildRecord, saveId, delId) => {
+    // A saved (or deleted) event can move the scoreboard behind the overlay —
+    // a Revised Target changes the chase panel, a Revised Overs the balls
+    // remaining — so the coding screen is re-rendered, and the innings closed
+    // if the (possibly reduced) limit has already been passed.
+    // Returns true when the innings/match was closed by the change — endInnings
+    // opens the screen that comes next (Innings Details / Match Results), which
+    // must not then be covered back over by this events screen.
+    const applyToMatch = () => {
+      scheduleSave();   // persist the event to the DB
+      render();
+      if (state.matchOver) return true;
+      const limitPassed = ballsBowled() >= maxBalls();
+      const chased = state.innings === 2 && state.runs >= chaseTarget();
+      if (!limitPassed && !chased) return false;
+      endInnings();
+      return true;
+    };
     document.getElementById(saveId)?.addEventListener("click", () => {
       const rec = buildRecord();
       if (!rec) return; // buildRecord toasts + returns null when invalid
       arr.push(rec);
-      scheduleSave();   // persist the event to the DB
-      overlayMatchEvents(active);
+      if (!applyToMatch()) overlayMatchEvents(active);
       toast("Saved");
     });
     document.getElementById(delId)?.addEventListener("click", () => {
       if (!arr.length) { closeOverlay(); return; }
       arr.pop();
-      scheduleSave();
-      overlayMatchEvents(active);
+      if (!applyToMatch()) overlayMatchEvents(active);
       toast("Last entry removed");
     });
   };
@@ -2963,7 +3116,29 @@ function overlayMatchEvents(active = "Breaks") {
         }
         return { value: ballsToOvers(balls), innings: "1st Innings", reason: val("rv-reason") };
       }
-      return { value, innings: "2nd Innings", reason: val("rv-reason") };
+      // Revised Target: runs to win, plus an optional revised overs limit for
+      // the chase. A changed limit is also recorded as a Revised Overs entry,
+      // because that list is what maxBalls() reads.
+      const runs = Number(value);
+      if (!(runs > 0)) { toast("Revised target must be a run total, e.g. 121"); return null; }
+      const oversText = val("rv-overs").trim();
+      let overs = "";
+      if (oversText) {
+        const balls = oversToBalls(oversText);
+        if (!(balls > 0)) {
+          toast("Revised overs must look like 20 or 5.4 (balls 0–5)");
+          return null;
+        }
+        overs = ballsToOvers(balls);
+        if (balls !== maxBalls()) {
+          state.revisedOvers.push({
+            value: overs, innings: "2nd Innings",
+            reason: val("rv-reason") || "Revised Target",
+          });
+          state.overs = balls / 6; // keep the base format in sync
+        }
+      }
+      return { value: String(runs), overs, innings: "2nd Innings", reason: val("rv-reason") };
     }, "rv-save", "rv-del");
   }
 
@@ -3146,8 +3321,11 @@ function ballChangesRows() {
     `<tr>${cells([b.dt, b.team, b.inns, b.runs, b.overs, b.wkts, b.type, b.remarks])}</tr>`).join("");
 }
 function revisedRows(kind) {
-  const arr = kind === "Revised Overs" ? state.revisedOvers : state.revisedTargets;
-  return arr.map((r) => `<tr>${cells([r.value, r.innings, r.reason])}</tr>`).join("");
+  if (kind === "Revised Overs") {
+    return state.revisedOvers.map((r) => `<tr>${cells([r.value, r.innings, r.reason])}</tr>`).join("");
+  }
+  return state.revisedTargets.map((r) =>
+    `<tr>${cells([r.value, r.overs || "", r.innings, r.reason])}</tr>`).join("");
 }
 function batTimeRows() {
   return state.batTimes.map((r) =>
@@ -3288,13 +3466,22 @@ function matchEventBody(name) {
       return powerPlayBody();
     case "Revised Overs":
     case "Revised Target":
+      // A rain revision sets a new target AND, almost always, a new overs
+      // limit — so the Revised Target screen carries an Overs field of its own
+      // (the Revised Overs screen is 1st-innings only). Leaving it blank keeps
+      // the current limit and revises the target alone.
       return `
         <div class="me-form-narrow">
           <label class="f-row"><span class="f-label">Innings</span><span class="f-input f-static">${name === "Revised Overs" ? "1st Innings" : "2nd Innings"}</span></label>
           <label class="f-row"><span class="f-label">${name === "Revised Overs" ? "Revised Overs" : "Revised Target"}</span><input class="f-input" id="rv-val" placeholder="${name === "Revised Overs" ? "e.g. 20 or 5.4" : "Runs"}"/></label>
+          ${name === "Revised Target"
+            ? `<label class="f-row"><span class="f-label">Revised Overs</span><input class="f-input" id="rv-overs" value="${escAttr(maxOvers())}" placeholder="e.g. 20 or 5.4"/></label>`
+            : ""}
           <label class="f-row"><span class="f-label">Reason</span><input class="f-input" id="rv-reason" placeholder="Reason"/></label>
         </div>${saveDeleteRow("", "rv-save", "rv-del")}
-        ${meTable([name, "Innings", "Reason"], revisedRows(name))}`;
+        ${name === "Revised Target"
+          ? meTable([name, "Overs", "Innings", "Reason"], revisedRows(name))
+          : meTable([name, "Innings", "Reason"], revisedRows(name))}`;
     case "Match Info Edit":
       return `
         <div class="me-form-narrow">
@@ -4198,6 +4385,7 @@ function applyMatch(match) {
   state.matchOver = false;
   state.overStarted = false;
   state.ballStarted = false;
+  state.overSixAnswered = false;
   // Openers can be picked from anywhere in the order, so the next batsman in is
   // the first batting-order slot neither of them occupies (2 for the usual 0/1).
   const openerIdx = [CANADA.indexOf(state.striker), CANADA.indexOf(state.nonStriker)];
@@ -4235,6 +4423,9 @@ function serializeState() {
     // a half-entered ball (pending/staged) is never persisted, so ballStarted is
     // deliberately reset on resume (see loadMatchIntoState).
     overStarted: state.overStarted,
+    // …and whether the six-legal-balls prompt for that over has been answered
+    // with "continue", so a resume mid-over does not re-ask on the next ball.
+    overSixAnswered: !!state.overSixAnswered,
     // Match Info Edit — toss + venue (venue may be edited away from the ground name)
     tossWonBy: state.tossWonBy, tossDecision: state.tossDecision, venue: state.venue,
     // batting-order tracking so the right batsman comes in after a resume
@@ -4258,16 +4449,45 @@ function serializeState() {
     history: (state.history || []).slice(-10),
   };
 }
+function savePayload() {
+  return { id: state.matchId, state: serializeState(),
+    status: state.matchOver ? "COMPLETED" : "RESUME" };
+}
 function scheduleSave() {
   if (!state.matchId || !window.cricketApp?.db?.saveMatchState) return;
   clearTimeout(saveTimer);
   saveTimer = setTimeout(() => {
-    window.cricketApp.db
-      .saveMatchState({ id: state.matchId, state: serializeState(),
-        status: state.matchOver ? "COMPLETED" : "RESUME" })
+    saveTimer = null;
+    window.cricketApp.db.saveMatchState(savePayload())
       .catch((e) => console.error("save state failed", e));
   }, 600);
 }
+
+// Write the pending state NOW, synchronously. The debounced save above is an
+// async IPC call that is thrown away with the renderer when the page navigates,
+// so leaving the coding screen within 600ms of the last action used to lose it —
+// most visibly the over flags, which made a match resumed mid-over come back on
+// "Start Over" instead of "End Over".
+function flushSave() {
+  if (!state.matchId) return;
+  clearTimeout(saveTimer);
+  saveTimer = null;
+  const db = window.cricketApp?.db;
+  if (!db) return;
+  try {
+    if (db.saveMatchStateSync) db.saveMatchStateSync(savePayload());
+    else db.saveMatchState(savePayload())?.catch(() => {});
+  } catch (e) {
+    console.error("flush state failed", e);
+  }
+}
+// pagehide covers both the in-app links out of the coding screen and the window
+// being closed; visibilitychange catches the app being hidden mid-innings.
+window.addEventListener("pagehide", flushSave);
+window.addEventListener("beforeunload", flushSave);
+document.addEventListener("visibilitychange", () => {
+  if (document.visibilityState === "hidden") flushSave();
+});
 
 // ---- Boot -----------------------------------------------------------------
 
